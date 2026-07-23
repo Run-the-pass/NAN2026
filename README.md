@@ -25,7 +25,9 @@ npm run dev
    - `재료 준비 해금`: `PREPARE` 한 번으로 `GET → CHOP`을 큐에 넣는다.
 6. `COOK` → `SERVE` 후 라운드를 마감해 2라운드를 종료한다.
 
-플레이어는 `WASD` 또는 방향키로 움직인다.
+플레이어는 `WASD` 또는 방향키로 움직인다. 주방과 이동 경로는
+16×10 타일로 구성되며 플레이어와 슬라임 모두 벽과 작업대를 통과하지
+않는다.
 
 ## 검증
 
@@ -33,7 +35,11 @@ npm run dev
 npm run build
 npm run lint
 npm test
+npm run simulate -- --seed=7 --no-hungry slime-01:GET slime-01:CHOP slime-01:COOK slime-02:SERVE
 ```
+
+`simulate`는 Phaser 없이 같은 게임 코어를 실행하고 작업별 결과, 경과
+시간, 점수, 슬라임의 최종 위치·큐·상태를 JSON으로 출력한다.
 
 `firebase.json`은 현재 정적 클라이언트 결과물의 최소 Hosting 설정만
 담는다. `/api/command`까지 Firebase에서 운영할 때 서버 런타임을 추가한다.

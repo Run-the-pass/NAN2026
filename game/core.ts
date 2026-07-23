@@ -7,6 +7,7 @@ export type TargetId =
   | "customer";
 export type ActorStatus = "IDLE" | "MOVING" | "WORKING";
 export type ChoiceId = "mallang-mastery" | "prepare" | "team-boost";
+export type TilePosition = { col: number; row: number };
 
 export type Command = {
   actorId: ActorId;
@@ -31,6 +32,7 @@ export type ActorState = {
   status: ActorStatus;
   current: Command | null;
   queue: Command[];
+  path: TilePosition[];
   workLeftMs: number;
 };
 
@@ -55,13 +57,82 @@ export type GameState = {
   history: string[];
 };
 
-export const stationPositions: Record<Action, { x: number; y: number }> = {
-  GET: { x: 480, y: 520 },
-  CHOP: { x: 160, y: 300 },
-  COOK: { x: 800, y: 300 },
-  SERVE: { x: 480, y: 85 },
-  PREPARE: { x: 480, y: 520 },
+export const TILE_SIZE = 60;
+export const KITCHEN_ROWS = [
+  "################",
+  "#......SS......#",
+  "#..............#",
+  "#.BB........PP.#",
+  "#.BB...####.PP.#",
+  "#......####....#",
+  "#..............#",
+  "#.DD........DD.#",
+  "#......GG......#",
+  "################",
+] as const;
+
+export const stationTiles: Record<Action, TilePosition> = {
+  GET: { col: 7, row: 7 },
+  CHOP: { col: 4, row: 3 },
+  COOK: { col: 11, row: 3 },
+  SERVE: { col: 7, row: 2 },
+  PREPARE: { col: 7, row: 7 },
 };
+
+export const tileCenter = ({ col, row }: TilePosition) => ({
+  x: col * TILE_SIZE + TILE_SIZE / 2,
+  y: row * TILE_SIZE + TILE_SIZE / 2,
+});
+
+export const pixelToTile = (x: number, y: number): TilePosition => ({
+  col: Math.floor(x / TILE_SIZE),
+  row: Math.floor(y / TILE_SIZE),
+});
+
+export const isWalkable = ({ col, row }: TilePosition) =>
+  KITCHEN_ROWS[row]?.[col] === ".";
+
+export function findPath(
+  start: TilePosition,
+  destination: TilePosition,
+): TilePosition[] | null {
+  if (!isWalkable(start) || !isWalkable(destination)) return null;
+  const key = ({ col, row }: TilePosition) => `${col},${row}`;
+  const previous = new Map<string, TilePosition | null>([[key(start), null]]);
+  const queue = [start];
+  const directions = [
+    { col: 0, row: -1 },
+    { col: 1, row: 0 },
+    { col: 0, row: 1 },
+    { col: -1, row: 0 },
+  ];
+  for (let index = 0; index < queue.length; index += 1) {
+    const current = queue[index];
+    if (
+      current.col === destination.col &&
+      current.row === destination.row
+    ) {
+      const path: TilePosition[] = [];
+      let cursor: TilePosition | null = current;
+      while (cursor && key(cursor) !== key(start)) {
+        path.unshift(cursor);
+        cursor = previous.get(key(cursor)) ?? null;
+      }
+      return path;
+    }
+    for (const direction of directions) {
+      const next = {
+        col: current.col + direction.col,
+        row: current.row + direction.row,
+      };
+      if (isWalkable(next) && !previous.has(key(next))) {
+        previous.set(key(next), current);
+        queue.push(next);
+      }
+    }
+  }
+  return null;
+}
 
 export const choices: ReadonlyArray<{
   id: ChoiceId;
@@ -108,14 +179,14 @@ const workDuration: Record<Exclude<Action, "PREPARE">, number> = {
   SERVE: 900,
 };
 
-const actor = (x: number, y: number): ActorState => ({
-  x,
-  y,
+const actor = (col: number, row: number): ActorState => ({
+  ...tileCenter({ col, row }),
   moveSpeed: 120,
   workSpeed: 1,
   status: "IDLE",
   current: null,
   queue: [],
+  path: [],
   workLeftMs: 0,
 });
 
@@ -137,8 +208,8 @@ export function initialState(seed = 2026): GameState {
     roundSales: 0,
     nextOrderInMs: 10_000,
     actors: {
-      "slime-01": actor(360, 380),
-      "slime-02": actor(600, 210),
+      "slime-01": actor(5, 6),
+      "slime-02": actor(10, 2),
     },
     lastEvent: "1라운드 시작 — 버섯 스튜 주문이 들어왔습니다.",
     history: ["1라운드 시작"],
@@ -293,14 +364,42 @@ function moveActor(state: GameState, actorId: ActorId, deltaMs: number) {
     if (!slime.current) {
       const [current, ...queue] = slime.queue;
       if (!current) {
-        slime = { ...slime, status: "IDLE", workLeftMs: 0 };
+        slime = { ...slime, status: "IDLE", path: [], workLeftMs: 0 };
         break;
       }
-      slime = { ...slime, current, queue, status: "MOVING", workLeftMs: 0 };
+      const path = findPath(
+        pixelToTile(slime.x, slime.y),
+        stationTiles[current.action],
+      );
+      if (!path) {
+        slime = { ...slime, current: null, queue, status: "IDLE", path: [] };
+        next = event(next, `${current.action} 작업 위치로 갈 수 없습니다.`, {});
+        continue;
+      }
+      slime = {
+        ...slime,
+        current,
+        queue,
+        path,
+        status: "MOVING",
+        workLeftMs: 0,
+      };
     }
 
-    const destination = stationPositions[slime.current.action];
     if (slime.status === "MOVING") {
+      const waypoint = slime.path[0];
+      if (!waypoint) {
+        slime = {
+          ...slime,
+          status: "WORKING",
+          workLeftMs:
+            workDuration[
+              slime.current.action as Exclude<Action, "PREPARE">
+            ] / slime.workSpeed,
+        };
+        continue;
+      }
+      const destination = tileCenter(waypoint);
       const dx = destination.x - slime.x;
       const dy = destination.y - slime.y;
       const distance = Math.hypot(dx, dy);
@@ -311,14 +410,18 @@ function moveActor(state: GameState, actorId: ActorId, deltaMs: number) {
         remaining = 0;
         break;
       }
+      const path = slime.path.slice(1);
       slime = {
         ...slime,
         x: destination.x,
         y: destination.y,
-        status: "WORKING",
-        workLeftMs:
-          workDuration[slime.current.action as Exclude<Action, "PREPARE">] /
-          slime.workSpeed,
+        path,
+        status: path.length ? "MOVING" : "WORKING",
+        workLeftMs: path.length
+          ? 0
+          : workDuration[
+              slime.current.action as Exclude<Action, "PREPARE">
+            ] / slime.workSpeed,
       };
       remaining -= travelMs;
     }
@@ -341,6 +444,7 @@ function moveActor(state: GameState, actorId: ActorId, deltaMs: number) {
         ...next.actors[actorId],
         current: null,
         status: "IDLE",
+        path: [],
         workLeftMs: 0,
       };
     }
@@ -424,6 +528,7 @@ export function chooseUpgrade(state: GameState, choiceId: ChoiceId): GameState {
           status: "IDLE",
           current: null,
           queue: [],
+          path: [],
           workLeftMs: 0,
         },
       ];

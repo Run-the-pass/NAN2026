@@ -4,12 +4,17 @@ import * as Phaser from "phaser";
 import { useEffect, useRef, useState } from "react";
 import type { CSSProperties } from "react";
 import {
+  KITCHEN_ROWS,
+  TILE_SIZE,
   choices,
   chooseUpgrade,
   command,
   endRound,
   executeEnvelope,
   initialState,
+  isWalkable,
+  pixelToTile,
+  tileCenter,
   tick,
   validateEnvelope,
   type Action,
@@ -51,39 +56,62 @@ export default function Game() {
 
         create() {
           this.cameras.main.setBackgroundColor("#18251f");
-          this.add.rectangle(480, 300, 900, 540, 0x283d35).setStrokeStyle(4, 0x89a887);
-          this.add.rectangle(480, 300, 360, 390, 0x3f5b4f);
-          const box = (x: number, y: number, w: number, h: number, color: number, label: string) => {
-            this.add.rectangle(x, y, w, h, color).setStrokeStyle(3, 0xffffff, 0.45);
-            this.add.text(x, y, label, {
+          const colors: Record<string, number> = {
+            ".": 0x2f463d,
+            "#": 0x17231f,
+            S: 0x6b4f3a,
+            B: 0x537a6d,
+            P: 0xa64b3c,
+            D: 0x355b72,
+            G: 0x8a6847,
+          };
+          KITCHEN_ROWS.forEach((row, rowIndex) => {
+            [...row].forEach((tile, colIndex) => {
+              const { x, y } = tileCenter({ col: colIndex, row: rowIndex });
+              this.add
+                .rectangle(x, y, TILE_SIZE, TILE_SIZE, colors[tile])
+                .setStrokeStyle(1, 0x89a887, tile === "." ? 0.22 : 0.55);
+            });
+          });
+          const label = (x: number, y: number, text: string) => {
+            this.add.text(x, y, text, {
               color: "#ffffff",
               fontFamily: "sans-serif",
-              fontSize: "18px",
+              fontSize: "15px",
               fontStyle: "bold",
               align: "center",
             }).setOrigin(0.5);
           };
-          box(480, 62, 380, 70, 0x6b4f3a, "고객석 · 주문: 버섯 스튜");
-          box(480, 145, 360, 52, 0xc68b43, "패스 / 완성 요리");
-          box(145, 300, 190, 100, 0x537a6d, "손질대\nCHOP");
-          box(815, 300, 190, 100, 0xa64b3c, "냄비\nCOOK");
-          box(480, 525, 240, 72, 0x8a6847, "버섯 상자\nGET");
-          box(145, 470, 190, 70, 0x355b72, "설거지대\n(장식)");
-          box(815, 470, 190, 70, 0x725135, "보관대\n(장식)");
+          label(480, 90, "고객 · SERVE");
+          label(180, 240, "손질대\nCHOP");
+          label(780, 240, "냄비\nCOOK");
+          label(540, 300, "중앙 조리대");
+          label(180, 450, "설거지대");
+          label(780, 450, "보관대");
+          label(480, 510, "버섯 상자 · GET");
           this.actors = {
-            "slime-01": this.actor(360, 380, 0x63d47c, "말랑\n주방"),
-            "slime-02": this.actor(600, 210, 0xef5b55, "빨강\n서빙"),
+            "slime-01": this.actor(330, 390, 0x63d47c, "말랑"),
+            "slime-02": this.actor(630, 150, 0xef5b55, "빨강"),
           };
-          const player = this.actor(480, 370, 0xf4cb4c, "플레이어");
+          const playerStart = tileCenter({ col: 8, row: 6 });
+          const player = this.actor(playerStart.x, playerStart.y, 0xf4cb4c, "플레이어");
           const keys = this.input.keyboard?.addKeys("W,A,S,D,UP,DOWN,LEFT,RIGHT") as Record<string, Phaser.Input.Keyboard.Key>;
-          this.events.on("update", () => {
-            const speed = 3;
-            if (keys.A.isDown || keys.LEFT.isDown) player.x -= speed;
-            if (keys.D.isDown || keys.RIGHT.isDown) player.x += speed;
-            if (keys.W.isDown || keys.UP.isDown) player.y -= speed;
-            if (keys.S.isDown || keys.DOWN.isDown) player.y += speed;
-            player.x = Phaser.Math.Clamp(player.x, 300, 660);
-            player.y = Phaser.Math.Clamp(player.y, 190, 470);
+          const canStand = (x: number, y: number) =>
+            [-18, 18].every((offsetX) =>
+              [-18, 18].every((offsetY) =>
+                isWalkable(pixelToTile(x + offsetX, y + offsetY)),
+              ),
+            );
+          this.events.on("update", (_time: number, delta: number) => {
+            let dx = Number(keys.D.isDown || keys.RIGHT.isDown) - Number(keys.A.isDown || keys.LEFT.isDown);
+            let dy = Number(keys.S.isDown || keys.DOWN.isDown) - Number(keys.W.isDown || keys.UP.isDown);
+            if (dx && dy) {
+              dx /= Math.SQRT2;
+              dy /= Math.SQRT2;
+            }
+            const distance = 180 * Math.min(delta, 32) / 1000;
+            if (canStand(player.x + dx * distance, player.y)) player.x += dx * distance;
+            if (canStand(player.x, player.y + dy * distance)) player.y += dy * distance;
           });
           view.current = {
             sync: (actors) => {
@@ -98,11 +126,11 @@ export default function Game() {
         }
 
         actor(x: number, y: number, color: number, label: string) {
-          const body = this.add.rectangle(0, 0, 84, 62, color).setStrokeStyle(3, 0xffffff);
+          const body = this.add.rectangle(0, 0, 44, 40, color).setStrokeStyle(3, 0xffffff);
           const text = this.add.text(0, 0, label, {
             color: "#111b17",
             fontFamily: "sans-serif",
-            fontSize: "16px",
+            fontSize: "12px",
             fontStyle: "bold",
             align: "center",
           }).setOrigin(0.5);
