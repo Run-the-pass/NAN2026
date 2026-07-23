@@ -2,26 +2,22 @@
 
 import * as Phaser from "phaser";
 import { useEffect, useRef, useState } from "react";
+import type { CSSProperties } from "react";
 import {
+  choices,
+  chooseUpgrade,
   command,
+  endRound,
   executeEnvelope,
   initialState,
-  startRoundTwo,
   tick,
   validateEnvelope,
   type Action,
+  type ActorState,
   type ActorId,
 } from "../game/core";
 
-const stationPosition: Record<Action, { x: number; y: number }> = {
-  GET: { x: 480, y: 520 },
-  CHOP: { x: 160, y: 300 },
-  COOK: { x: 800, y: 300 },
-  SERVE: { x: 480, y: 85 },
-  PREPARE: { x: 160, y: 300 },
-};
-
-type View = { move: (actor: ActorId, action: Action) => void };
+type View = { sync: (actors: Record<ActorId, ActorState>) => void };
 
 export default function Game() {
   const [state, setState] = useState(() => initialState());
@@ -37,11 +33,15 @@ export default function Game() {
 
   useEffect(() => {
     const timer = window.setInterval(
-      () => setState((current) => tick(current)),
-      1000,
+      () => setState((current) => tick(current, 50)),
+      50,
     );
     return () => window.clearInterval(timer);
   }, []);
+
+  useEffect(() => {
+    view.current?.sync(state.actors);
+  }, [state.actors]);
 
   useEffect(() => {
     let game: Phaser.Game | undefined;
@@ -86,13 +86,13 @@ export default function Game() {
             player.y = Phaser.Math.Clamp(player.y, 190, 470);
           });
           view.current = {
-            move: (actor, action) => {
-              this.tweens.add({
-                targets: this.actors[actor],
-                ...stationPosition[action],
-                duration: 420,
-                ease: "Sine.out",
-              });
+            sync: (actors) => {
+              for (const actorId of ["slime-01", "slime-02"] as ActorId[]) {
+                this.actors[actorId].setPosition(
+                  actors[actorId].x,
+                  actors[actorId].y,
+                );
+              }
             },
           };
         }
@@ -134,7 +134,6 @@ export default function Game() {
       setState((current) => ({ ...current, lastEvent: checked.reason }));
       return;
     }
-    view.current?.move(actor, action);
     setState((current) => executeEnvelope(current, checked.value));
   }
 
@@ -162,7 +161,6 @@ export default function Game() {
           if (!response.ok) throw new Error(payload.reason || "명령 해석 실패");
           const checked = validateEnvelope(payload, stateRef.current.round, stateRef.current.upgraded);
           if (!checked.ok) throw new Error(checked.reason);
-          for (const item of checked.value.commands) view.current?.move(item.actorId, item.action);
           setState((current) => executeEnvelope(current, checked.value));
           setMic(`인식 완료 · 신뢰도 ${Math.round(checked.value.confidence * 100)}%`);
         } catch (error) {
@@ -183,8 +181,11 @@ export default function Game() {
     held: "버섯 운반",
     chopped: "손질 완료",
     stew: "스튜 완성",
-    sold: "판매 완료",
   }[state.mushroom];
+  const actorName: Record<ActorId, string> = {
+    "slime-01": "말랑",
+    "slime-02": "빨강",
+  };
 
   return (
     <main className="game-shell">
@@ -198,9 +199,9 @@ export default function Game() {
       <section className="hud" aria-label="게임 상태">
         <strong>⏱ {state.timeLeft}초</strong>
         <span>💰 {state.score}</span>
-        <span>🍄 {stage}</span>
-        <span>말랑: {state.hungry ? "배고픔 ⚠" : state.mushroom}</span>
-        <span>빨강: {state.mushroom === "stew" ? "서빙 가능" : "대기"}</span>
+        <span>🧾 대기 주문 {state.ordersPending}건</span>
+        <span>✅ 이번 라운드 판매 {state.roundSales}건</span>
+        <span>🔔 다음 주문 {Math.ceil(state.nextOrderInMs / 1000)}초</span>
       </section>
       <div className="workspace">
         <section className="canvas-card">
@@ -209,9 +210,26 @@ export default function Game() {
         </section>
         <aside>
           <div className="order">
-            <small>ORDER 01</small>
-            <strong>버섯 스튜</strong>
-            <span>{stage}</span>
+            <small>ORDER QUEUE · 총 {state.ordersReceived}건 접수</small>
+            <strong>버섯 스튜 × {state.ordersPending}</strong>
+            <span>재료: {stage} · 판매: {state.roundSales}건</span>
+            <span>다음 주문까지 {Math.ceil(state.nextOrderInMs / 1000)}초</span>
+          </div>
+          <div className="slime-statuses" aria-label="슬라임 작업 큐">
+            {(Object.keys(state.actors) as ActorId[]).map((actorId) => {
+              const slime = state.actors[actorId];
+              return (
+                <article key={actorId}>
+                  <strong>{actorName[actorId]} · {slime.status}</strong>
+                  <span>현재: {slime.current?.action ?? "없음"}</span>
+                  <span>
+                    대기 큐: {slime.queue.length
+                      ? slime.queue.map(({ action }) => action).join(" → ")
+                      : "비어 있음"}
+                  </span>
+                </article>
+              );
+            })}
           </div>
           <div className="event" role="status" aria-live="polite">
             <small>최근 상황</small>
@@ -223,7 +241,7 @@ export default function Game() {
           <p className="mic-state">{mic}</p>
           <div className="debug">
             <small>키 없이 시연 · 명령 JSON</small>
-            {state.round === 1 ? (
+            {!state.upgraded ? (
               <>
                 <button onClick={() => run("slime-01", "GET")}>말랑 · GET</button>
                 <button onClick={() => run("slime-01", "CHOP")}>말랑 · CHOP</button>
@@ -234,9 +252,9 @@ export default function Game() {
             <button onClick={() => run("slime-01", "COOK")}>말랑 · COOK</button>
             <button onClick={() => run("slime-02", "SERVE")}>빨강 · SERVE</button>
           </div>
-          {state.phase === "upgrade" && (
-            <button className="upgrade" onClick={() => setState((current) => startRoundTwo(current))}>
-              강화 선택 · 추상 명령 해금
+          {state.phase === "playing" && (
+            <button className="round-end" onClick={() => setState((current) => endRound(current))}>
+              라운드 마감 · 시연용
             </button>
           )}
           {state.phase === "finished" && (
@@ -244,6 +262,27 @@ export default function Game() {
           )}
         </aside>
       </div>
+      {state.phase === "choice" && (
+        <section className="choice-overlay" role="dialog" aria-modal="true" aria-labelledby="choice-title">
+          <div className="choice-panel">
+            <p className="eyebrow">ROUND CLEAR</p>
+            <h2 id="choice-title">성장 하나를 선택하세요</h2>
+            <div className="choice-grid">
+              {choices.map((choice) => (
+                <article className="choice-card" key={choice.id} style={{ "--choice": choice.color } as CSSProperties}>
+                  <div className="choice-icon" aria-hidden="true" />
+                  <h3>{choice.title}</h3>
+                  <p>{choice.description}</p>
+                  <strong>{choice.effect}</strong>
+                  <button autoFocus={choice.id === "mallang-mastery"} onClick={() => setState((current) => chooseUpgrade(current, choice.id))}>
+                    {choice.title} 선택
+                  </button>
+                </article>
+              ))}
+            </div>
+          </div>
+        </section>
+      )}
     </main>
   );
 }

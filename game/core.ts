@@ -5,6 +5,8 @@ export type TargetId =
   | "cutting-board"
   | "pot"
   | "customer";
+export type ActorStatus = "IDLE" | "MOVING" | "WORKING";
+export type ChoiceId = "mallang-mastery" | "prepare" | "team-boost";
 
 export type Command = {
   actorId: ActorId;
@@ -21,19 +23,75 @@ export type CommandEnvelope = {
   reason: string | null;
 };
 
+export type ActorState = {
+  x: number;
+  y: number;
+  moveSpeed: number;
+  workSpeed: number;
+  status: ActorStatus;
+  current: Command | null;
+  queue: Command[];
+  workLeftMs: number;
+};
+
 export type GameState = {
   seed: number;
   round: 1 | 2;
-  phase: "playing" | "upgrade" | "finished";
+  phase: "playing" | "choice" | "finished";
   timeLeft: number;
+  timeLeftMs: number;
   score: number;
   upgraded: boolean;
-  mushroom: "stock" | "held" | "chopped" | "stew" | "sold";
+  selectedChoice: ChoiceId | null;
+  mushroom: "stock" | "held" | "chopped" | "stew";
   hungry: boolean;
   mistakeUsed: boolean;
+  ordersPending: number;
+  ordersReceived: number;
+  roundSales: number;
+  nextOrderInMs: number;
+  actors: Record<ActorId, ActorState>;
   lastEvent: string;
   history: string[];
 };
+
+export const stationPositions: Record<Action, { x: number; y: number }> = {
+  GET: { x: 480, y: 520 },
+  CHOP: { x: 160, y: 300 },
+  COOK: { x: 800, y: 300 },
+  SERVE: { x: 480, y: 85 },
+  PREPARE: { x: 480, y: 520 },
+};
+
+export const choices: ReadonlyArray<{
+  id: ChoiceId;
+  title: string;
+  description: string;
+  effect: string;
+  color: string;
+}> = [
+  {
+    id: "mallang-mastery",
+    title: "말랑 숙련 강화",
+    description: "주방 담당 말랑이의 발과 손이 빨라집니다.",
+    effect: "말랑 이동·작업 속도 +35%",
+    color: "#63d47c",
+  },
+  {
+    id: "prepare",
+    title: "재료 준비 해금",
+    description: "가져오기와 손질을 한 문장으로 지시합니다.",
+    effect: "PREPARE → GET + CHOP",
+    color: "#6ba9ff",
+  },
+  {
+    id: "team-boost",
+    title: "전체 슬라임 강화",
+    description: "주방과 서빙 슬라임이 함께 성장합니다.",
+    effect: "모든 슬라임 이동·작업 속도 +15%",
+    color: "#ef5b55",
+  },
+];
 
 const targets: Record<Action, TargetId> = {
   GET: "mushroom-box",
@@ -43,18 +101,46 @@ const targets: Record<Action, TargetId> = {
   PREPARE: "mushroom-box",
 };
 
+const workDuration: Record<Exclude<Action, "PREPARE">, number> = {
+  GET: 900,
+  CHOP: 1600,
+  COOK: 2200,
+  SERVE: 900,
+};
+
+const actor = (x: number, y: number): ActorState => ({
+  x,
+  y,
+  moveSpeed: 120,
+  workSpeed: 1,
+  status: "IDLE",
+  current: null,
+  queue: [],
+  workLeftMs: 0,
+});
+
 export function initialState(seed = 2026): GameState {
   return {
     seed: seed >>> 0,
     round: 1,
     phase: "playing",
     timeLeft: 75,
+    timeLeftMs: 75_000,
     score: 0,
     upgraded: false,
+    selectedChoice: null,
     mushroom: "stock",
     hungry: true,
     mistakeUsed: false,
-    lastEvent: "1라운드 시작 — 주문: 버섯 스튜 1개",
+    ordersPending: 1,
+    ordersReceived: 1,
+    roundSales: 0,
+    nextOrderInMs: 10_000,
+    actors: {
+      "slime-01": actor(360, 380),
+      "slime-02": actor(600, 210),
+    },
+    lastEvent: "1라운드 시작 — 버섯 스튜 주문이 들어왔습니다.",
     history: ["1라운드 시작"],
   };
 }
@@ -91,7 +177,7 @@ export function validateEnvelope(
       return { ok: false, reason: "허용 목록 밖의 actor/action/target입니다." };
     }
     if (item.action === "PREPARE" && (round !== 2 || !upgraded)) {
-      return { ok: false, reason: "PREPARE는 강화 후에만 사용할 수 있습니다." };
+      return { ok: false, reason: "PREPARE는 해금 후에만 사용할 수 있습니다." };
     }
   }
   return { ok: true, value: envelope as CommandEnvelope };
@@ -115,76 +201,36 @@ function event(state: GameState, message: string, patch: Partial<GameState>) {
   };
 }
 
-export function executeCommand(
-  state: GameState,
-  command: Command,
-): GameState {
-  if (state.phase !== "playing") {
-    return event(state, "현재 라운드에서는 명령을 실행할 수 없습니다.", {});
-  }
-  if (command.action === "PREPARE") {
-    if (state.round !== 2 || !state.upgraded) {
-      return event(state, "아직 재료 준비 명령을 이해하지 못합니다.", {});
-    }
-    const got = executeCommand(state, {
-      actorId: command.actorId,
-      action: "GET",
-      targetId: "mushroom-box",
-      destinationId: null,
-      sequence: command.sequence,
-    });
-    if (got.mushroom !== "held") return got;
-    const chopped = executeCommand(got, {
-      actorId: command.actorId,
+function expanded(command: Command): Command[] {
+  if (command.action !== "PREPARE") return [command];
+  return [
+    { ...command, action: "GET", targetId: "mushroom-box" },
+    {
+      ...command,
       action: "CHOP",
       targetId: "cutting-board",
-      destinationId: null,
       sequence: command.sequence + 1,
-    });
-    return event(chopped, "PREPARE 분해 완료: GET → CHOP", {});
+    },
+  ];
+}
+
+export function executeCommand(state: GameState, next: Command): GameState {
+  if (state.phase !== "playing") {
+    return event(state, "현재 라운드에서는 명령을 받을 수 없습니다.", {});
   }
-  if (command.action === "GET") {
-    if (command.actorId !== "slime-01" || state.mushroom !== "stock") {
-      return event(state, "말랑이만 새 버섯을 가져올 수 있습니다.", {});
-    }
-    if (state.hungry && !state.mistakeUsed) {
-      return event(state, "사고! 배고픈 말랑이가 버섯을 먹었습니다. 다시 지시하세요.", {
-        hungry: false,
-        mistakeUsed: true,
-      });
-    }
-    return event(state, "말랑이가 버섯을 가져왔습니다.", { mushroom: "held" });
+  if (next.action === "PREPARE" && (state.round !== 2 || !state.upgraded)) {
+    return event(state, "아직 재료 준비 명령을 이해하지 못합니다.", {});
   }
-  if (command.action === "CHOP") {
-    return command.actorId === "slime-01" && state.mushroom === "held"
-      ? event(state, "말랑이가 버섯을 손질했습니다.", { mushroom: "chopped" })
-      : event(state, "손질할 버섯이 없습니다.", {});
-  }
-  if (command.action === "COOK") {
-    return command.actorId === "slime-01" && state.mushroom === "chopped"
-      ? event(state, "버섯 스튜가 완성되어 패스에 놓였습니다.", {
-          mushroom: "stew",
-        })
-      : event(state, "손질된 버섯이 필요합니다.", {});
-  }
-  if (command.action === "SERVE") {
-    if (command.actorId !== "slime-02" || state.mushroom !== "stew") {
-      return event(state, "빨강이와 완성된 스튜가 필요합니다.", {});
-    }
-    const lastRound = state.round === 2;
-    return event(
-      state,
-      lastRound
-        ? "판매 완료! 2라운드를 성공했습니다."
-        : "판매 완료! 강화 선택으로 이동합니다.",
-      {
-        mushroom: "sold",
-        score: state.score + 100,
-        phase: lastRound ? "finished" : "upgrade",
+  const actorState = state.actors[next.actorId];
+  return event(state, `${next.actorId === "slime-01" ? "말랑" : "빨강"} 작업 큐에 ${next.action} 추가`, {
+    actors: {
+      ...state.actors,
+      [next.actorId]: {
+        ...actorState,
+        queue: [...actorState.queue, ...expanded(next)],
       },
-    );
-  }
-  return state;
+    },
+  });
 }
 
 export function executeEnvelope(
@@ -196,28 +242,213 @@ export function executeEnvelope(
     .reduce(executeCommand, state);
 }
 
-export function startRoundTwo(state: GameState): GameState {
-  if (state.phase !== "upgrade") return state;
-  return event(state, "강화 완료 — PREPARE 명령 해금! 2라운드 시작", {
+function completeAction(state: GameState, actorId: ActorId, action: Action) {
+  if (action === "GET") {
+    if (actorId !== "slime-01" || state.mushroom !== "stock") {
+      return event(state, "말랑이만 새 버섯을 가져올 수 있습니다.", {});
+    }
+    if (state.hungry && !state.mistakeUsed) {
+      return event(state, "사고! 배고픈 말랑이가 버섯을 먹었습니다. 다시 지시하세요.", {
+        hungry: false,
+        mistakeUsed: true,
+      });
+    }
+    return event(state, "말랑이가 버섯을 가져왔습니다.", { mushroom: "held" });
+  }
+  if (action === "CHOP") {
+    return actorId === "slime-01" && state.mushroom === "held"
+      ? event(state, "말랑이가 버섯을 손질했습니다.", { mushroom: "chopped" })
+      : event(state, "손질할 버섯이 없습니다.", {});
+  }
+  if (action === "COOK") {
+    return actorId === "slime-01" && state.mushroom === "chopped"
+      ? event(state, "버섯 스튜가 완성되어 패스에 놓였습니다.", {
+          mushroom: "stew",
+        })
+      : event(state, "손질된 버섯이 필요합니다.", {});
+  }
+  if (action === "SERVE") {
+    if (
+      actorId !== "slime-02" ||
+      state.mushroom !== "stew" ||
+      state.ordersPending < 1
+    ) {
+      return event(state, "빨강이, 완성된 스튜와 대기 주문이 필요합니다.", {});
+    }
+    return event(state, "판매 완료! 다음 버섯을 준비하세요.", {
+      mushroom: "stock",
+      score: state.score + 100,
+      ordersPending: state.ordersPending - 1,
+      roundSales: state.roundSales + 1,
+    });
+  }
+  return state;
+}
+
+function moveActor(state: GameState, actorId: ActorId, deltaMs: number) {
+  let next = state;
+  let remaining = deltaMs;
+  let slime = next.actors[actorId];
+  while (remaining > 0) {
+    if (!slime.current) {
+      const [current, ...queue] = slime.queue;
+      if (!current) {
+        slime = { ...slime, status: "IDLE", workLeftMs: 0 };
+        break;
+      }
+      slime = { ...slime, current, queue, status: "MOVING", workLeftMs: 0 };
+    }
+
+    const destination = stationPositions[slime.current.action];
+    if (slime.status === "MOVING") {
+      const dx = destination.x - slime.x;
+      const dy = destination.y - slime.y;
+      const distance = Math.hypot(dx, dy);
+      const travelMs = distance / slime.moveSpeed * 1000;
+      if (travelMs > remaining) {
+        const ratio = remaining / travelMs;
+        slime = { ...slime, x: slime.x + dx * ratio, y: slime.y + dy * ratio };
+        remaining = 0;
+        break;
+      }
+      slime = {
+        ...slime,
+        x: destination.x,
+        y: destination.y,
+        status: "WORKING",
+        workLeftMs:
+          workDuration[slime.current.action as Exclude<Action, "PREPARE">] /
+          slime.workSpeed,
+      };
+      remaining -= travelMs;
+    }
+
+    if (slime.status === "WORKING") {
+      if (slime.workLeftMs > remaining) {
+        slime = { ...slime, workLeftMs: slime.workLeftMs - remaining };
+        remaining = 0;
+        break;
+      }
+      remaining -= slime.workLeftMs;
+      next = {
+        ...completeAction(
+          { ...next, actors: { ...next.actors, [actorId]: slime } },
+          actorId,
+          slime.current.action,
+        ),
+      };
+      slime = {
+        ...next.actors[actorId],
+        current: null,
+        status: "IDLE",
+        workLeftMs: 0,
+      };
+    }
+  }
+  return { ...next, actors: { ...next.actors, [actorId]: slime } };
+}
+
+function finishRound(state: GameState): GameState {
+  if (state.phase !== "playing") return state;
+  if (state.round === 1 && state.roundSales > 0) {
+    return event(state, "1라운드 성공 — 성장 하나를 선택하세요.", {
+      phase: "choice",
+      timeLeft: 0,
+      timeLeftMs: 0,
+    });
+  }
+  return event(
+    state,
+    state.round === 2
+      ? `2라운드 종료 — ${state.roundSales}개 판매`
+      : "시간 종료 — 한 그릇 이상 판매해야 합니다.",
+    { phase: "finished", timeLeft: 0, timeLeftMs: 0 },
+  );
+}
+
+export function tick(state: GameState, deltaMs = 1000): GameState {
+  if (
+    state.phase !== "playing" ||
+    !Number.isFinite(deltaMs) ||
+    deltaMs <= 0
+  ) {
+    return state;
+  }
+  const elapsed = Math.min(deltaMs, state.timeLeftMs);
+  let next = moveActor(moveActor(state, "slime-01", elapsed), "slime-02", elapsed);
+  const due = Math.max(
+    0,
+    Math.floor((elapsed - next.nextOrderInMs) / 10_000) + 1,
+  );
+  const nextOrderInMs = due
+    ? next.nextOrderInMs + due * 10_000 - elapsed
+    : next.nextOrderInMs - elapsed;
+  const timeLeftMs = next.timeLeftMs - elapsed;
+  next = {
+    ...next,
+    timeLeftMs,
+    timeLeft: Math.ceil(timeLeftMs / 1000),
+    nextOrderInMs,
+    ordersPending: next.ordersPending + due,
+    ordersReceived: next.ordersReceived + due,
+  };
+  if (due > 0) {
+    next = event(next, `버섯 스튜 주문 ${due}건이 들어왔습니다.`, {});
+  }
+  return timeLeftMs === 0 ? finishRound(next) : next;
+}
+
+export function endRound(state: GameState) {
+  return finishRound(state);
+}
+
+export function chooseUpgrade(state: GameState, choiceId: ChoiceId): GameState {
+  if (state.phase !== "choice" || !choices.some(({ id }) => id === choiceId)) {
+    return state;
+  }
+  const actors = Object.fromEntries(
+    Object.entries(state.actors).map(([id, slime]) => {
+      const multiplier =
+        choiceId === "team-boost" ||
+        (choiceId === "mallang-mastery" && id === "slime-01")
+          ? choiceId === "team-boost"
+            ? 1.15
+            : 1.35
+          : 1;
+      return [
+        id,
+        {
+          ...slime,
+          moveSpeed: slime.moveSpeed * multiplier,
+          workSpeed: slime.workSpeed * multiplier,
+          status: "IDLE",
+          current: null,
+          queue: [],
+          workLeftMs: 0,
+        },
+      ];
+    }),
+  ) as Record<ActorId, ActorState>;
+  return event(state, `${choices.find(({ id }) => id === choiceId)?.title} 선택 — 2라운드 시작`, {
     round: 2,
     phase: "playing",
     timeLeft: 75,
-    upgraded: true,
+    timeLeftMs: 75_000,
+    upgraded: choiceId === "prepare",
+    selectedChoice: choiceId,
     mushroom: "stock",
     hungry: false,
     mistakeUsed: false,
+    ordersPending: 1,
+    ordersReceived: 1,
+    roundSales: 0,
+    nextOrderInMs: 10_000,
+    actors,
   });
 }
 
-export function tick(state: GameState): GameState {
-  if (state.phase !== "playing" || state.timeLeft <= 0) return state;
-  const timeLeft = state.timeLeft - 1;
-  return timeLeft
-    ? { ...state, timeLeft }
-    : event(state, "시간 종료 — 새로고침하여 다시 도전하세요.", {
-        timeLeft: 0,
-        phase: "finished",
-      });
+export function startRoundTwo(state: GameState): GameState {
+  return chooseUpgrade(state, "prepare");
 }
 
 export function command(
