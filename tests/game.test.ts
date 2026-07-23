@@ -150,9 +150,43 @@ test("판매 후 재료는 stock으로 돌아오고 75초 종료 판정은 라�
   const choice = successfulRoundOne();
   assert.equal(choice.phase, "choice");
   assert.equal(choice.mushroom, "stock");
+  assert.equal(choice.foodLocation, "mushroom-box");
   assert.equal(choice.roundSales, 1);
   const roundTwo = chooseUpgrade(choice, "prepare");
   assert.equal(tick(roundTwo, 75_000).phase, "finished");
+});
+
+test("스튜는 패스에 놓이고 SERVE는 픽업한 뒤 고객에게 전달한다", () => {
+  let state = { ...initialState(7), hungry: false };
+  state = executeEnvelope(state, command("slime-01", "GET"));
+  state = untilIdle(state, "slime-01");
+  assert.equal(state.mushroom, "held");
+  assert.equal(state.foodLocation, "slime-01");
+
+  state = executeEnvelope(state, command("slime-01", "CHOP"));
+  state = untilIdle(state, "slime-01");
+  assert.equal(state.mushroom, "chopped");
+  assert.equal(state.foodLocation, "slime-01");
+
+  state = executeEnvelope(state, command("slime-01", "COOK"));
+  state = untilIdle(state, "slime-01");
+  assert.equal(state.mushroom, "stew");
+  assert.equal(state.foodLocation, "pass");
+
+  state = executeEnvelope(state, command("slime-02", "SERVE"));
+  state = tick(state, 1_000);
+  assert.equal(state.foodLocation, "slime-02");
+  assert.equal(state.actors["slime-02"].status, "MOVING");
+  assert.deepEqual(state.actors["slime-02"].path, [{ col: 7, row: 2 }]);
+
+  state = tick(state, 500);
+  assert.equal(state.actors["slime-02"].status, "WORKING");
+  assert.equal(state.foodLocation, "slime-02");
+
+  state = untilIdle(state, "slime-02");
+  assert.equal(state.mushroom, "stock");
+  assert.equal(state.foodLocation, "mushroom-box");
+  assert.equal(state.score, 100);
 });
 
 test("같은 seed, 명령과 tick은 같은 결과를 만든다", () => {
@@ -206,6 +240,7 @@ test("CLI 시뮬레이션은 타일 경로 작업을 끝내고 동일 입력에 
   const first = simulate(args);
   assert.deepEqual(first, simulate(args));
   assert.equal(first.final.mushroom, "stock");
+  assert.equal(first.final.foodLocation, "mushroom-box");
   assert.equal(first.final.score, 100);
   assert.ok(first.elapsedMs > 0);
   for (const slime of Object.values(first.final.actors)) {

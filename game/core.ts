@@ -8,6 +8,7 @@ export type TargetId =
 export type ActorStatus = "IDLE" | "MOVING" | "WORKING";
 export type ChoiceId = "mallang-mastery" | "prepare" | "team-boost";
 export type TilePosition = { col: number; row: number };
+export type FoodLocation = "mushroom-box" | "pass" | ActorId;
 
 export type Command = {
   actorId: ActorId;
@@ -46,6 +47,7 @@ export type GameState = {
   upgraded: boolean;
   selectedChoice: ChoiceId | null;
   mushroom: "stock" | "held" | "chopped" | "stew";
+  foodLocation: FoodLocation;
   hungry: boolean;
   mistakeUsed: boolean;
   ordersPending: number;
@@ -78,6 +80,9 @@ export const stationTiles: Record<Action, TilePosition> = {
   SERVE: { col: 7, row: 2 },
   PREPARE: { col: 7, row: 7 },
 };
+export const MUSHROOM_TILE: TilePosition = { col: 7, row: 8 };
+export const PASS_DISPLAY_TILE: TilePosition = { col: 8, row: 1 };
+export const PASS_TILE: TilePosition = { col: 8, row: 2 };
 
 export const tileCenter = ({ col, row }: TilePosition) => ({
   x: col * TILE_SIZE + TILE_SIZE / 2,
@@ -201,6 +206,7 @@ export function initialState(seed = 2026): GameState {
     upgraded: false,
     selectedChoice: null,
     mushroom: "stock",
+    foodLocation: "mushroom-box",
     hungry: true,
     mistakeUsed: false,
     ordersPending: 1,
@@ -324,17 +330,28 @@ function completeAction(state: GameState, actorId: ActorId, action: Action) {
         mistakeUsed: true,
       });
     }
-    return event(state, "말랑이가 버섯을 가져왔습니다.", { mushroom: "held" });
+    return event(state, "말랑이가 버섯을 가져와 들고 있습니다.", {
+      mushroom: "held",
+      foodLocation: actorId,
+    });
   }
   if (action === "CHOP") {
-    return actorId === "slime-01" && state.mushroom === "held"
-      ? event(state, "말랑이가 버섯을 손질했습니다.", { mushroom: "chopped" })
+    return actorId === "slime-01" &&
+      state.mushroom === "held" &&
+      state.foodLocation === actorId
+      ? event(state, "말랑이가 버섯을 손질해 들고 있습니다.", {
+          mushroom: "chopped",
+          foodLocation: actorId,
+        })
       : event(state, "손질할 버섯이 없습니다.", {});
   }
   if (action === "COOK") {
-    return actorId === "slime-01" && state.mushroom === "chopped"
+    return actorId === "slime-01" &&
+      state.mushroom === "chopped" &&
+      state.foodLocation === actorId
       ? event(state, "버섯 스튜가 완성되어 패스에 놓였습니다.", {
           mushroom: "stew",
+          foodLocation: "pass",
         })
       : event(state, "손질된 버섯이 필요합니다.", {});
   }
@@ -342,18 +359,54 @@ function completeAction(state: GameState, actorId: ActorId, action: Action) {
     if (
       actorId !== "slime-02" ||
       state.mushroom !== "stew" ||
+      state.foodLocation !== actorId ||
       state.ordersPending < 1
     ) {
       return event(state, "빨강이, 완성된 스튜와 대기 주문이 필요합니다.", {});
     }
     return event(state, "판매 완료! 다음 버섯을 준비하세요.", {
       mushroom: "stock",
+      foodLocation: "mushroom-box",
       score: state.score + 100,
       ordersPending: state.ordersPending - 1,
       roundSales: state.roundSales + 1,
     });
   }
   return state;
+}
+
+function arriveAtTask(
+  state: GameState,
+  actorId: ActorId,
+  slime: ActorState,
+): { state: GameState; slime: ActorState } {
+  if (
+    slime.current?.action === "SERVE" &&
+    actorId === "slime-02" &&
+    state.mushroom === "stew" &&
+    state.foodLocation === "pass"
+  ) {
+    const path = findPath(pixelToTile(slime.x, slime.y), stationTiles.SERVE);
+    if (path) {
+      return {
+        state: event(state, "빨강이가 패스에서 스튜를 들었습니다.", {
+          foodLocation: actorId,
+        }),
+        slime: { ...slime, path, status: "MOVING" },
+      };
+    }
+  }
+  return {
+    state,
+    slime: {
+      ...slime,
+      status: "WORKING",
+      workLeftMs:
+        workDuration[
+          slime.current!.action as Exclude<Action, "PREPARE">
+        ] / slime.workSpeed,
+    },
+  };
 }
 
 function moveActor(state: GameState, actorId: ActorId, deltaMs: number) {
@@ -369,7 +422,7 @@ function moveActor(state: GameState, actorId: ActorId, deltaMs: number) {
       }
       const path = findPath(
         pixelToTile(slime.x, slime.y),
-        stationTiles[current.action],
+        current.action === "SERVE" ? PASS_TILE : stationTiles[current.action],
       );
       if (!path) {
         slime = { ...slime, current: null, queue, status: "IDLE", path: [] };
@@ -389,14 +442,9 @@ function moveActor(state: GameState, actorId: ActorId, deltaMs: number) {
     if (slime.status === "MOVING") {
       const waypoint = slime.path[0];
       if (!waypoint) {
-        slime = {
-          ...slime,
-          status: "WORKING",
-          workLeftMs:
-            workDuration[
-              slime.current.action as Exclude<Action, "PREPARE">
-            ] / slime.workSpeed,
-        };
+        const arrived = arriveAtTask(next, actorId, slime);
+        next = arrived.state;
+        slime = arrived.slime;
         continue;
       }
       const destination = tileCenter(waypoint);
@@ -416,14 +464,15 @@ function moveActor(state: GameState, actorId: ActorId, deltaMs: number) {
         x: destination.x,
         y: destination.y,
         path,
-        status: path.length ? "MOVING" : "WORKING",
-        workLeftMs: path.length
-          ? 0
-          : workDuration[
-              slime.current.action as Exclude<Action, "PREPARE">
-            ] / slime.workSpeed,
+        status: "MOVING",
+        workLeftMs: 0,
       };
       remaining -= travelMs;
+      if (!path.length) {
+        const arrived = arriveAtTask(next, actorId, slime);
+        next = arrived.state;
+        slime = arrived.slime;
+      }
     }
 
     if (slime.status === "WORKING") {
@@ -542,6 +591,7 @@ export function chooseUpgrade(state: GameState, choiceId: ChoiceId): GameState {
     upgraded: choiceId === "prepare",
     selectedChoice: choiceId,
     mushroom: "stock",
+    foodLocation: "mushroom-box",
     hungry: false,
     mistakeUsed: false,
     ordersPending: 1,

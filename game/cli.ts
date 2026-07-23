@@ -63,6 +63,7 @@ export function simulate(args: string[]) {
       elapsedMs,
       event: state.lastEvent,
       mushroom: state.mushroom,
+      foodLocation: state.foodLocation,
       ordersPending: state.ordersPending,
       score: state.score,
     };
@@ -76,6 +77,7 @@ export function simulate(args: string[]) {
     final: {
       actors: state.actors,
       mushroom: state.mushroom,
+      foodLocation: state.foodLocation,
       ordersPending: state.ordersPending,
       ordersReceived: state.ordersReceived,
       score: state.score,

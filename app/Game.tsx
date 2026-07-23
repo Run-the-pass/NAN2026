@@ -5,6 +5,8 @@ import { useEffect, useRef, useState } from "react";
 import type { CSSProperties } from "react";
 import {
   KITCHEN_ROWS,
+  MUSHROOM_TILE,
+  PASS_DISPLAY_TILE,
   TILE_SIZE,
   choices,
   chooseUpgrade,
@@ -18,11 +20,11 @@ import {
   tick,
   validateEnvelope,
   type Action,
-  type ActorState,
   type ActorId,
+  type GameState,
 } from "../game/core";
 
-type View = { sync: (actors: Record<ActorId, ActorState>) => void };
+type View = { sync: (state: GameState) => void };
 
 export default function Game() {
   const [state, setState] = useState(() => initialState());
@@ -45,14 +47,15 @@ export default function Game() {
   }, []);
 
   useEffect(() => {
-    view.current?.sync(state.actors);
-  }, [state.actors]);
+    view.current?.sync(state);
+  }, [state]);
 
   useEffect(() => {
     let game: Phaser.Game | undefined;
     {
       class Kitchen extends Phaser.Scene {
         actors!: Record<ActorId, Phaser.GameObjects.Container>;
+        food!: Phaser.GameObjects.Text;
 
         create() {
           this.cameras.main.setBackgroundColor("#18251f");
@@ -89,6 +92,11 @@ export default function Game() {
           label(180, 450, "설거지대");
           label(780, 450, "보관대");
           label(480, 510, "버섯 상자 · GET");
+          const mushroom = tileCenter(MUSHROOM_TILE);
+          this.food = this.add
+            .text(mushroom.x, mushroom.y, "🍄", { fontSize: "28px" })
+            .setOrigin(0.5)
+            .setDepth(9);
           this.actors = {
             "slime-01": this.actor(330, 390, 0x63d47c, "말랑"),
             "slime-02": this.actor(630, 150, 0xef5b55, "빨강"),
@@ -114,15 +122,28 @@ export default function Game() {
             if (canStand(player.x, player.y + dy * distance)) player.y += dy * distance;
           });
           view.current = {
-            sync: (actors) => {
+            sync: (current) => {
               for (const actorId of ["slime-01", "slime-02"] as ActorId[]) {
                 this.actors[actorId].setPosition(
-                  actors[actorId].x,
-                  actors[actorId].y,
+                  current.actors[actorId].x,
+                  current.actors[actorId].y,
                 );
               }
+              const foodPosition =
+                current.foodLocation === "mushroom-box"
+                  ? tileCenter(MUSHROOM_TILE)
+                  : current.foodLocation === "pass"
+                    ? tileCenter(PASS_DISPLAY_TILE)
+                    : {
+                        x: current.actors[current.foodLocation].x,
+                        y: current.actors[current.foodLocation].y - 38,
+                      };
+              this.food
+                .setText(current.mushroom === "stew" ? "🥣" : "🍄")
+                .setPosition(foodPosition.x, foodPosition.y);
             },
           };
+          view.current.sync(stateRef.current);
         }
 
         actor(x: number, y: number, color: number, label: string) {
@@ -214,6 +235,12 @@ export default function Game() {
     "slime-01": "말랑",
     "slime-02": "빨강",
   };
+  const foodLocation =
+    state.foodLocation === "mushroom-box"
+      ? "버섯 상자"
+      : state.foodLocation === "pass"
+        ? "패스"
+        : `${actorName[state.foodLocation]}이 소지`;
 
   return (
     <main className="game-shell">
@@ -240,7 +267,8 @@ export default function Game() {
           <div className="order">
             <small>ORDER QUEUE · 총 {state.ordersReceived}건 접수</small>
             <strong>버섯 스튜 × {state.ordersPending}</strong>
-            <span>재료: {stage} · 판매: {state.roundSales}건</span>
+            <span>재료: {stage} · 위치: {foodLocation}</span>
+            <span>판매: {state.roundSales}건</span>
             <span>다음 주문까지 {Math.ceil(state.nextOrderInMs / 1000)}초</span>
           </div>
           <div className="slime-statuses" aria-label="슬라임 작업 큐">
@@ -250,6 +278,11 @@ export default function Game() {
                 <article key={actorId}>
                   <strong>{actorName[actorId]} · {slime.status}</strong>
                   <span>현재: {slime.current?.action ?? "없음"}</span>
+                  <span>
+                    소지: {state.foodLocation === actorId
+                      ? state.mushroom === "stew" ? "버섯 스튜" : "버섯"
+                      : "없음"}
+                  </span>
                   <span>
                     대기 큐: {slime.queue.length
                       ? slime.queue.map(({ action }) => action).join(" → ")
