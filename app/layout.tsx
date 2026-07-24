@@ -2,8 +2,8 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "SLIME SHIFT",
-  description: "NAN 2026 음성 명령 식당 게임",
+  title: "터진다! 슬라임 공방",
+  description: "NAN 2026 음성 명령 마법 공방 게임",
   icons: {
     icon: "/favicon.svg",
     shortcut: "/favicon.svg",

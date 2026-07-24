@@ -1,20 +1,34 @@
-export type ActorId = "slime-01" | "slime-02";
-export type Action = "GET" | "CHOP" | "COOK" | "SERVE" | "PREPARE";
+export type ActorId = "slime-01";
+export type CauldronId = "cauldron-01" | "cauldron-02";
+export type Action =
+  | "GET_HERB"
+  | "ADD_HERB"
+  | "MIX"
+  | "GET_PARCHMENT"
+  | "DIP_PARCHMENT"
+  | "TAKE_BOOK"
+  | "SUBMIT";
 export type TargetId =
-  | "mushroom-box"
-  | "cutting-board"
-  | "pot"
-  | "customer";
+  | "herb-box"
+  | "parchment-box"
+  | CauldronId
+  | "submission-table";
 export type ActorStatus = "IDLE" | "MOVING" | "WORKING";
-export type ChoiceId = "mallang-mastery" | "prepare" | "team-boost";
+export type CarriedItem = "herb" | "parchment" | "book" | null;
+export type CauldronStatus =
+  | "EMPTY"
+  | "HERB_LOADED"
+  | "MIXING"
+  | "READY_FOR_PARCHMENT"
+  | "INSCRIBING"
+  | "BOOK_READY";
 export type TilePosition = { col: number; row: number };
-export type FoodLocation = "mushroom-box" | "pass" | ActorId;
 
 export type Command = {
   actorId: ActorId;
   action: Action;
   targetId: TargetId;
-  destinationId: string | null;
+  destinationId: null;
   sequence: number;
 };
 
@@ -29,60 +43,91 @@ export type ActorState = {
   x: number;
   y: number;
   moveSpeed: number;
-  workSpeed: number;
   status: ActorStatus;
+  carrying: CarriedItem;
   current: Command | null;
   queue: Command[];
   path: TilePosition[];
   workLeftMs: number;
 };
 
+export type CauldronState = {
+  status: CauldronStatus;
+  timerMs: number;
+};
+
 export type GameState = {
   seed: number;
-  round: 1 | 2;
-  phase: "playing" | "choice" | "finished";
+  phase: "playing" | "won" | "lost";
   timeLeft: number;
   timeLeftMs: number;
-  score: number;
-  upgraded: boolean;
-  selectedChoice: ChoiceId | null;
-  mushroom: "stock" | "held" | "chopped" | "stew";
-  foodLocation: FoodLocation;
-  hungry: boolean;
-  mistakeUsed: boolean;
-  ordersPending: number;
-  ordersReceived: number;
-  roundSales: number;
-  nextOrderInMs: number;
+  submitted: number;
+  goal: number;
   actors: Record<ActorId, ActorState>;
+  cauldrons: Record<CauldronId, CauldronState>;
   lastEvent: string;
   history: string[];
 };
 
 export const TILE_SIZE = 60;
-export const KITCHEN_ROWS = [
+export const WORKSHOP_ROWS = [
   "################",
-  "#......SS......#",
+  "#......TT......#",
   "#..............#",
-  "#.BB........PP.#",
-  "#.BB...####.PP.#",
+  "#.HH........PP.#",
+  "#.HH...####.PP.#",
   "#......####....#",
+  "#...CC....CC...#",
+  "#...CC....CC...#",
   "#..............#",
-  "#.DD........DD.#",
-  "#......GG......#",
   "################",
 ] as const;
 
-export const stationTiles: Record<Action, TilePosition> = {
-  GET: { col: 7, row: 7 },
-  CHOP: { col: 4, row: 3 },
-  COOK: { col: 11, row: 3 },
-  SERVE: { col: 7, row: 2 },
-  PREPARE: { col: 7, row: 7 },
+export const displayTiles = {
+  herb: { col: 2, row: 3 },
+  parchment: { col: 13, row: 3 },
+  submission: { col: 7, row: 1 },
+  "cauldron-01": { col: 4, row: 6 },
+  "cauldron-02": { col: 11, row: 6 },
+} satisfies Record<string, TilePosition>;
+
+export const taskTiles: Record<TargetId, TilePosition> = {
+  "herb-box": { col: 4, row: 3 },
+  "parchment-box": { col: 11, row: 3 },
+  "submission-table": { col: 7, row: 2 },
+  "cauldron-01": { col: 4, row: 5 },
+  "cauldron-02": { col: 11, row: 5 },
 };
-export const MUSHROOM_TILE: TilePosition = { col: 7, row: 8 };
-export const PASS_DISPLAY_TILE: TilePosition = { col: 8, row: 1 };
-export const PASS_TILE: TilePosition = { col: 8, row: 2 };
+
+const actions: Action[] = [
+  "GET_HERB",
+  "ADD_HERB",
+  "MIX",
+  "GET_PARCHMENT",
+  "DIP_PARCHMENT",
+  "TAKE_BOOK",
+  "SUBMIT",
+];
+const cauldronActions: Action[] = [
+  "ADD_HERB",
+  "MIX",
+  "DIP_PARCHMENT",
+  "TAKE_BOOK",
+];
+const fixedTargets: Partial<Record<Action, TargetId>> = {
+  GET_HERB: "herb-box",
+  GET_PARCHMENT: "parchment-box",
+  SUBMIT: "submission-table",
+};
+const workDuration: Record<Action, number> = {
+  GET_HERB: 700,
+  ADD_HERB: 700,
+  MIX: 800,
+  GET_PARCHMENT: 700,
+  DIP_PARCHMENT: 700,
+  TAKE_BOOK: 700,
+  SUBMIT: 700,
+};
 
 export const tileCenter = ({ col, row }: TilePosition) => ({
   x: col * TILE_SIZE + TILE_SIZE / 2,
@@ -95,7 +140,7 @@ export const pixelToTile = (x: number, y: number): TilePosition => ({
 });
 
 export const isWalkable = ({ col, row }: TilePosition) =>
-  KITCHEN_ROWS[row]?.[col] === ".";
+  WORKSHOP_ROWS[row]?.[col] === ".";
 
 export function findPath(
   start: TilePosition,
@@ -113,10 +158,7 @@ export function findPath(
   ];
   for (let index = 0; index < queue.length; index += 1) {
     const current = queue[index];
-    if (
-      current.col === destination.col &&
-      current.row === destination.row
-    ) {
+    if (current.col === destination.col && current.row === destination.row) {
       const path: TilePosition[] = [];
       let cursor: TilePosition | null = current;
       while (cursor && key(cursor) !== key(start)) {
@@ -139,56 +181,11 @@ export function findPath(
   return null;
 }
 
-export const choices: ReadonlyArray<{
-  id: ChoiceId;
-  title: string;
-  description: string;
-  effect: string;
-  color: string;
-}> = [
-  {
-    id: "mallang-mastery",
-    title: "말랑 숙련 강화",
-    description: "주방 담당 말랑이의 발과 손이 빨라집니다.",
-    effect: "말랑 이동·작업 속도 +35%",
-    color: "#63d47c",
-  },
-  {
-    id: "prepare",
-    title: "재료 준비 해금",
-    description: "가져오기와 손질을 한 문장으로 지시합니다.",
-    effect: "PREPARE → GET + CHOP",
-    color: "#6ba9ff",
-  },
-  {
-    id: "team-boost",
-    title: "전체 슬라임 강화",
-    description: "주방과 서빙 슬라임이 함께 성장합니다.",
-    effect: "모든 슬라임 이동·작업 속도 +15%",
-    color: "#ef5b55",
-  },
-];
-
-const targets: Record<Action, TargetId> = {
-  GET: "mushroom-box",
-  CHOP: "cutting-board",
-  COOK: "pot",
-  SERVE: "customer",
-  PREPARE: "mushroom-box",
-};
-
-const workDuration: Record<Exclude<Action, "PREPARE">, number> = {
-  GET: 900,
-  CHOP: 1600,
-  COOK: 2200,
-  SERVE: 900,
-};
-
-const actor = (col: number, row: number): ActorState => ({
-  ...tileCenter({ col, row }),
+const actor = (): ActorState => ({
+  ...tileCenter({ col: 8, row: 8 }),
   moveSpeed: 120,
-  workSpeed: 1,
   status: "IDLE",
+  carrying: null,
   current: null,
   queue: [],
   path: [],
@@ -198,34 +195,31 @@ const actor = (col: number, row: number): ActorState => ({
 export function initialState(seed = 2026): GameState {
   return {
     seed: seed >>> 0,
-    round: 1,
     phase: "playing",
-    timeLeft: 75,
-    timeLeftMs: 75_000,
-    score: 0,
-    upgraded: false,
-    selectedChoice: null,
-    mushroom: "stock",
-    foodLocation: "mushroom-box",
-    hungry: true,
-    mistakeUsed: false,
-    ordersPending: 1,
-    ordersReceived: 1,
-    roundSales: 0,
-    nextOrderInMs: 10_000,
-    actors: {
-      "slime-01": actor(5, 6),
-      "slime-02": actor(10, 2),
+    timeLeft: 180,
+    timeLeftMs: 180_000,
+    submitted: 0,
+    goal: 8,
+    actors: { "slime-01": actor() },
+    cauldrons: {
+      "cauldron-01": { status: "EMPTY", timerMs: 0 },
+      "cauldron-02": { status: "EMPTY", timerMs: 0 },
     },
-    lastEvent: "1라운드 시작 — 버섯 스튜 주문이 들어왔습니다.",
-    history: ["1라운드 시작"],
+    lastEvent: "3분 동안 마도서를 8권 납품하세요.",
+    history: ["공방 작업 시작"],
   };
+}
+
+function validTarget(action: Action, targetId: unknown) {
+  const fixed = fixedTargets[action];
+  return fixed
+    ? targetId === fixed
+    : cauldronActions.includes(action) &&
+        ["cauldron-01", "cauldron-02"].includes(String(targetId));
 }
 
 export function validateEnvelope(
   value: unknown,
-  round: 1 | 2,
-  upgraded: boolean,
 ): { ok: true; value: CommandEnvelope } | { ok: false; reason: string } {
   if (!value || typeof value !== "object") {
     return { ok: false, reason: "명령 JSON이 객체가 아닙니다." };
@@ -245,16 +239,13 @@ export function validateEnvelope(
   for (const item of envelope.commands) {
     if (
       !item ||
-      !["slime-01", "slime-02"].includes(item.actorId) ||
-      !["GET", "CHOP", "COOK", "SERVE", "PREPARE"].includes(item.action) ||
-      targets[item.action as Action] !== item.targetId ||
+      item.actorId !== "slime-01" ||
+      !actions.includes(item.action) ||
+      !validTarget(item.action, item.targetId) ||
       item.destinationId !== null ||
       !Number.isInteger(item.sequence)
     ) {
       return { ok: false, reason: "허용 목록 밖의 actor/action/target입니다." };
-    }
-    if (item.action === "PREPARE" && (round !== 2 || !upgraded)) {
-      return { ok: false, reason: "PREPARE는 해금 후에만 사용할 수 있습니다." };
     }
   }
   return { ok: true, value: envelope as CommandEnvelope };
@@ -274,38 +265,18 @@ function event(state: GameState, message: string, patch: Partial<GameState>) {
     ...patch,
     seed: advanceSeed(state.seed),
     lastEvent: message,
-    history: [...state.history.slice(-5), message],
+    history: [...state.history.slice(-7), message],
   };
-}
-
-function expanded(command: Command): Command[] {
-  if (command.action !== "PREPARE") return [command];
-  return [
-    { ...command, action: "GET", targetId: "mushroom-box" },
-    {
-      ...command,
-      action: "CHOP",
-      targetId: "cutting-board",
-      sequence: command.sequence + 1,
-    },
-  ];
 }
 
 export function executeCommand(state: GameState, next: Command): GameState {
   if (state.phase !== "playing") {
-    return event(state, "현재 라운드에서는 명령을 받을 수 없습니다.", {});
+    return event(state, "종료된 공방에서는 명령을 받을 수 없습니다.", {});
   }
-  if (next.action === "PREPARE" && (state.round !== 2 || !state.upgraded)) {
-    return event(state, "아직 재료 준비 명령을 이해하지 못합니다.", {});
-  }
-  const actorState = state.actors[next.actorId];
-  return event(state, `${next.actorId === "slime-01" ? "말랑" : "빨강"} 작업 큐에 ${next.action} 추가`, {
+  const slime = state.actors["slime-01"];
+  return event(state, `말랑 작업 큐에 ${next.action} 추가`, {
     actors: {
-      ...state.actors,
-      [next.actorId]: {
-        ...actorState,
-        queue: [...actorState.queue, ...expanded(next)],
-      },
+      "slime-01": { ...slime, queue: [...slime.queue, next] },
     },
   });
 }
@@ -314,106 +285,105 @@ export function executeEnvelope(
   state: GameState,
   envelope: CommandEnvelope,
 ): GameState {
-  return [...envelope.commands]
+  const checked = validateEnvelope(envelope);
+  if ("reason" in checked) return event(state, checked.reason, {});
+  return [...checked.value.commands]
     .sort((a, b) => a.sequence - b.sequence)
     .reduce(executeCommand, state);
 }
 
-function completeAction(state: GameState, actorId: ActorId, action: Action) {
-  if (action === "GET") {
-    if (actorId !== "slime-01" || state.mushroom !== "stock") {
-      return event(state, "말랑이만 새 버섯을 가져올 수 있습니다.", {});
-    }
-    if (state.hungry && !state.mistakeUsed) {
-      return event(state, "사고! 배고픈 말랑이가 버섯을 먹었습니다. 다시 지시하세요.", {
-        hungry: false,
-        mistakeUsed: true,
-      });
-    }
-    return event(state, "말랑이가 버섯을 가져와 들고 있습니다.", {
-      mushroom: "held",
-      foodLocation: actorId,
-    });
-  }
-  if (action === "CHOP") {
-    return actorId === "slime-01" &&
-      state.mushroom === "held" &&
-      state.foodLocation === actorId
-      ? event(state, "말랑이가 버섯을 손질해 들고 있습니다.", {
-          mushroom: "chopped",
-          foodLocation: actorId,
-        })
-      : event(state, "손질할 버섯이 없습니다.", {});
-  }
-  if (action === "COOK") {
-    return actorId === "slime-01" &&
-      state.mushroom === "chopped" &&
-      state.foodLocation === actorId
-      ? event(state, "버섯 스튜가 완성되어 패스에 놓였습니다.", {
-          mushroom: "stew",
-          foodLocation: "pass",
-        })
-      : event(state, "손질된 버섯이 필요합니다.", {});
-  }
-  if (action === "SERVE") {
-    if (
-      actorId !== "slime-02" ||
-      state.mushroom !== "stew" ||
-      state.foodLocation !== actorId ||
-      state.ordersPending < 1
-    ) {
-      return event(state, "빨강이, 완성된 스튜와 대기 주문이 필요합니다.", {});
-    }
-    return event(state, "판매 완료! 다음 버섯을 준비하세요.", {
-      mushroom: "stock",
-      foodLocation: "mushroom-box",
-      score: state.score + 100,
-      ordersPending: state.ordersPending - 1,
-      roundSales: state.roundSales + 1,
-    });
-  }
-  return state;
+function cauldron(state: GameState, id: TargetId) {
+  return state.cauldrons[id as CauldronId];
 }
 
-function arriveAtTask(
+function patchCauldron(
   state: GameState,
-  actorId: ActorId,
-  slime: ActorState,
-): { state: GameState; slime: ActorState } {
-  if (
-    slime.current?.action === "SERVE" &&
-    actorId === "slime-02" &&
-    state.mushroom === "stew" &&
-    state.foodLocation === "pass"
-  ) {
-    const path = findPath(pixelToTile(slime.x, slime.y), stationTiles.SERVE);
-    if (path) {
-      return {
-        state: event(state, "빨강이가 패스에서 스튜를 들었습니다.", {
-          foodLocation: actorId,
-        }),
-        slime: { ...slime, path, status: "MOVING" },
-      };
-    }
-  }
+  id: TargetId,
+  next: CauldronState,
+) {
   return {
-    state,
-    slime: {
-      ...slime,
-      status: "WORKING",
-      workLeftMs:
-        workDuration[
-          slime.current!.action as Exclude<Action, "PREPARE">
-        ] / slime.workSpeed,
-    },
+    ...state.cauldrons,
+    [id]: next,
   };
 }
 
-function moveActor(state: GameState, actorId: ActorId, deltaMs: number) {
+function completeAction(state: GameState, command: Command): GameState {
+  const slime = state.actors["slime-01"];
+  const pot = cauldron(state, command.targetId);
+  if (command.action === "GET_HERB") {
+    return slime.carrying === null
+      ? event(state, "말랑이 약초를 들었습니다.", {
+          actors: { "slime-01": { ...slime, carrying: "herb" } },
+        })
+      : event(state, "이미 무언가 들고 있어 약초를 집을 수 없습니다.", {});
+  }
+  if (command.action === "ADD_HERB") {
+    return slime.carrying === "herb" && pot.status === "EMPTY"
+      ? event(state, `${command.targetId}에 약초를 넣었습니다.`, {
+          actors: { "slime-01": { ...slime, carrying: null } },
+          cauldrons: patchCauldron(state, command.targetId, {
+            status: "HERB_LOADED",
+            timerMs: 0,
+          }),
+        })
+      : event(state, "빈 솥과 들고 있는 약초가 필요합니다.", {});
+  }
+  if (command.action === "MIX") {
+    return pot.status === "HERB_LOADED"
+      ? event(state, `${command.targetId} 조합 시작 — 5초`, {
+          cauldrons: patchCauldron(state, command.targetId, {
+            status: "MIXING",
+            timerMs: 5_000,
+          }),
+        })
+      : event(state, "약초가 든 솥만 저을 수 있습니다.", {});
+  }
+  if (command.action === "GET_PARCHMENT") {
+    return slime.carrying === null
+      ? event(state, "말랑이 양피지를 들었습니다.", {
+          actors: { "slime-01": { ...slime, carrying: "parchment" } },
+        })
+      : event(state, "이미 무언가 들고 있어 양피지를 집을 수 없습니다.", {});
+  }
+  if (command.action === "DIP_PARCHMENT") {
+    return slime.carrying === "parchment" &&
+      pot.status === "READY_FOR_PARCHMENT"
+      ? event(state, `${command.targetId}에 양피지를 담갔습니다 — 5초`, {
+          actors: { "slime-01": { ...slime, carrying: null } },
+          cauldrons: patchCauldron(state, command.targetId, {
+            status: "INSCRIBING",
+            timerMs: 5_000,
+          }),
+        })
+      : event(state, "완성된 마력액과 들고 있는 양피지가 필요합니다.", {});
+  }
+  if (command.action === "TAKE_BOOK") {
+    return slime.carrying === null && pot.status === "BOOK_READY"
+      ? event(state, `${command.targetId}에서 마도서를 꺼냈습니다.`, {
+          actors: { "slime-01": { ...slime, carrying: "book" } },
+          cauldrons: patchCauldron(state, command.targetId, {
+            status: "EMPTY",
+            timerMs: 0,
+          }),
+        })
+      : event(state, "완성된 마도서와 빈손이 필요합니다.", {});
+  }
+  if (slime.carrying !== "book") {
+    return event(state, "납품할 마도서를 들고 있지 않습니다.", {});
+  }
+  const submitted = state.submitted + 1;
+  return event(state, `마도서 납품 완료 — ${submitted}/${state.goal}`, {
+    submitted,
+    phase: submitted >= state.goal ? "won" : "playing",
+    actors: { "slime-01": { ...slime, carrying: null } },
+  });
+}
+
+function moveActor(state: GameState, deltaMs: number) {
   let next = state;
   let remaining = deltaMs;
-  let slime = next.actors[actorId];
-  while (remaining > 0) {
+  let slime = next.actors["slime-01"];
+  while (remaining > 0 && next.phase === "playing") {
     if (!slime.current) {
       const [current, ...queue] = slime.queue;
       if (!current) {
@@ -422,7 +392,7 @@ function moveActor(state: GameState, actorId: ActorId, deltaMs: number) {
       }
       const path = findPath(
         pixelToTile(slime.x, slime.y),
-        current.action === "SERVE" ? PASS_TILE : stationTiles[current.action],
+        taskTiles[current.targetId],
       );
       if (!path) {
         slime = { ...slime, current: null, queue, status: "IDLE", path: [] };
@@ -438,13 +408,14 @@ function moveActor(state: GameState, actorId: ActorId, deltaMs: number) {
         workLeftMs: 0,
       };
     }
-
     if (slime.status === "MOVING") {
       const waypoint = slime.path[0];
       if (!waypoint) {
-        const arrived = arriveAtTask(next, actorId, slime);
-        next = arrived.state;
-        slime = arrived.slime;
+        slime = {
+          ...slime,
+          status: "WORKING",
+          workLeftMs: workDuration[slime.current!.action],
+        };
         continue;
       }
       const destination = tileCenter(waypoint);
@@ -458,65 +429,56 @@ function moveActor(state: GameState, actorId: ActorId, deltaMs: number) {
         remaining = 0;
         break;
       }
-      const path = slime.path.slice(1);
       slime = {
         ...slime,
         x: destination.x,
         y: destination.y,
-        path,
-        status: "MOVING",
-        workLeftMs: 0,
+        path: slime.path.slice(1),
       };
       remaining -= travelMs;
-      if (!path.length) {
-        const arrived = arriveAtTask(next, actorId, slime);
-        next = arrived.state;
-        slime = arrived.slime;
-      }
+      continue;
     }
-
-    if (slime.status === "WORKING") {
-      if (slime.workLeftMs > remaining) {
-        slime = { ...slime, workLeftMs: slime.workLeftMs - remaining };
-        remaining = 0;
-        break;
-      }
-      remaining -= slime.workLeftMs;
-      next = {
-        ...completeAction(
-          { ...next, actors: { ...next.actors, [actorId]: slime } },
-          actorId,
-          slime.current.action,
-        ),
-      };
-      slime = {
-        ...next.actors[actorId],
-        current: null,
-        status: "IDLE",
-        path: [],
-        workLeftMs: 0,
-      };
+    if (slime.workLeftMs > remaining) {
+      slime = { ...slime, workLeftMs: slime.workLeftMs - remaining };
+      remaining = 0;
+      break;
     }
+    remaining -= slime.workLeftMs;
+    next = completeAction(
+      { ...next, actors: { "slime-01": slime } },
+      slime.current!,
+    );
+    slime = {
+      ...next.actors["slime-01"],
+      current: null,
+      status: "IDLE",
+      path: [],
+      workLeftMs: 0,
+    };
   }
-  return { ...next, actors: { ...next.actors, [actorId]: slime } };
+  return { ...next, actors: { "slime-01": slime } };
 }
 
-function finishRound(state: GameState): GameState {
-  if (state.phase !== "playing") return state;
-  if (state.round === 1 && state.roundSales > 0) {
-    return event(state, "1라운드 성공 — 성장 하나를 선택하세요.", {
-      phase: "choice",
-      timeLeft: 0,
-      timeLeftMs: 0,
+function advanceCauldrons(state: GameState, deltaMs: number) {
+  let next = state;
+  for (const id of ["cauldron-01", "cauldron-02"] as CauldronId[]) {
+    const pot = next.cauldrons[id];
+    if (!["MIXING", "INSCRIBING"].includes(pot.status)) continue;
+    const timerMs = Math.max(0, pot.timerMs - deltaMs);
+    if (timerMs > 0) {
+      next = {
+        ...next,
+        cauldrons: patchCauldron(next, id, { ...pot, timerMs }),
+      };
+      continue;
+    }
+    const status =
+      pot.status === "MIXING" ? "READY_FOR_PARCHMENT" : "BOOK_READY";
+    next = event(next, `${id} ${status === "BOOK_READY" ? "마도서 완성" : "마력액 완성"}`, {
+      cauldrons: patchCauldron(next, id, { status, timerMs: 0 }),
     });
   }
-  return event(
-    state,
-    state.round === 2
-      ? `2라운드 종료 — ${state.roundSales}개 판매`
-      : "시간 종료 — 한 그릇 이상 판매해야 합니다.",
-    { phase: "finished", timeLeft: 0, timeLeftMs: 0 },
-  );
+  return next;
 }
 
 export function tick(state: GameState, deltaMs = 1000): GameState {
@@ -528,98 +490,40 @@ export function tick(state: GameState, deltaMs = 1000): GameState {
     return state;
   }
   const elapsed = Math.min(deltaMs, state.timeLeftMs);
-  let next = moveActor(moveActor(state, "slime-01", elapsed), "slime-02", elapsed);
-  const due = Math.max(
-    0,
-    Math.floor((elapsed - next.nextOrderInMs) / 10_000) + 1,
-  );
-  const nextOrderInMs = due
-    ? next.nextOrderInMs + due * 10_000 - elapsed
-    : next.nextOrderInMs - elapsed;
+  let next = moveActor(state, elapsed);
+  next = advanceCauldrons(next, elapsed);
+  if (next.phase === "won") return next;
   const timeLeftMs = next.timeLeftMs - elapsed;
-  next = {
-    ...next,
-    timeLeftMs,
-    timeLeft: Math.ceil(timeLeftMs / 1000),
-    nextOrderInMs,
-    ordersPending: next.ordersPending + due,
-    ordersReceived: next.ordersReceived + due,
-  };
-  if (due > 0) {
-    next = event(next, `버섯 스튜 주문 ${due}건이 들어왔습니다.`, {});
-  }
-  return timeLeftMs === 0 ? finishRound(next) : next;
-}
-
-export function endRound(state: GameState) {
-  return finishRound(state);
-}
-
-export function chooseUpgrade(state: GameState, choiceId: ChoiceId): GameState {
-  if (state.phase !== "choice" || !choices.some(({ id }) => id === choiceId)) {
-    return state;
-  }
-  const actors = Object.fromEntries(
-    Object.entries(state.actors).map(([id, slime]) => {
-      const multiplier =
-        choiceId === "team-boost" ||
-        (choiceId === "mallang-mastery" && id === "slime-01")
-          ? choiceId === "team-boost"
-            ? 1.15
-            : 1.35
-          : 1;
-      return [
-        id,
-        {
-          ...slime,
-          moveSpeed: slime.moveSpeed * multiplier,
-          workSpeed: slime.workSpeed * multiplier,
-          status: "IDLE",
-          current: null,
-          queue: [],
-          path: [],
-          workLeftMs: 0,
-        },
-      ];
-    }),
-  ) as Record<ActorId, ActorState>;
-  return event(state, `${choices.find(({ id }) => id === choiceId)?.title} 선택 — 2라운드 시작`, {
-    round: 2,
-    phase: "playing",
-    timeLeft: 75,
-    timeLeftMs: 75_000,
-    upgraded: choiceId === "prepare",
-    selectedChoice: choiceId,
-    mushroom: "stock",
-    foodLocation: "mushroom-box",
-    hungry: false,
-    mistakeUsed: false,
-    ordersPending: 1,
-    ordersReceived: 1,
-    roundSales: 0,
-    nextOrderInMs: 10_000,
-    actors,
-  });
-}
-
-export function startRoundTwo(state: GameState): GameState {
-  return chooseUpgrade(state, "prepare");
+  return timeLeftMs === 0
+    ? event(next, `시간 종료 — 마도서 ${next.submitted}/${next.goal}권 납품`, {
+        phase: "lost",
+        timeLeft: 0,
+        timeLeftMs: 0,
+      })
+    : {
+        ...next,
+        timeLeftMs,
+        timeLeft: Math.ceil(timeLeftMs / 1000),
+      };
 }
 
 export function command(
-  actorId: ActorId,
   action: Action,
+  targetId?: TargetId,
+  sequence = 1,
 ): CommandEnvelope {
+  const target = targetId ?? fixedTargets[action];
+  if (!target) throw new Error(`${action}에는 솥을 지정해야 합니다.`);
   return {
     status: "OK",
     confidence: 1,
     commands: [
       {
-        actorId,
+        actorId: "slime-01",
         action,
-        targetId: targets[action],
+        targetId: target,
         destinationId: null,
-        sequence: 1,
+        sequence,
       },
     ],
     reason: null,

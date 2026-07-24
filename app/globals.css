@@ -2,55 +2,64 @@
 
 :root {
   color-scheme: dark;
-  --ink: #f4f0dc;
-  --panel: #1f302a;
-  --line: #446257;
-  --accent: #f4cb4c;
+  --ink: #faf2ff;
+  --panel: #29243d;
+  --line: #5d527b;
+  --accent: #d6a7ff;
+  --gold: #ffd46b;
 }
 
 * { box-sizing: border-box; }
-
 html, body { margin: 0; min-height: 100%; }
 
 body {
   background:
-    radial-gradient(circle at 50% -20%, #36594b 0, transparent 45%),
-    #101a17;
+    radial-gradient(circle at 50% -20%, #56407a 0, transparent 44%),
+    #12101e;
   color: var(--ink);
   font-family: Arial, "Apple SD Gothic Neo", sans-serif;
 }
 
-button { font: inherit; }
-
+button, select { font: inherit; }
 .loading { min-height: 100vh; display: grid; place-items: center; font-size: 22px; font-weight: 800; }
-
 .game-shell { width: min(1440px, 100%); margin: auto; padding: 24px; }
 
 header {
   display: flex;
   align-items: end;
   justify-content: space-between;
+  gap: 20px;
   border-bottom: 1px solid var(--line);
   padding-bottom: 16px;
 }
 
-h1 { margin: 0; font-size: clamp(2rem, 5vw, 4.6rem); letter-spacing: -.05em; line-height: .85; }
+h1 {
+  margin: 0;
+  font-size: clamp(2rem, 5vw, 4.3rem);
+  letter-spacing: -.055em;
+  line-height: .95;
+}
 
 .eyebrow, small {
-  color: #9cc5b4;
+  color: #bca8e2;
   font-weight: 800;
   letter-spacing: .13em;
   text-transform: uppercase;
 }
 
 .eyebrow { margin: 0 0 8px; font-size: 12px; }
-
 .round-badge, .hud, aside > div, aside > button {
   border: 1px solid var(--line);
-  background: rgba(31, 48, 42, .94);
+  background: rgba(41, 36, 61, .94);
 }
 
-.round-badge { padding: 12px 18px; border-radius: 999px; color: var(--accent); font-weight: 900; }
+.round-badge {
+  padding: 12px 18px;
+  border-radius: 999px;
+  color: var(--gold);
+  font-weight: 900;
+  white-space: nowrap;
+}
 
 .hud {
   display: flex;
@@ -61,18 +70,18 @@ h1 { margin: 0; font-size: clamp(2rem, 5vw, 4.6rem); letter-spacing: -.05em; lin
   border-radius: 12px;
 }
 
-.hud strong { color: var(--accent); }
-
-.workspace { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 18px; }
+.hud strong { color: var(--gold); }
+.workspace { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 18px; }
 
 .canvas-card {
   position: relative;
+  align-self: start;
   min-width: 0;
   overflow: hidden;
   border: 1px solid var(--line);
   border-radius: 16px;
-  background: #18251f;
-  box-shadow: 0 22px 70px #0006;
+  background: #171527;
+  box-shadow: 0 22px 70px #0008;
 }
 
 #game-canvas { width: 100%; aspect-ratio: 8 / 5; }
@@ -85,115 +94,98 @@ h1 { margin: 0; font-size: clamp(2rem, 5vw, 4.6rem); letter-spacing: -.05em; lin
   margin: 0;
   padding: 8px 11px;
   border-radius: 7px;
-  background: #101a17dd;
-  color: #dcebe5;
+  background: #12101ee6;
+  color: #e8dff5;
   font-size: 12px;
 }
 
 aside { display: flex; flex-direction: column; gap: 12px; }
 aside > div, aside > button { border-radius: 12px; padding: 16px; }
-.order, .event { display: grid; gap: 8px; }
-.order strong { color: var(--accent); font-size: 24px; }
-.event { min-height: 128px; }
-.event strong { line-height: 1.45; }
-.slime-statuses { display: grid; gap: 10px; }
-.slime-statuses article {
+.cauldrons { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.cauldrons small { grid-column: 1 / -1; }
+.cauldrons article {
   display: grid;
   gap: 4px;
-  padding-bottom: 10px;
-  border-bottom: 1px solid var(--line);
-  font-size: 13px;
+  padding: 10px;
+  border: 1px solid #716492;
+  border-radius: 9px;
+  background: #1d1a2d;
 }
-.slime-statuses article:last-child { padding-bottom: 0; border-bottom: 0; }
-.slime-statuses article strong { color: var(--accent); }
-.slime-statuses article span { overflow-wrap: anywhere; color: #c9ddd5; }
+.cauldrons article strong { color: var(--gold); }
+.cauldrons article span { min-height: 32px; color: #d8cde8; font-size: 13px; }
+.cauldrons article b { color: var(--accent); }
+
+.event { display: grid; gap: 8px; min-height: 112px; }
+.event strong { line-height: 1.45; }
+.slime-statuses article { display: grid; gap: 5px; font-size: 13px; }
+.slime-statuses article strong { color: #a8ee86; }
+.slime-statuses article span { overflow-wrap: anywhere; color: #d8cde8; }
 
 button {
-  border: 1px solid #5c7c70;
+  border: 1px solid #75678f;
   border-radius: 9px;
   padding: 10px 12px;
-  background: #314a40;
+  background: #43395b;
   color: white;
   cursor: pointer;
   font-weight: 800;
 }
 
-button:hover { border-color: var(--accent); transform: translateY(-1px); }
-button:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+button:hover { border-color: var(--gold); transform: translateY(-1px); }
+button:focus-visible, select:focus-visible { outline: 3px solid var(--gold); outline-offset: 2px; }
 button:disabled { cursor: not-allowed; opacity: .45; transform: none; }
+.mic { background: #bb4d72; border-color: #ed78a0; font-size: 17px; }
+.mic-state { min-height: 20px; margin: -5px 4px 0; color: #c5b8d9; font-size: 13px; }
 
-.mic { background: #dd5a50; border-color: #ff8b7f; font-size: 17px; }
-.mic-state { min-height: 20px; margin: -5px 4px 0; color: #b8cfc6; font-size: 13px; }
 .debug { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
-.debug small { grid-column: 1 / -1; margin-bottom: 4px; }
-.debug button:nth-last-child(1) { grid-column: 1 / -1; }
-aside .round-end { background: var(--accent); color: #1a251f; border-color: #fff0a0; }
-aside .restart { background: #75d79b; color: #142019; }
+.debug small, .debug label, .debug button:last-child { grid-column: 1 / -1; }
+.debug label { display: grid; gap: 6px; color: #d8cde8; font-size: 13px; }
+.debug select {
+  width: 100%;
+  border: 1px solid #75678f;
+  border-radius: 8px;
+  padding: 8px;
+  background: #1d1a2d;
+  color: white;
+}
 
-.choice-overlay {
+.result-overlay {
   position: fixed;
   z-index: 50;
   inset: 0;
   display: grid;
   place-items: center;
   padding: 24px;
-  background: #07100ddd;
+  background: #090712dd;
   backdrop-filter: blur(8px);
 }
 
-.choice-panel { width: min(1080px, 100%); text-align: center; }
-.choice-panel h2 { margin: 5px 0 24px; font-size: clamp(1.6rem, 4vw, 2.6rem); }
-.choice-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
-.choice-card {
-  --choice: #f4cb4c;
-  display: flex;
-  min-height: 440px;
-  flex-direction: column;
-  align-items: center;
-  gap: 15px;
-  padding: 28px 24px 22px;
-  border: 3px solid color-mix(in srgb, var(--choice), white 25%);
-  border-radius: 18px;
-  background:
-    linear-gradient(180deg, color-mix(in srgb, var(--choice), transparent 85%), transparent 38%),
-    #101a17;
-  box-shadow: 0 0 28px color-mix(in srgb, var(--choice), transparent 55%);
+.result-overlay > div {
+  width: min(580px, 100%);
+  padding: 42px;
+  border: 2px solid var(--accent);
+  border-radius: 20px;
+  background: #1d1a2d;
+  text-align: center;
+  box-shadow: 0 0 50px #b880ff55;
 }
-.choice-icon {
-  width: 112px;
-  height: 112px;
-  margin-bottom: 8px;
-  border: 5px solid #ffffffcc;
-  border-radius: 18px;
-  background: var(--choice);
-  box-shadow: inset 0 0 0 7px #0003;
-}
-.choice-card h3 { margin: 0; color: white; font-size: 24px; }
-.choice-card p { min-height: 54px; margin: 0; color: #c9ddd5; line-height: 1.5; }
-.choice-card > strong { color: var(--choice); font-size: 17px; }
-.choice-card button {
-  width: 100%;
-  margin-top: auto;
-  border-color: var(--choice);
-  background: var(--choice);
-  color: #0d1713;
-}
+
+.result-overlay h2 { margin: 8px 0 28px; font-size: clamp(1.6rem, 5vw, 2.8rem); }
+.result-overlay button { background: var(--gold); border-color: #fff0b0; color: #21192c; }
 
 @media (max-width: 900px) {
   .game-shell { padding: 14px; }
   .workspace { grid-template-columns: 1fr; }
   aside { display: grid; grid-template-columns: 1fr 1fr; }
-  .debug, aside .round-end, aside .restart { grid-column: 1 / -1; }
+  .debug, .mic-state { grid-column: 1 / -1; }
 }
 
 @media (max-width: 560px) {
   .workspace, aside { display: block; }
   aside > * { margin-top: 10px; }
-  .round-badge { font-size: 12px; }
+  .round-badge { font-size: 11px; }
   .hud { gap: 8px 15px; font-size: 13px; }
-  .choice-overlay { align-items: start; overflow: auto; padding: 16px; }
-  .choice-grid { grid-template-columns: 1fr; }
-  .choice-card { min-height: 360px; }
+  .game-shell { padding: 12px; }
 }
 
 @media (prefers-reduced-motion: reduce) {

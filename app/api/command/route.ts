@@ -11,8 +11,6 @@ export async function POST(request: Request) {
     );
   }
   const audio = form.get("audio");
-  const round = form.get("round") === "2" ? 2 : 1;
-  const upgraded = form.get("upgraded") === "true";
   if (!(audio instanceof File) || !audio.type.startsWith("audio/") || audio.size < 1 || audio.size > 8_000_000) {
     return Response.json({ reason: "8MB 이하 오디오 파일이 필요합니다." }, { status: 400 });
   }
@@ -32,9 +30,29 @@ export async function POST(request: Request) {
         items: {
           type: "object",
           properties: {
-            actorId: { type: "string", enum: ["slime-01", "slime-02"] },
-            action: { type: "string", enum: upgraded ? ["GET", "CHOP", "COOK", "SERVE", "PREPARE"] : ["GET", "CHOP", "COOK", "SERVE"] },
-            targetId: { type: "string", enum: ["mushroom-box", "cutting-board", "pot", "customer"] },
+            actorId: { type: "string", enum: ["slime-01"] },
+            action: {
+              type: "string",
+              enum: [
+                "GET_HERB",
+                "ADD_HERB",
+                "MIX",
+                "GET_PARCHMENT",
+                "DIP_PARCHMENT",
+                "TAKE_BOOK",
+                "SUBMIT",
+              ],
+            },
+            targetId: {
+              type: "string",
+              enum: [
+                "herb-box",
+                "parchment-box",
+                "cauldron-01",
+                "cauldron-02",
+                "submission-table",
+              ],
+            },
             destinationId: { type: ["string", "null"] },
             sequence: { type: "integer" },
           },
@@ -54,7 +72,19 @@ export async function POST(request: Request) {
         contents: [{
           role: "user",
           parts: [
-            { text: `한국어 음성 명령을 JSON으로 바꿔라. 말랑=slime-01, 빨강=slime-02. GET→mushroom-box, CHOP→cutting-board, COOK→pot, SERVE→customer, PREPARE→mushroom-box. 현재 라운드 ${round}. 허용 후보만 사용하라.` },
+            {
+              text: [
+                "한국어 음성 명령을 실행 순서의 JSON 명령으로 바꿔라.",
+                "행동자는 항상 말랑=slime-01이다.",
+                "약초 가져오기=GET_HERB→herb-box.",
+                "약초 넣기=ADD_HERB, 젓기=MIX, 양피지 담그기=DIP_PARCHMENT, 마도서 꺼내기=TAKE_BOOK.",
+                "이 네 행동은 왼쪽/1번=cauldron-01, 오른쪽/2번=cauldron-02를 대상으로 한다.",
+                "양피지 가져오기=GET_PARCHMENT→parchment-box.",
+                "납품하기=SUBMIT→submission-table.",
+                "사용자가 솥을 지정하지 않은 솥 행동은 명령을 만들지 마라.",
+                "허용 후보 외 이름과 행동을 만들지 마라.",
+              ].join(" "),
+            },
             { inlineData: { mimeType: audio.type, data: Buffer.from(await audio.arrayBuffer()).toString("base64") } },
           ],
         }],
@@ -68,7 +98,7 @@ export async function POST(request: Request) {
   const result = await response.json() as { candidates?: { content?: { parts?: { text?: string }[] } }[] };
   const text = result.candidates?.[0]?.content?.parts?.[0]?.text;
   try {
-    const checked = validateEnvelope(JSON.parse(text || ""), round, upgraded);
+    const checked = validateEnvelope(JSON.parse(text || ""));
     if ("reason" in checked) {
       return Response.json({ reason: checked.reason }, { status: 422 });
     }

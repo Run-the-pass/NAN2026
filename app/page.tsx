@@ -4,7 +4,7 @@ import dynamic from "next/dynamic";
 
 const Game = dynamic(() => import("./Game"), {
   ssr: false,
-  loading: () => <main className="loading">주방 준비 중…</main>,
+  loading: () => <main className="loading">공방 가동 준비 중…</main>,
 });
 
 export default function Home() {

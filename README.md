@@ -1,6 +1,6 @@
-# SLIME SHIFT
+# 터진다! 슬라임 공방
 
-NAN 2026 해커톤용 Phaser 3 음성 명령 식당 게임.
+NAN 2026 해커톤용 Phaser 3 음성 명령 마법 공방 게임.
 
 ## 실행
 
@@ -10,37 +10,32 @@ npm run dev
 ```
 
 브라우저에서 `http://localhost:3000`을 연다. 실제 음성 명령은
-`.env.example`을 `.env.local`로 복사해 `GEMINI_API_KEY`를 설정하면 사용할
-수 있다. 키가 없어도 우측 디버그 명령 버튼으로 2라운드 전체 흐름을
-시연할 수 있다.
+`.env.example`을 `.env.local`로 복사해 `GEMINI_API_KEY`를 설정하면
+사용할 수 있다. 키가 없어도 오른쪽 디버그 버튼으로 전체 흐름을 시연할
+수 있다.
 
 ## 시연 순서
 
-1. 시작 주문 1건을 확인한다. 이후 플레이 중 10초마다 주문이 추가된다.
-2. `말랑 · GET` — 말랑이가 이동 속도에 맞춰 버섯 상자로 가고, 첫 버섯을 먹는 사고가 발생한다.
-3. `말랑 · GET` → `CHOP` → `COOK`을 연달아 눌러 FIFO 작업 큐와 `MOVING → WORKING → IDLE` 변화를 확인한다.
-4. `빨강 · SERVE` — 빨강이가 패스의 스튜를 들고 고객에게 이동해 판매한 뒤 `라운드 마감 · 시연용`을 누른다.
-5. 화면 중앙의 성장 카드 3장 중 하나를 선택한다.
-   - `말랑 숙련 강화` 또는 `전체 슬라임 강화`: 2라운드도 `GET → CHOP` 단일 명령을 사용한다.
-   - `재료 준비 해금`: `PREPARE` 한 번으로 `GET → CHOP`을 큐에 넣는다.
-6. `COOK` → `SERVE` 후 라운드를 마감해 2라운드를 종료한다.
+1. 작업할 솥을 선택한다.
+2. `약초 가져오기` → `약초 넣기` → `젓기`를 누른다.
+3. 솥별 5초 타이머가 끝나면 `양피지 가져오기` → `양피지 담그기`를
+   누른다.
+4. 다시 5초가 지나 `마도서 완성`이 되면 `마도서 꺼내기` → `납품하기`를
+   누른다.
+5. 말랑의 이동, FIFO 큐, 소지 아이콘, 두 솥의 독립 상태와 납품 수를
+   확인한다.
 
-플레이어는 `WASD` 또는 방향키로 움직인다. 주방과 이동 경로는
-16×10 타일로 구성되며 플레이어와 슬라임 모두 벽과 작업대를 통과하지
-않는다. 음식 아이콘과 HUD의 위치·소지 표시로 버섯과 스튜의 이동을
-확인할 수 있다.
+플레이어는 `WASD` 또는 방향키로 움직인다. 잘못된 순서로 명령하면 게임
+상태는 진행되지 않고 최근 상황에 이유가 표시된다.
 
 ## 검증
 
 ```bash
-npm run build
-npm run lint
 npm test
-npm run simulate -- --seed=7 --no-hungry slime-01:GET slime-01:CHOP slime-01:COOK slime-02:SERVE
+npm run lint
+npm run build
+npm run simulate -- --seed=7 GET_HERB ADD_HERB:cauldron-01 MIX:cauldron-01 WAIT:5000 GET_PARCHMENT DIP_PARCHMENT:cauldron-01 WAIT:5000 TAKE_BOOK:cauldron-01 SUBMIT
 ```
 
 `simulate`는 Phaser 없이 같은 게임 코어를 실행하고 작업별 결과, 경과
-시간, 점수, 슬라임의 최종 위치·큐·상태를 JSON으로 출력한다.
-
-`firebase.json`은 현재 정적 클라이언트 결과물의 최소 Hosting 설정만
-담는다. `/api/command`까지 Firebase에서 운영할 때 서버 런타임을 추가한다.
+시간, 소지품, 솥 상태와 납품 수를 JSON으로 출력한다.
