@@ -243,6 +243,32 @@ test("두 솥의 5초 타이머는 독립적으로 진행된다", () => {
   assert.equal(state.cauldrons["cauldron-01"].status, "READY_FOR_PARCHMENT");
 });
 
+test("한 tick 도중 시작한 솥 타이머는 시작 전 시간을 차감하지 않는다", () => {
+  const base = initialState(1, ["keen"]);
+  const actor = base.actors.keen!;
+  const state: GameState = {
+    ...base,
+    actors: {
+      keen: {
+        ...actor,
+        ...tileCenter(taskTiles["cauldron-01"]),
+        current: command("keen", "MIX", "cauldron-01").commands[0],
+        status: "WORKING",
+        workLeftMs: 100,
+      },
+    },
+    cauldrons: {
+      ...base.cauldrons,
+      "cauldron-01": { status: "HERB_LOADED", timerMs: 0 },
+    },
+  };
+  const after = tick(state, 1_000);
+  assert.deepEqual(after.cauldrons["cauldron-01"], {
+    status: "MIXING",
+    timerMs: 4_100,
+  });
+});
+
 test("솥 미지정 명령은 상태가 맞는 솥을 우선해 가까운 솥으로 간다", () => {
   assert.equal(validateEnvelope(command("keen", "MIX")).ok, true);
   assert.equal(
@@ -318,6 +344,10 @@ test("같은 seed, 스쿼드, 명령과 시간은 같은 결과를 만든다", (
 
 test("신뢰 경계는 허용된 슬라임과 action/target만 받는다", () => {
   assert.equal(validateEnvelope(command("keen", "GET_HERB")).ok, true);
+  assert.equal(
+    validateEnvelope(command("nerd", "GET_HERB"), ["keen"]).ok,
+    false,
+  );
   assert.equal(
     validateEnvelope({
       ...command("keen", "GET_HERB"),
@@ -438,6 +468,10 @@ test("플레이테스트 세션은 위조된 요약을 저장 전에 거부한�
 
   for (const bad of [
     { ...valid, result: "cheated" },
+    { ...valid, result: "won", booksSubmitted: 0, elapsedMs: 1 },
+    { ...valid, goal: 1, booksSubmitted: 1 },
+    { ...valid, elapsedMs: 1 },
+    { ...valid, booksSubmitted: 8 },
     { ...valid, booksSubmitted: 99 },
     { ...valid, voiceCommands: -1 },
     { ...valid, elapsedMs: 999_999 },

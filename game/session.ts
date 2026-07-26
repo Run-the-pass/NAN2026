@@ -13,9 +13,10 @@ export type PlaytestSession = {
 };
 
 const ROUND_LIMIT_MS = 180_000;
+const ROUND_GOAL = 8;
 
 function isCount(value: unknown, min = 0): value is number {
-  return typeof value === "number" && Number.isInteger(value) && value >= min;
+  return typeof value === "number" && Number.isSafeInteger(value) && value >= min;
 }
 
 export function parseSession(
@@ -42,8 +43,18 @@ export function parseSession(
   if (body.booksSubmitted > body.goal) {
     return { ok: false, reason: "납품 수가 목표를 초과했습니다." };
   }
+  if (body.goal !== ROUND_GOAL) {
+    return { ok: false, reason: `목표는 ${ROUND_GOAL}권이어야 합니다.` };
+  }
   if (body.elapsedMs > ROUND_LIMIT_MS) {
     return { ok: false, reason: "경과 시간이 라운드 제한을 넘었습니다." };
+  }
+  if (
+    (body.result === "won" && body.booksSubmitted !== body.goal) ||
+    (body.result === "lost" &&
+      (body.booksSubmitted >= body.goal || body.elapsedMs !== ROUND_LIMIT_MS))
+  ) {
+    return { ok: false, reason: "승패와 납품 수·경과 시간이 일치하지 않습니다." };
   }
   let avgConfidence: number | null = null;
   if (body.avgConfidence !== null && body.avgConfidence !== undefined) {

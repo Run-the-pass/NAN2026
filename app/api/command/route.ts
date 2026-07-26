@@ -1,6 +1,10 @@
-import { slimeTypes, validateEnvelope } from "../../../game/core.js";
+import {
+  slimeTypes,
+  validateEnvelope,
+  type ActorId,
+} from "../../../game/core.js";
 
-const allTypeIds = Object.keys(slimeTypes);
+const allTypeIds = Object.keys(slimeTypes) as ActorId[];
 
 export async function POST(request: Request) {
   let form: FormData;
@@ -18,10 +22,10 @@ export async function POST(request: Request) {
   }
   // 이번 판에 선택된 스쿼드. 프롬프트와 스키마를 그 이름들로 제한한다.
   const squadField = String(form.get("actors") ?? allTypeIds.join(","));
-  const squad = squadField.split(",");
+  const squad = squadField.split(",") as ActorId[];
   if (
     squad.length < 1 ||
-    squad.length > 4 ||
+    squad.length > 3 ||
     new Set(squad).size !== squad.length ||
     squad.some((typeId) => !allTypeIds.includes(typeId))
   ) {
@@ -145,7 +149,7 @@ export async function POST(request: Request) {
         { status: 422 },
       );
     }
-    const checked = validateEnvelope(parsed);
+    const checked = validateEnvelope(parsed, squad);
     if ("reason" in checked) {
       return Response.json({ reason: checked.reason, transcript }, { status: 422 });
     }

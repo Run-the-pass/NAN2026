@@ -325,6 +325,7 @@ function validTarget(action: Action, targetId: unknown) {
 
 export function validateEnvelope(
   value: unknown,
+  allowedActors?: readonly ActorId[],
 ): { ok: true; value: CommandEnvelope } | { ok: false; reason: string } {
   if (!value || typeof value !== "object") {
     return { ok: false, reason: "명령 JSON이 객체가 아닙니다." };
@@ -348,6 +349,7 @@ export function validateEnvelope(
     if (
       !item ||
       !(String(item.actorId) in slimeTypes) ||
+      (allowedActors && !allowedActors.includes(item.actorId)) ||
       !actions.includes(item.action) ||
       !validTarget(item.action, item.targetId) ||
       item.destinationId !== null ||
@@ -739,27 +741,35 @@ export function tick(state: GameState, deltaMs = 1000): GameState {
   if (state.phase !== "playing" || !Number.isFinite(deltaMs) || deltaMs <= 0) {
     return state;
   }
-  const elapsed = Math.min(deltaMs, state.timeLeftMs);
   let next = state;
-  for (const actorId of Object.keys(next.actors) as ActorId[]) {
-    next = moveActor(next, actorId, elapsed);
-    if (next.phase !== "playing") break;
+  let remaining = Math.min(deltaMs, state.timeLeftMs);
+  // ponytail: 50ms 고정 양자. 프레임보다 정밀한 판정이 필요해지면 사건
+  // 경계 기반 스케줄러로 교체한다.
+  while (remaining > 0 && next.phase === "playing") {
+    const elapsed = Math.min(50, remaining, next.timeLeftMs);
+    next = advanceCauldrons(next, elapsed);
+    for (const actorId of Object.keys(next.actors) as ActorId[]) {
+      next = moveActor(next, actorId, elapsed);
+      if (next.phase !== "playing") break;
+    }
+    next = decayAlerts(next, elapsed);
+    if (next.phase === "won") return next;
+    const timeLeftMs = next.timeLeftMs - elapsed;
+    next =
+      timeLeftMs === 0
+        ? event(
+            next,
+            `시간 종료 — 마도서 ${next.submitted}/${next.goal}권 납품`,
+            { phase: "lost", timeLeft: 0, timeLeftMs: 0 },
+          )
+        : {
+            ...next,
+            timeLeftMs,
+            timeLeft: Math.ceil(timeLeftMs / 1000),
+          };
+    remaining -= elapsed;
   }
-  next = decayAlerts(next, elapsed);
-  next = advanceCauldrons(next, elapsed);
-  if (next.phase === "won") return next;
-  const timeLeftMs = next.timeLeftMs - elapsed;
-  return timeLeftMs === 0
-    ? event(next, `시간 종료 — 마도서 ${next.submitted}/${next.goal}권 납품`, {
-        phase: "lost",
-        timeLeft: 0,
-        timeLeftMs: 0,
-      })
-    : {
-        ...next,
-        timeLeftMs,
-        timeLeft: Math.ceil(timeLeftMs / 1000),
-      };
+  return next;
 }
 
 export function command(
