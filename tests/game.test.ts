@@ -4,18 +4,24 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 import { POST } from "../app/api/command/route.js";
 import { simulate } from "../game/cli.js";
+import { parseSession } from "../game/session.js";
 import {
   TILE_SIZE,
   WORKSHOP_ROWS,
   command,
+  displayTiles,
   executeEnvelope,
   findPath,
   initialState,
   isWalkable,
+  movePlayer,
+  slimeTypes,
   taskTiles,
   tick,
+  tileCenter,
   validateEnvelope,
   type Action,
+  type ActorId,
   type CauldronId,
   type GameState,
   type TargetId,
@@ -23,16 +29,31 @@ import {
 
 function untilIdle(state: GameState) {
   let next = state;
-  for (let count = 0; count < 1_000; count += 1) {
-    const slime = next.actors["slime-01"];
-    if (!slime.current && slime.queue.length === 0) return next;
+  for (let count = 0; count < 10_000; count += 1) {
+    const busy = Object.values(next.actors).some(
+      (actor) => actor.current || actor.queue.length,
+    );
+    if (!busy) return next;
     next = tick(next, 50);
   }
-  throw new Error("말랑의 작업이 끝나지 않았습니다.");
+  throw new Error("슬라임의 작업이 끝나지 않았습니다.");
 }
 
-function act(state: GameState, action: Action, targetId?: TargetId) {
-  return untilIdle(executeEnvelope(state, command(action, targetId)));
+// 청력 판정을 통과하도록 플레이어가 지시 대상 옆으로 이동했다고 가정한다.
+function follow(state: GameState, actorId: ActorId) {
+  const actor = state.actors[actorId]!;
+  return movePlayer(state, actor.x, actor.y);
+}
+
+function act(
+  state: GameState,
+  actorId: ActorId,
+  action: Action,
+  targetId?: TargetId,
+) {
+  return untilIdle(
+    executeEnvelope(follow(state, actorId), command(actorId, action, targetId)),
+  );
 }
 
 function wait(state: GameState, durationMs: number) {
@@ -43,80 +64,168 @@ function wait(state: GameState, durationMs: number) {
   return next;
 }
 
-function makeBook(state: GameState, pot: CauldronId) {
-  let next = act(state, "GET_HERB");
-  next = act(next, "ADD_HERB", pot);
-  next = act(next, "MIX", pot);
+function makeBook(state: GameState, actorId: ActorId, pot: CauldronId) {
+  let next = act(state, actorId, "GET_HERB");
+  next = act(next, actorId, "ADD_HERB", pot);
+  next = act(next, actorId, "MIX", pot);
   next = wait(next, 5_000);
-  next = act(next, "GET_PARCHMENT");
-  next = act(next, "DIP_PARCHMENT", pot);
+  next = act(next, actorId, "GET_PARCHMENT");
+  next = act(next, actorId, "DIP_PARCHMENT", pot);
   next = wait(next, 5_000);
-  return act(next, "TAKE_BOOK", pot);
+  return act(next, actorId, "TAKE_BOOK", pot);
 }
 
-test("16×10 공방에서 BFS는 장애물을 통과하지 않는다", () => {
+test("가구는 종류마다 한 타일만 차지하고 작업 타일은 인접 바닥이다", () => {
   assert.equal(WORKSHOP_ROWS.length, 10);
   assert.ok(WORKSHOP_ROWS.every((row) => row.length === 16));
   assert.equal(TILE_SIZE, 60);
-  assert.equal(isWalkable({ col: 7, row: 4 }), false);
+  const tiles = [...WORKSHOP_ROWS.join("")];
+  assert.equal(tiles.filter((tile) => tile === "T").length, 1);
+  assert.equal(tiles.filter((tile) => tile === "H").length, 1);
+  assert.equal(tiles.filter((tile) => tile === "P").length, 1);
+  assert.equal(tiles.filter((tile) => tile === "C").length, 2);
+  assert.ok(tiles.filter((tile) => tile === "B").length > 0);
+
+  const adjacent = (
+    a: { col: number; row: number },
+    b: { col: number; row: number },
+  ) => Math.abs(a.col - b.col) + Math.abs(a.row - b.row) === 1;
+  assert.ok(adjacent(taskTiles["herb-box"], displayTiles.herb));
+  assert.ok(adjacent(taskTiles["parchment-box"], displayTiles.parchment));
+  assert.ok(adjacent(taskTiles["submission-table"], displayTiles.submission));
+  assert.ok(adjacent(taskTiles["cauldron-01"], displayTiles["cauldron-01"]));
+  assert.ok(adjacent(taskTiles["cauldron-02"], displayTiles["cauldron-02"]));
+  assert.ok(Object.values(taskTiles).every(isWalkable));
   const path = findPath(taskTiles["herb-box"], taskTiles["parchment-box"]);
   assert.ok(path?.every(isWalkable));
-  assert.equal(findPath({ col: 0, row: 0 }, taskTiles["herb-box"]), null);
 });
 
-test("슬라임은 속도에 맞춰 이동하고 큐가 끝나면 IDLE이다", () => {
-  let state = executeEnvelope(initialState(), {
+test("슬라임 종류는 스탯 레벨을 결정하고 이동 속도는 레벨 표를 따른다", () => {
+  assert.deepEqual(slimeTypes.nerd.statLevels, {
+    workSpeed: 2,
+    moveSpeed: 0,
+    hearing: 1,
+    focus: 3,
+  });
+  assert.deepEqual(slimeTypes.worker.statLevels, {
+    workSpeed: 3,
+    moveSpeed: 1,
+    hearing: 0,
+    focus: 2,
+  });
+  const swift = initialState(1, ["swift"]).actors.swift!;
+  assert.equal(swift.moveSpeed, 2.5 * TILE_SIZE);
+  const nerd = initialState(1, ["nerd"]).actors.nerd!;
+  assert.equal(nerd.moveSpeed, 1.6 * TILE_SIZE);
+  assert.throws(() => initialState(1, []), /1~3마리/);
+  assert.throws(() => initialState(1, ["keen", "keen"]), /1~3마리/);
+});
+
+test("작업 속도 배율이 실제 작업 시간을 줄인다", () => {
+  const atHerbBox = (typeId: "worker" | "nerd") => {
+    const state = initialState(1, [typeId]);
+    const actor = state.actors[typeId]!;
+    return follow(
+      {
+        ...state,
+        actors: {
+          [typeId]: { ...actor, ...tileCenter(taskTiles["herb-box"]) },
+        },
+      },
+      typeId,
+    );
+  };
+  // 일꾼(작업 3, 배율 1.2)은 700ms 작업을 583.3ms에 끝낸다.
+  let fast = executeEnvelope(atHerbBox("worker"), command("worker", "GET_HERB"));
+  fast = tick(fast, 600);
+  assert.equal(fast.actors.worker!.carrying, "herb");
+  // 너드(작업 2, 배율 1.0)는 600ms 안에 끝내지 못한다.
+  let slow = executeEnvelope(atHerbBox("nerd"), command("nerd", "GET_HERB"));
+  slow = tick(slow, 600);
+  assert.equal(slow.actors.nerd!.carrying, null);
+  slow = tick(slow, 100);
+  assert.equal(slow.actors.nerd!.carrying, "herb");
+});
+
+test("청력 범위 밖의 명령은 NOT_HEARD로 버려진다", () => {
+  // 일꾼은 청력 0 → 2타일까지만 듣는다. 스폰 (7,6) 기준.
+  const state = initialState(1, ["worker"]);
+  const inRange = movePlayer(
+    state,
+    tileCenter({ col: 9, row: 6 }).x,
+    tileCenter({ col: 9, row: 6 }).y,
+  );
+  const heard = executeEnvelope(inRange, command("worker", "GET_HERB"));
+  assert.equal(heard.actors.worker!.queue.length, 1);
+
+  const outOfRange = movePlayer(
+    state,
+    tileCenter({ col: 10, row: 6 }).x,
+    tileCenter({ col: 10, row: 6 }).y,
+  );
+  const missed = executeEnvelope(outOfRange, command("worker", "GET_HERB"));
+  assert.equal(missed.actors.worker!.queue.length, 0);
+  assert.equal(missed.actors.worker!.alert, "NOT_HEARD");
+  assert.match(missed.lastEvent, /듣지 못했습니다/);
+  // 알림은 시간이 지나면 사라진다.
+  const calmed = tick(missed, 2_000);
+  assert.equal(calmed.actors.worker!.alert, null);
+});
+
+test("집중력은 명령 수를 제한한다 (TOO_COMPLEX, QUEUE_FULL)", () => {
+  // 날쌘은 집중력 1 → 원자 작업 2개까지 기억한다.
+  const base = follow(initialState(1, ["swift"]), "swift");
+  const cmd = (sequence: number) => ({
+    ...command("swift", "GET_HERB").commands[0],
+    sequence,
+  });
+  const tooComplex = executeEnvelope(base, {
     status: "OK",
     confidence: 1,
     reason: null,
-    commands: [
-      command("GET_HERB").commands[0],
-      { ...command("GET_PARCHMENT").commands[0], sequence: 2 },
-    ],
+    commands: [cmd(1), cmd(2), cmd(3)],
   });
-  state = tick(state, 250);
-  assert.equal(state.actors["slime-01"].status, "MOVING");
-  assert.equal(state.actors["slime-01"].x, 510);
-  assert.equal(state.actors["slime-01"].y, 480);
-  state = untilIdle(state);
-  assert.equal(state.actors["slime-01"].status, "IDLE");
-  assert.equal(state.actors["slime-01"].current, null);
-  assert.deepEqual(state.actors["slime-01"].queue, []);
-  assert.equal(state.actors["slime-01"].carrying, "herb");
-  assert.match(state.lastEvent, /이미 무언가/);
+  assert.equal(tooComplex.actors.swift!.queue.length, 0);
+  assert.equal(tooComplex.actors.swift!.alert, "TOO_COMPLEX");
+
+  const filled = executeEnvelope(base, {
+    status: "OK",
+    confidence: 1,
+    reason: null,
+    commands: [cmd(1), cmd(2)],
+  });
+  assert.equal(filled.actors.swift!.queue.length, 2);
+  const overflow = executeEnvelope(filled, command("swift", "GET_HERB"));
+  assert.equal(overflow.actors.swift!.queue.length, 2);
+  assert.equal(overflow.actors.swift!.alert, "QUEUE_FULL");
+  assert.match(overflow.lastEvent, /기억 공간/);
 });
 
-test("신뢰 경계는 한 슬라임과 허용된 action/target만 받는다", () => {
-  assert.equal(validateEnvelope(command("GET_HERB")).ok, true);
-  assert.equal(
-    validateEnvelope({
-      ...command("GET_HERB"),
-      commands: [{ ...command("GET_HERB").commands[0], actorId: "ghost" }],
-    }).ok,
-    false,
+test("여러 슬라임이 독립 큐로 병렬 작업한다", () => {
+  let state = initialState(7, ["nerd", "swift"]);
+  state = executeEnvelope(follow(state, "swift"), command("swift", "GET_HERB"));
+  state = executeEnvelope(
+    follow(state, "nerd"),
+    command("nerd", "GET_PARCHMENT"),
   );
-  assert.equal(
-    validateEnvelope({
-      ...command("GET_HERB"),
-      commands: [
-        { ...command("GET_HERB").commands[0], targetId: "cauldron-01" },
-      ],
-    }).ok,
-    false,
-  );
+  state = untilIdle(state);
+  assert.equal(state.actors.swift!.carrying, "herb");
+  assert.equal(state.actors.nerd!.carrying, "parchment");
+  assert.equal(state.actors.swift!.status, "IDLE");
+  assert.equal(state.actors.nerd!.status, "IDLE");
 });
 
 test("잘못된 작업 순서는 재료·솥·납품 상태를 바꾸지 않고 이유를 남긴다", () => {
-  const before = initialState();
-  const after = act(before, "MIX", "cauldron-01");
+  const before = initialState(1, ["keen"]);
+  const after = act(before, "keen", "MIX", "cauldron-01");
   assert.deepEqual(after.cauldrons, before.cauldrons);
   assert.equal(after.submitted, before.submitted);
-  assert.equal(after.actors["slime-01"].carrying, null);
+  assert.equal(after.actors.keen!.carrying, null);
   assert.match(after.lastEvent, /약초가 든 솥/);
 });
 
 test("두 솥의 5초 타이머는 독립적으로 진행된다", () => {
-  let state = initialState();
+  let state = initialState(1, ["keen"]);
   state = {
     ...state,
     cauldrons: {
@@ -134,37 +243,115 @@ test("두 솥의 5초 타이머는 독립적으로 진행된다", () => {
   assert.equal(state.cauldrons["cauldron-01"].status, "READY_FOR_PARCHMENT");
 });
 
-test("약초부터 마도서까지 순서대로 만들고 SUBMIT에서만 납품 수가 오른다", () => {
-  let state = makeBook(initialState(), "cauldron-01");
-  assert.equal(state.actors["slime-01"].carrying, "book");
+test("솥 미지정 명령은 상태가 맞는 솥을 우선해 가까운 솥으로 간다", () => {
+  assert.equal(validateEnvelope(command("keen", "MIX")).ok, true);
+  assert.equal(
+    validateEnvelope({
+      ...command("keen", "GET_HERB"),
+      commands: [{ ...command("keen", "GET_HERB").commands[0], targetId: null }],
+    }).ok,
+    false,
+  );
+
+  // 약초 상자(1,6)에서 가까운 솥은 왼쪽 솥이다.
+  let nearest = initialState(1, ["keen"]);
+  nearest = act(nearest, "keen", "GET_HERB");
+  nearest = act(nearest, "keen", "ADD_HERB");
+  assert.equal(nearest.cauldrons["cauldron-01"].status, "HERB_LOADED");
+  assert.equal(nearest.cauldrons["cauldron-02"].status, "EMPTY");
+
+  // 먼 솥이라도 작업 상태가 맞으면 가까운 빈 솥보다 우선한다.
+  let eligible = initialState(1, ["keen"]);
+  eligible = {
+    ...eligible,
+    cauldrons: {
+      "cauldron-01": { status: "EMPTY" as const, timerMs: 0 },
+      "cauldron-02": { status: "HERB_LOADED" as const, timerMs: 0 },
+    },
+  };
+  eligible = act(eligible, "keen", "MIX");
+  assert.equal(eligible.cauldrons["cauldron-02"].status, "MIXING");
+  assert.equal(eligible.cauldrons["cauldron-01"].status, "EMPTY");
+});
+
+test("약초부터 납품까지 완주하면 납품 수와 골드가 오른다", () => {
+  let state = makeBook(initialState(2026, ["keen"]), "keen", "cauldron-01");
+  assert.equal(state.actors.keen!.carrying, "book");
   assert.equal(state.cauldrons["cauldron-01"].status, "EMPTY");
   assert.equal(state.submitted, 0);
-  state = act(state, "SUBMIT");
+  state = act(state, "keen", "SUBMIT");
   assert.equal(state.submitted, 1);
-  assert.equal(state.actors["slime-01"].carrying, null);
+  assert.equal(state.gold, 100);
+  assert.equal(state.actors.keen!.carrying, null);
 });
 
 test("8권째 납품은 즉시 성공하고 180초 무납품은 실패한다", () => {
+  const base = initialState(1, ["keen"]);
   let state: GameState = {
-    ...initialState(),
+    ...base,
     submitted: 7,
+    gold: 700,
     actors: {
-      "slime-01": { ...initialState().actors["slime-01"], carrying: "book" as const },
+      keen: { ...base.actors.keen!, carrying: "book" as const },
     },
   };
-  state = act(state, "SUBMIT");
+  state = act(state, "keen", "SUBMIT");
   assert.equal(state.phase, "won");
   assert.equal(state.submitted, 8);
+  assert.equal(state.gold, 800);
   assert.equal(tick(state, 999_999), state);
 
-  const lost = tick(initialState(), 180_000);
+  const lost = tick(initialState(1, ["keen"]), 180_000);
   assert.equal(lost.phase, "lost");
   assert.equal(lost.timeLeft, 0);
 });
 
-test("같은 seed, 명령과 시간은 같은 결과를 만든다", () => {
-  const play = () => act(makeBook(initialState(91), "cauldron-02"), "SUBMIT");
+test("같은 seed, 스쿼드, 명령과 시간은 같은 결과를 만든다", () => {
+  const play = () => {
+    let state = initialState(91, ["keen", "worker"]);
+    state = makeBook(state, "keen", "cauldron-02");
+    state = act(state, "worker", "GET_PARCHMENT");
+    return act(state, "keen", "SUBMIT");
+  };
   assert.deepEqual(play(), play());
+});
+
+test("신뢰 경계는 허용된 슬라임과 action/target만 받는다", () => {
+  assert.equal(validateEnvelope(command("keen", "GET_HERB")).ok, true);
+  assert.equal(
+    validateEnvelope({
+      ...command("keen", "GET_HERB"),
+      commands: [{ ...command("keen", "GET_HERB").commands[0], actorId: "ghost" }],
+    }).ok,
+    false,
+  );
+  assert.equal(
+    validateEnvelope({
+      ...command("keen", "GET_HERB"),
+      commands: [
+        { ...command("keen", "GET_HERB").commands[0], targetId: "cauldron-01" },
+      ],
+    }).ok,
+    false,
+  );
+  // 구조는 유효해도 이번 판에 없는 슬라임이면 큐에 넣지 않는다.
+  const state = follow(initialState(1, ["keen"]), "keen");
+  const rejected = executeEnvelope(state, command("nerd", "GET_HERB"));
+  assert.match(rejected.lastEvent, /선택되지 않은 슬라임/);
+  assert.equal(rejected.actors.keen!.queue.length, 0);
+
+  // transcript는 표시용 문자열만 허용하고 상태 UNKNOWN은 실행하지 않는다.
+  const spoken = command("keen", "GET_HERB");
+  assert.equal(
+    validateEnvelope({ ...spoken, transcript: "쫑긋아 약초 가져와" }).ok,
+    true,
+  );
+  assert.equal(validateEnvelope({ ...spoken, transcript: null }).ok, true);
+  assert.equal(validateEnvelope({ ...spoken, transcript: 123 }).ok, false);
+  assert.equal(
+    validateEnvelope({ ...spoken, status: "UNKNOWN", commands: [] }).ok,
+    false,
+  );
 });
 
 test("Content-Type 없는 명령 요청은 400 JSON을 반환한다", async () => {
@@ -183,6 +370,7 @@ test("Content-Type 없는 명령 요청은 400 JSON을 반환한다", async () =
 test("CLI는 같은 입력을 재현하고 전체 제작·납품을 완료한다", () => {
   const args = [
     "--seed=7",
+    "--slimes=keen",
     "GET_HERB",
     "ADD_HERB:cauldron-01",
     "MIX:cauldron-01",
@@ -196,19 +384,67 @@ test("CLI는 같은 입력을 재현하고 전체 제작·납품을 완료한다
   const first = simulate(args);
   assert.deepEqual(first, simulate(args));
   assert.equal(first.final.submitted, 1);
-  assert.equal(first.final.actors["slime-01"].status, "IDLE");
-  assert.equal(first.final.actors["slime-01"].carrying, null);
+  assert.equal(first.final.gold, 100);
+  assert.equal(first.final.actors.keen!.status, "IDLE");
+  assert.equal(first.final.actors.keen!.carrying, null);
+});
+
+test("CLI는 액터 접두사·스쿼드·고정 플레이어 위치를 지원한다", () => {
+  const result = simulate([
+    "--slimes=nerd,swift",
+    "swift.GET_HERB",
+    "nerd.GET_PARCHMENT",
+  ]);
+  assert.equal(result.final.actors.swift!.carrying, "herb");
+  assert.equal(result.final.actors.nerd!.carrying, "parchment");
+
+  assert.throws(
+    () => simulate(["--slimes=nerd", "swift.GET_HERB"]),
+    /스쿼드에 없는 슬라임/,
+  );
+
+  // 플레이어 위치를 고정하면 청력 밖 명령은 NOT_HEARD가 된다.
+  const missed = simulate(["--slimes=worker", "--player=10,8", "GET_HERB"]);
+  assert.equal(missed.final.actors.worker!.carrying, null);
+  assert.match(missed.steps[0].event, /듣지 못했습니다/);
 });
 
 test("CLI의 허용 목록 밖 토큰은 nonzero로 종료된다", () => {
-  assert.throws(
-    () => simulate(["GET_HERB:cauldron-01"]),
-    /허용 목록 밖/,
-  );
+  assert.throws(() => simulate(["GET_HERB:cauldron-01"]), /허용 목록 밖/);
   const cli = fileURLToPath(new URL("../game/cli.js", import.meta.url));
   const result = spawnSync(process.execPath, [cli, "FLY"], {
     encoding: "utf8",
   });
   assert.notEqual(result.status, 0);
   assert.match(result.stderr, /허용되지 않은 명령/);
+});
+
+test("플레이테스트 세션은 위조된 요약을 저장 전에 거부한다", () => {
+  const valid = {
+    seed: 2026,
+    result: "lost",
+    booksSubmitted: 3,
+    goal: 8,
+    elapsedMs: 180_000,
+    voiceCommands: 5,
+    buttonCommands: 2,
+    voiceFailures: 1,
+    avgConfidence: 0.8,
+  };
+  const accepted = parseSession(valid);
+  assert.equal(accepted.ok, true);
+  assert.equal(accepted.ok && accepted.value.booksSubmitted, 3);
+  assert.equal(parseSession({ ...valid, avgConfidence: null }).ok, true);
+
+  for (const bad of [
+    { ...valid, result: "cheated" },
+    { ...valid, booksSubmitted: 99 },
+    { ...valid, voiceCommands: -1 },
+    { ...valid, elapsedMs: 999_999 },
+    { ...valid, elapsedMs: 1.5 },
+    { ...valid, avgConfidence: 1.5 },
+    "문자열",
+  ]) {
+    assert.equal(parseSession(bad).ok, false);
+  }
 });

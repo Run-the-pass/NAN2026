@@ -71,7 +71,27 @@ h1 {
 }
 
 .hud strong { color: var(--gold); }
-.workspace { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 18px; }
+.workspace {
+  display: grid;
+  grid-template-columns: 150px minmax(0, 1fr) 320px;
+  gap: 18px;
+  margin-top: 18px;
+}
+
+.side-badges { display: flex; flex-direction: column; justify-content: space-between; gap: 12px; }
+
+.side-badges .badge {
+  display: grid;
+  gap: 6px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 14px;
+  background: #3a5da8;
+}
+
+.side-badges .badge small { color: #dbe6ff; font-size: 10px; }
+.side-badges .badge strong { color: #fff; font-size: 19px; }
+.side-badges .badge span { color: #dbe6ff; font-size: 12px; }
 
 .canvas-card {
   position: relative;
@@ -149,6 +169,183 @@ button:disabled { cursor: not-allowed; opacity: .45; transform: none; }
   color: white;
 }
 
+.slime-card {
+  position: absolute;
+  z-index: 10;
+  width: 236px;
+  padding: 14px;
+  border: 1px solid var(--accent);
+  border-radius: 12px;
+  background: #1d1a2df2;
+  box-shadow: 0 14px 40px #000a;
+  transform: translate(-50%, calc(-100% - 36px));
+  pointer-events: none;
+}
+
+.slime-card[data-below] { transform: translate(-50%, 32px); }
+
+.slime-card header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 10px;
+}
+
+.slime-card header div { display: grid; gap: 2px; }
+.slime-card header strong { color: #a8ee86; font-size: 16px; }
+.slime-card header small { font-size: 10px; letter-spacing: .08em; }
+
+.slime-portrait {
+  position: relative;
+  flex: none;
+  width: 46px;
+  height: 40px;
+  border: 2px solid #d6ffc2;
+  border-radius: 46% 46% 42% 42%;
+  background: radial-gradient(circle at 34% 26%, #c8f6a9 0, #93e675 52%, #5fae4b 100%);
+}
+
+.slime-portrait i {
+  position: absolute;
+  top: 15px;
+  width: 5px;
+  height: 8px;
+  border-radius: 50%;
+  background: #234420;
+}
+
+.slime-portrait i:first-child { left: 13px; }
+.slime-portrait i:last-child { right: 13px; }
+
+.slime-stats {
+  display: grid;
+  gap: 7px;
+  margin: 10px 0;
+  padding: 0;
+  list-style: none;
+}
+
+.slime-stats li {
+  display: grid;
+  grid-template-columns: 20px 1fr auto;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: #d8cde8;
+}
+
+.stat-gauge { display: inline-flex; gap: 3px; }
+
+.stat-gauge i {
+  width: 12px;
+  height: 8px;
+  border: 1px solid var(--line);
+  border-radius: 2px;
+  background: #12101e;
+}
+
+.stat-gauge i[data-on] { border-color: var(--gold); background: var(--gold); }
+
+.slime-card footer { display: grid; gap: 5px; border-top: 1px solid var(--line); padding-top: 9px; }
+.slime-card footer small { font-size: 10px; }
+.slime-buffs { display: flex; flex-wrap: wrap; gap: 5px; }
+
+.slime-buffs span {
+  border: 1px solid #8a76b8;
+  border-radius: 999px;
+  padding: 2px 9px;
+  background: #2c2545;
+  font-size: 11px;
+}
+
+.slime-buffs-empty { color: #8d80a6; font-size: 12px; }
+
+.recipe { display: grid; gap: 4px; }
+
+.recipe ol {
+  display: grid;
+  gap: 6px;
+  margin: 8px 0;
+  padding-left: 20px;
+  color: #d8cde8;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.recipe > strong { color: var(--gold); font-size: 13px; }
+
+.debug-wrap {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 12px 16px;
+  background: rgba(41, 36, 61, .94);
+}
+
+.debug-wrap summary {
+  cursor: pointer;
+  color: #bca8e2;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: .08em;
+}
+
+.debug-wrap .debug { margin-top: 12px; }
+
+.voice-feedback {
+  display: grid;
+  gap: 6px;
+  border-left: 4px solid var(--line);
+  font-size: 13px;
+}
+
+.voice-feedback[data-kind="accepted"] { border-left-color: #7ddb63; }
+.voice-feedback[data-kind="uninterpreted"] { border-left-color: var(--gold); }
+.voice-feedback[data-kind="unheard"] { border-left-color: #ed6a8b; }
+
+.voice-feedback q {
+  color: var(--ink);
+  font-size: 15px;
+  font-weight: 800;
+  quotes: "“" "”";
+}
+
+.voice-feedback span { color: #d8cde8; }
+.voice-feedback em { color: #a396bd; font-style: normal; font-size: 12px; }
+
+.select-screen { display: grid; gap: 18px; margin-top: 26px; }
+.select-guide { max-width: 620px; margin: 0; color: #d8cde8; line-height: 1.6; }
+
+.select-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 14px;
+}
+
+.slime-select-card {
+  display: grid;
+  justify-items: start;
+  gap: 8px;
+  border: 2px solid var(--line);
+  border-radius: 14px;
+  padding: 16px;
+  background: rgba(41, 36, 61, .94);
+  text-align: left;
+  transform: none;
+}
+
+.slime-select-card:hover { border-color: var(--accent); transform: translateY(-2px); }
+.slime-select-card[data-active] { border-color: var(--gold); box-shadow: 0 0 24px #ffd46b33; }
+.slime-select-card strong { font-size: 16px; }
+.slime-select-card small { min-height: 30px; color: #bfb2d6; font-weight: 400; letter-spacing: 0; text-transform: none; }
+.slime-select-card .slime-stats { margin: 4px 0 0; width: 100%; }
+
+.select-footer { display: flex; align-items: center; gap: 16px; }
+.select-footer span { color: #d8cde8; font-weight: 800; }
+.select-start { background: var(--gold); border-color: #fff0b0; color: #21192c; font-size: 16px; padding: 12px 22px; }
+
+.result-actions { display: flex; justify-content: center; gap: 10px; }
+
 .result-overlay {
   position: fixed;
   z-index: 50;
@@ -173,10 +370,16 @@ button:disabled { cursor: not-allowed; opacity: .45; transform: none; }
 .result-overlay h2 { margin: 8px 0 28px; font-size: clamp(1.6rem, 5vw, 2.8rem); }
 .result-overlay button { background: var(--gold); border-color: #fff0b0; color: #21192c; }
 
+@media (max-width: 1100px) {
+  .workspace { grid-template-columns: minmax(0, 1fr) 320px; }
+  .side-badges { grid-column: 1 / -1; flex-direction: row; }
+  .side-badges .badge { flex: 1; }
+}
+
 @media (max-width: 900px) {
   .game-shell { padding: 14px; }
   .workspace { grid-template-columns: 1fr; }
-  aside { display: grid; grid-template-columns: 1fr 1fr; }
+  .workspace > aside:not(.side-badges) { display: grid; grid-template-columns: 1fr 1fr; }
   .debug, .mic-state { grid-column: 1 / -1; }
 }
 
