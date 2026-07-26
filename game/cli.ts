@@ -4,11 +4,16 @@ import {
   command,
   executeEnvelope,
   initialState,
+  movePlayer,
+  slimeTypes,
   tick,
+  tileCenter,
   validateEnvelope,
   type Action,
+  type ActorId,
   type CauldronId,
   type GameState,
+  type SlimeTypeId,
   type TargetId,
 } from "./core.js";
 
@@ -25,18 +30,29 @@ const cauldrons: CauldronId[] = ["cauldron-01", "cauldron-02"];
 
 function runFor(state: GameState, durationMs: number) {
   let next = state;
-  for (let elapsed = 0; elapsed < durationMs && next.phase === "playing"; elapsed += 50) {
+  for (
+    let elapsed = 0;
+    elapsed < durationMs && next.phase === "playing";
+    elapsed += 50
+  ) {
     next = tick(next, Math.min(50, durationMs - elapsed));
   }
   return next;
 }
 
+type Operation =
+  | { token: string; waitMs: number }
+  | { token: string; playerTile: { col: number; row: number } }
+  | { token: string; actorId: ActorId; action: Action; targetId?: TargetId };
+
 export function simulate(args: string[]) {
   let seed = 2026;
-  const operations: Array<
-    | { token: string; waitMs: number }
-    | { token: string; action: Action; targetId?: TargetId }
-  > = [];
+  let squad: SlimeTypeId[] = ["keen"];
+  // 기본은 플레이어가 명령 대상 슬라임을 따라다닌다고 가정한다.
+  // --player 또는 PLAYER 토큰을 쓰면 고정 위치로 청력 판정을 한다.
+  let followPlayer = true;
+  let fixedPlayer: { col: number; row: number } | null = null;
+  const operations: Operation[] = [];
 
   for (const token of args) {
     if (token.startsWith("--seed=")) {
@@ -46,45 +62,93 @@ export function simulate(args: string[]) {
       }
       continue;
     }
-    const [name, target, extra] = token.split(":");
-    if (name === "WAIT" && target && extra === undefined) {
-      const waitMs = Number(target);
+    if (token.startsWith("--slimes=")) {
+      squad = token.slice(9).split(",") as SlimeTypeId[];
+      if (squad.some((typeId) => !(typeId in slimeTypes))) {
+        throw new Error(`허용되지 않은 슬라임: ${token}`);
+      }
+      continue;
+    }
+    if (token.startsWith("--player=")) {
+      const [col, row] = token.slice(9).split(",").map(Number);
+      if (!Number.isSafeInteger(col) || !Number.isSafeInteger(row)) {
+        throw new Error(`잘못된 플레이어 위치: ${token}`);
+      }
+      followPlayer = false;
+      fixedPlayer = { col, row };
+      continue;
+    }
+    const parts = token.split(":");
+    if (parts[0] === "WAIT" && parts.length === 2) {
+      const waitMs = Number(parts[1]);
       if (!Number.isSafeInteger(waitMs) || waitMs < 0) {
         throw new Error(`잘못된 대기: ${token}`);
       }
       operations.push({ token, waitMs });
       continue;
     }
+    if (parts[0] === "PLAYER" && parts.length === 3) {
+      const [col, row] = [Number(parts[1]), Number(parts[2])];
+      if (!Number.isSafeInteger(col) || !Number.isSafeInteger(row)) {
+        throw new Error(`잘못된 플레이어 위치: ${token}`);
+      }
+      followPlayer = false;
+      operations.push({ token, playerTile: { col, row } });
+      continue;
+    }
+    // [actor.]ACTION[:target] — actor 생략 시 스쿼드의 첫 슬라임.
+    const [head, target, extra] = token.split(":");
+    const [actorPart, actionPart] = head.includes(".")
+      ? head.split(".")
+      : [null, head];
     if (
       extra !== undefined ||
-      !actions.includes(name as Action) ||
+      (head.match(/\./g) ?? []).length > 1 ||
+      (actorPart !== null && !(actorPart in slimeTypes)) ||
+      !actions.includes(actionPart as Action) ||
       (target !== undefined && !cauldrons.includes(target as CauldronId))
     ) {
       throw new Error(`허용되지 않은 명령: ${token}`);
     }
+    const actorId = (actorPart ?? squad[0]) as ActorId;
+    if (!squad.includes(actorId)) {
+      throw new Error(`스쿼드에 없는 슬라임: ${token}`);
+    }
     operations.push({
       token,
-      action: name as Action,
+      actorId,
+      action: actionPart as Action,
       targetId: target as TargetId | undefined,
     });
   }
 
-  let state = initialState(seed);
+  let state = initialState(seed, squad);
+  if (fixedPlayer) {
+    const center = tileCenter(fixedPlayer);
+    state = movePlayer(state, center.x, center.y);
+  }
   let elapsedMs = 0;
   const steps = operations.map((operation) => {
     if ("waitMs" in operation) {
       state = runFor(state, operation.waitMs);
       elapsedMs += operation.waitMs;
+    } else if ("playerTile" in operation) {
+      const center = tileCenter(operation.playerTile);
+      state = movePlayer(state, center.x, center.y);
     } else {
       const checked = validateEnvelope(
-        command(operation.action, operation.targetId),
+        command(operation.actorId, operation.action, operation.targetId),
       );
       if ("reason" in checked) throw new Error(checked.reason);
+      if (followPlayer) {
+        const actor = state.actors[operation.actorId]!;
+        state = movePlayer(state, actor.x, actor.y);
+      }
       state = executeEnvelope(state, checked.value);
+      const actorId = operation.actorId;
       while (
         state.phase === "playing" &&
-        (state.actors["slime-01"].current ||
-          state.actors["slime-01"].queue.length)
+        (state.actors[actorId]!.current || state.actors[actorId]!.queue.length)
       ) {
         state = tick(state, 50);
         elapsedMs += 50;
@@ -94,20 +158,25 @@ export function simulate(args: string[]) {
       operation: operation.token,
       elapsedMs,
       event: state.lastEvent,
-      carrying: state.actors["slime-01"].carrying,
+      carrying: Object.fromEntries(
+        Object.entries(state.actors).map(([id, actor]) => [id, actor.carrying]),
+      ),
       submitted: state.submitted,
+      gold: state.gold,
       cauldrons: state.cauldrons,
     };
   });
 
   return {
     seed,
+    squad,
     elapsedMs,
     steps,
     final: {
       phase: state.phase,
       timeLeftMs: state.timeLeftMs,
       submitted: state.submitted,
+      gold: state.gold,
       actors: state.actors,
       cauldrons: state.cauldrons,
       history: state.history,
