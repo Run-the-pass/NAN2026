@@ -622,6 +622,7 @@ export default function Game() {
 
       let lastVoiceAt = 0;
       let startedAt = 0;
+      let voicedFrames = 0;
       const watchVoice = () => {
         if (!listening.current) return;
         analyser.getByteTimeDomainData(samples);
@@ -640,8 +641,14 @@ export default function Game() {
           recorder.current = next;
           startedAt = now;
           lastVoiceAt = now;
+          voicedFrames = 1;
           next.ondataavailable = (event) => chunks.push(event.data);
           next.onstop = () => {
+            if (voicedFrames < 12) {
+              voiceBusy.current = false;
+              setMic("상시 음성 인식 중 · 말씀하세요");
+              return;
+            }
             const blob = new Blob(chunks, { type: next.mimeType });
             void submitVoice(blob, list).finally(() => {
               voiceBusy.current = false;
@@ -650,7 +657,10 @@ export default function Game() {
           next.start();
           setMic("말씀을 듣는 중…");
         } else if (active) {
-          if (level > 0.02) lastVoiceAt = now;
+          if (level > 0.02) {
+            lastVoiceAt = now;
+            voicedFrames += 1;
+          }
           if (now - lastVoiceAt > 800 || now - startedAt > 8_000) {
             voiceBusy.current = true;
             recorder.current?.stop();
