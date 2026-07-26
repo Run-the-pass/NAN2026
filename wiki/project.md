@@ -1,7 +1,7 @@
 ---
 type: project
 status: current
-updated: 2026-07-25
+updated: 2026-07-27
 sources:
   - raw/project-brief.md
   - raw/slime-stats-pricing-and-penalties.md
@@ -84,6 +84,7 @@ sources:
 - 두 솥의 독립 상태 전이와 자동 타이머, 미지정 시 가까운 솥 자동 배정
 - 180초 제한, 8권 성공, 납품당 100G, 시간 만료 실패와 재시작
 - 오디오와 스쿼드를 Gemini 명령 JSON으로 바꾸는 API와 서버 allowlist
+- 라운드 시작부터 종료까지 켜지는 음성 대기와 말이 끝난 뒤 자동 전송
 - 같은 코어를 실행하는 CLI(액터 접두사·PLAYER 위치)와 결정론 테스트
 - 한 판이 끝나면 요약 지표를 D1에 저장하는 플레이테스트 기록 API
 
