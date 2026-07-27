@@ -40,12 +40,21 @@ button, select { font: inherit; }
   background: url("/home/bg.png") center / cover no-repeat;
 }
 
+.home-stage {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  height: 100svh;
+  aspect-ratio: 314 / 225;
+  transform: translate(-50%, -50%);
+}
+
 .home-logo {
   position: absolute;
   z-index: 6;
-  top: 4%;
+  top: 10.2%;
   left: 50%;
-  width: min(46vw, 60vh, 560px);
+  width: 47.3%;
   height: auto;
   transform: translateX(-50%);
   pointer-events: none;
@@ -55,12 +64,11 @@ button, select { font: inherit; }
 .home-menu {
   position: absolute;
   z-index: 8;
-  top: 39%;
+  top: 49%;
   left: 50%;
   display: grid;
-  width: min(30vw, 340px);
+  width: 29%;
   justify-items: center;
-  gap: 2px;
   transform: translateX(-50%);
 }
 
@@ -87,10 +95,10 @@ button, select { font: inherit; }
 }
 
 .home-menu-button img { display: block; width: 100%; height: auto; }
-.home-settings { position: relative; }
+.home-settings { position: relative; margin-top: 5%; }
 .home-settings summary { list-style: none; }
 .home-settings summary::-webkit-details-marker { display: none; }
-.home-settings summary img { width: 68%; }
+.home-settings summary img { width: 53%; }
 
 .home-settings p {
   position: absolute;
@@ -122,25 +130,25 @@ button, select { font: inherit; }
 
 .home-desk {
   z-index: 2;
-  bottom: -2%;
-  left: 0;
-  width: min(41vw, 520px);
+  top: 35.7%;
+  left: -1%;
+  width: 41.5%;
 }
 
 .home-cauldron {
   z-index: 1;
-  right: 8%;
-  bottom: 1%;
-  width: min(42vw, 540px);
+  top: 34%;
+  left: 52%;
+  width: 55%;
   transform-origin: 50% 100%;
   animation: cauldron-breathe 2.8s ease-in-out infinite;
 }
 
 .home-slime {
   z-index: 5;
-  right: -1%;
-  bottom: 0;
-  width: min(38vw, 62vh, 500px);
+  top: 51.7%;
+  left: 57.3%;
+  width: 43%;
   filter: drop-shadow(0 18px 15px #160b0666);
 }
 
@@ -530,12 +538,6 @@ button:disabled { cursor: not-allowed; opacity: .45; transform: none; }
 }
 
 @media (max-width: 560px) {
-  .home-logo { top: 7%; width: 76vw; }
-  .home-menu { top: 36%; width: 54vw; }
-  .home-desk { bottom: 1%; left: -16%; width: 67vw; }
-  .home-cauldron { right: -2%; bottom: 5%; width: 70vw; }
-  .home-slime { right: -16%; bottom: 1%; width: 67vw; }
-
   .workspace, aside { display: block; }
   aside > * { margin-top: 10px; }
   .round-badge { font-size: 11px; }
