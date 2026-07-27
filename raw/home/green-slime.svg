@@ -1,0 +1,80 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg"
+     width="1254"
+     height="1254"
+     viewBox="0 0 1254 1254"
+     role="img"
+     aria-labelledby="title desc">
+  <title id="title">귀여운 초록색 슬라임</title>
+  <desc id="desc">반투명한 연두색 막 안에 초록색 몸체가 들어 있고, 둥근 눈과 반원형 입을 가진 슬라임 캐릭터</desc>
+
+  <defs>
+    <linearGradient id="outerShell" x1="0.5" y1="0" x2="0.5" y2="1">
+      <stop offset="0" stop-color="#a8dda0"/>
+      <stop offset="0.58" stop-color="#9bd795"/>
+      <stop offset="1" stop-color="#a9dfa3"/>
+    </linearGradient>
+    <radialGradient id="innerBody" cx="50%" cy="44%" r="67%">
+      <stop offset="0" stop-color="#65c853"/>
+      <stop offset="0.72" stop-color="#58bd49"/>
+      <stop offset="1" stop-color="#51b745"/>
+    </radialGradient>
+  </defs>
+
+  <!-- 흰색 외곽 패딩 -->
+  <path
+    d="M 627 300
+       C 844 300 1028 438 1081 623
+       C 1124 775 1070 900 961 954
+       C 875 997 743 1000 627 1000
+       C 491 1000 354 994 265 939
+       C 178 886 145 787 169 652
+       C 208 433 399 300 627 300 Z"
+    fill="none"
+    stroke="#ffffff"
+    stroke-width="49"
+    stroke-linejoin="round"/>
+
+  <!-- 바깥 막과 검은 테두리 -->
+  <path
+    d="M 627 300
+       C 844 300 1028 438 1081 623
+       C 1124 775 1070 900 961 954
+       C 875 997 743 1000 627 1000
+       C 491 1000 354 994 265 939
+       C 178 886 145 787 169 652
+       C 208 433 399 300 627 300 Z"
+    fill="url(#outerShell)"
+    stroke="#000000"
+    stroke-width="29"
+    stroke-linejoin="round"/>
+
+  <!-- 안쪽 슬라임 몸체 -->
+  <path
+    d="M 272 681
+       C 291 560 433 480 615 472
+       C 808 463 938 545 974 665
+       C 1001 756 973 831 900 868
+       C 822 908 435 913 345 871
+       C 281 841 257 777 272 681 Z"
+    fill="url(#innerBody)"/>
+
+  <!-- 막 표면의 반사광 -->
+  <ellipse
+    cx="410"
+    cy="439"
+    rx="58"
+    ry="28"
+    transform="rotate(-36 410 439)"
+    fill="#e8f7df"
+    opacity="0.72"/>
+
+  <!-- 얼굴 -->
+  <circle cx="526" cy="676" r="33" fill="#000000"/>
+  <circle cx="726" cy="676" r="33" fill="#000000"/>
+  <path
+    d="M 581 718
+       H 671
+       A 45 50 0 0 1 581 718 Z"
+    fill="#000000"/>
+</svg>
