@@ -1,7 +1,7 @@
 ---
 type: decision
 status: current
-updated: 2026-07-25
+updated: 2026-07-27
 sources:
   - raw/slime-stats-pricing-and-penalties.md
   - raw/fun-test-design-changes.md
@@ -82,5 +82,6 @@ actor는 이번 판에 선택된 슬라임(`nerd`, `swift`, `keen`, `worker` 중
 - 동일 코어를 사용하는 디버그 버튼, Gemini 명령, CLI 테스트
 - 음성 피드백 카드: 들은 문장(transcript), 해석된 슬라임·행동·대상,
   인식 실패/해석 실패/접수 구분
+- 라운드 시작 시 마이크를 켜고, 발화를 감지해 0.8초 침묵 뒤 자동 전송
 - 레시피·목표 패널과 기본 접힘 디버그 버튼. 첫 슬라임은 플레이어 옆에서
   시작해 첫 명령이 청력 범위 안에 들어온다.

@@ -1,7 +1,7 @@
 "use client";
 
 import * as Phaser from "phaser";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   TILE_SIZE,
   WORKSHOP_ROWS,
@@ -159,16 +159,44 @@ export default function Game() {
   const stateRef = useRef(state);
   const view = useRef<View | null>(null);
   const recorder = useRef<MediaRecorder | null>(null);
-  const chunks = useRef<Blob[]>([]);
+  const micStream = useRef<MediaStream | null>(null);
+  const audioContext = useRef<AudioContext | null>(null);
+  const voiceFrame = useRef(0);
+  const listening = useRef(false);
+  const voiceBusy = useRef(false);
   const metrics = useRef<Metrics>(emptyMetrics());
   const savedRef = useRef(false);
   const roundSeed = useRef(0);
   // 청력 판정에 쓰는 플레이어 위치. Phaser가 매 프레임 갱신한다.
   const playerPos = useRef(tileCenter(playerStartTile));
 
+  const stopMic = useCallback((message?: string) => {
+    listening.current = false;
+    cancelAnimationFrame(voiceFrame.current);
+    if (recorder.current?.state === "recording") {
+      recorder.current.onstop = null;
+      recorder.current.stop();
+    }
+    micStream.current?.getTracks().forEach((track) => track.stop());
+    void audioContext.current?.close();
+    recorder.current = null;
+    micStream.current = null;
+    audioContext.current = null;
+    voiceBusy.current = false;
+    if (message) setMic(message);
+  }, []);
+
   useEffect(() => {
     stateRef.current = state;
   }, [state]);
+
+  useEffect(() => {
+    if (state?.phase && state.phase !== "playing") {
+      stopMic("라운드 종료 · 음성 인식 꺼짐");
+    }
+  }, [state?.phase, stopMic]);
+
+  useEffect(() => () => stopMic(), [stopMic]);
 
   useEffect(() => {
     if (!squad) return;
@@ -717,6 +745,7 @@ export default function Game() {
     setHoveredActor(null);
     setState(next);
     setSquad(list);
+    void startListening(list);
   }
 
   function run(action: Action) {
@@ -743,112 +772,160 @@ export default function Game() {
     );
   }
 
-  async function toggleMic() {
-    if (recorder.current?.state === "recording") {
-      recorder.current.stop();
-      return;
+  async function submitVoice(blob: Blob, list: SlimeTypeId[]) {
+    setMic("Gemini 해석 중…");
+    const form = new FormData();
+    form.append("audio", blob, "command.webm");
+    form.append("actors", list.join(","));
+    try {
+      const response = await fetch("/api/command", {
+        method: "POST",
+        body: form,
+      });
+      const payload = (await response.json()) as {
+        reason?: string;
+        transcript?: string | null;
+      };
+      const transcript =
+        typeof payload.transcript === "string" ? payload.transcript : null;
+      if (!response.ok) {
+        const reason = payload.reason || "명령 해석 실패";
+        metrics.current.voiceFailures += 1;
+        setMic(`${reason} · 계속 듣는 중`);
+        setVoice({
+          // 문장이 있으면 해석 실패, 없으면 인식 실패로 구분한다.
+          kind: transcript ? "uninterpreted" : "unheard",
+          transcript,
+          commands: [],
+          detail: reason,
+        });
+        setState((current) =>
+          current ? { ...current, lastEvent: reason } : current,
+        );
+        return;
+      }
+      const checked = validateEnvelope(payload);
+      if (!checked.ok) {
+        metrics.current.voiceFailures += 1;
+        setMic(`${checked.reason} · 계속 듣는 중`);
+        setVoice({
+          kind: "uninterpreted",
+          transcript,
+          commands: [],
+          detail: checked.reason,
+        });
+        setState((current) =>
+          current ? { ...current, lastEvent: checked.reason } : current,
+        );
+        return;
+      }
+      metrics.current.voiceCommands += 1;
+      metrics.current.confidenceSum += checked.value.confidence;
+      setVoice({
+        kind: "accepted",
+        transcript,
+        commands: checked.value.commands.map((item) => {
+          const name = slimeTypes[item.actorId].name;
+          const target = item.targetId
+            ? targetNames[item.targetId]
+            : "가까운 솥 자동";
+          return `${name} · ${actionNames[item.action]} → ${target}`;
+        }),
+        detail: `신뢰도 ${Math.round(checked.value.confidence * 100)}% · 실행 가능 여부는 최근 상황에서 확인`,
+      });
+      setState((current) =>
+        current
+          ? executeEnvelope(
+              movePlayer(current, playerPos.current.x, playerPos.current.y),
+              checked.value,
+            )
+          : current,
+      );
+      setMic(
+        `인식 완료 · 신뢰도 ${Math.round(checked.value.confidence * 100)}% · 계속 듣는 중`,
+      );
+    } catch {
+      const reason = "음성 서버에 연결하지 못했습니다.";
+      metrics.current.voiceFailures += 1;
+      setMic(`${reason} · 계속 듣는 중`);
+      setVoice({
+        kind: "unheard",
+        transcript: null,
+        commands: [],
+        detail: reason,
+      });
+      setState((current) =>
+        current ? { ...current, lastEvent: reason } : current,
+      );
     }
+  }
+
+  async function startListening(list: SlimeTypeId[]) {
+    if (listening.current) return;
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      chunks.current = [];
-      const next = new MediaRecorder(stream);
-      recorder.current = next;
-      next.ondataavailable = (event) => chunks.current.push(event.data);
-      next.onstop = async () => {
-        stream.getTracks().forEach((track) => track.stop());
-        setMic("Gemini 해석 중…");
-        const form = new FormData();
-        form.append(
-          "audio",
-          new Blob(chunks.current, { type: next.mimeType }),
-          "command.webm",
+      const context = new AudioContext();
+      const analyser = context.createAnalyser();
+      analyser.fftSize = 256;
+      context.createMediaStreamSource(stream).connect(analyser);
+      const samples = new Uint8Array(analyser.fftSize);
+      micStream.current = stream;
+      audioContext.current = context;
+      listening.current = true;
+      setMic("상시 음성 인식 중 · 말씀하세요");
+
+      let lastVoiceAt = 0;
+      let startedAt = 0;
+      let voicedFrames = 0;
+      const watchVoice = () => {
+        if (!listening.current) return;
+        analyser.getByteTimeDomainData(samples);
+        const level = Math.sqrt(
+          samples.reduce((sum, sample) => {
+            const value = (sample - 128) / 128;
+            return sum + value * value;
+          }, 0) / samples.length,
         );
-        form.append("actors", (squad ?? []).join(","));
-        try {
-          const response = await fetch("/api/command", {
-            method: "POST",
-            body: form,
-          });
-          const payload = (await response.json()) as {
-            reason?: string;
-            transcript?: string | null;
+        const now = performance.now();
+        const active = recorder.current?.state === "recording";
+
+        if (!active && !voiceBusy.current && level > 0.035) {
+          const chunks: Blob[] = [];
+          const next = new MediaRecorder(stream);
+          recorder.current = next;
+          startedAt = now;
+          lastVoiceAt = now;
+          voicedFrames = 1;
+          next.ondataavailable = (event) => chunks.push(event.data);
+          next.onstop = () => {
+            if (voicedFrames < 12) {
+              voiceBusy.current = false;
+              setMic("상시 음성 인식 중 · 말씀하세요");
+              return;
+            }
+            const blob = new Blob(chunks, { type: next.mimeType });
+            void submitVoice(blob, list).finally(() => {
+              voiceBusy.current = false;
+            });
           };
-          const transcript =
-            typeof payload.transcript === "string" ? payload.transcript : null;
-          if (!response.ok) {
-            const reason = payload.reason || "명령 해석 실패";
-            metrics.current.voiceFailures += 1;
-            setMic(reason);
-            setVoice({
-              // 문장이 있으면 해석 실패, 없으면 인식 실패로 구분한다.
-              kind: transcript ? "uninterpreted" : "unheard",
-              transcript,
-              commands: [],
-              detail: reason,
-            });
-            setState((current) =>
-              current ? { ...current, lastEvent: reason } : current,
-            );
-            return;
+          next.start();
+          setMic("말씀을 듣는 중…");
+        } else if (active) {
+          if (level > 0.02) {
+            lastVoiceAt = now;
+            voicedFrames += 1;
           }
-          const checked = validateEnvelope(payload);
-          if (!checked.ok) {
-            metrics.current.voiceFailures += 1;
-            setMic(checked.reason);
-            setVoice({
-              kind: "uninterpreted",
-              transcript,
-              commands: [],
-              detail: checked.reason,
-            });
-            setState((current) =>
-              current ? { ...current, lastEvent: checked.reason } : current,
-            );
-            return;
+          if (now - lastVoiceAt > 800 || now - startedAt > 8_000) {
+            voiceBusy.current = true;
+            recorder.current?.stop();
           }
-          metrics.current.voiceCommands += 1;
-          metrics.current.confidenceSum += checked.value.confidence;
-          setVoice({
-            kind: "accepted",
-            transcript,
-            commands: checked.value.commands.map((item) => {
-              const name = slimeTypes[item.actorId].name;
-              const target = item.targetId
-                ? targetNames[item.targetId]
-                : "가까운 솥 자동";
-              return `${name} · ${actionNames[item.action]} → ${target}`;
-            }),
-            detail: `신뢰도 ${Math.round(checked.value.confidence * 100)}% · 실행 가능 여부는 최근 상황에서 확인`,
-          });
-          setState((current) =>
-            current
-              ? executeEnvelope(
-                  movePlayer(
-                    current,
-                    playerPos.current.x,
-                    playerPos.current.y,
-                  ),
-                  checked.value,
-                )
-              : current,
-          );
-          setMic(
-            `인식 완료 · 신뢰도 ${Math.round(checked.value.confidence * 100)}%`,
-          );
-        } catch {
-          const reason = "음성 서버에 연결하지 못했습니다.";
-          metrics.current.voiceFailures += 1;
-          setMic(reason);
-          setVoice({ kind: "unheard", transcript: null, commands: [], detail: reason });
-          setState((current) =>
-            current ? { ...current, lastEvent: reason } : current,
-          );
         }
+
+        voiceFrame.current = requestAnimationFrame(watchVoice);
       };
-      next.start();
-      setMic("듣는 중… 다시 누르면 전송");
+      watchVoice();
     } catch {
-      setMic("마이크 권한이 필요합니다.");
+      stopMic("마이크 권한이 필요합니다. 버튼을 눌러 다시 시도하세요.");
     }
   }
 

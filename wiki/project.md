@@ -1,11 +1,14 @@
 ---
 type: project
 status: current
-updated: 2026-07-25
+updated: 2026-07-27
 sources:
   - raw/project-brief.md
   - raw/slime-stats-pricing-and-penalties.md
   - raw/fun-test-design-changes.md
+  - raw/home/home_reference.png
+  - raw/home v2/home_reference.png
+  - raw/home v2/
   - raw/references/upgrade-choice-cards.png
 ---
 
@@ -75,6 +78,9 @@ sources:
 
 ## 현재 구현
 
+- `/` 홈 화면과 `/game` 게임 화면 분리, 양방향 이동
+- 홈 v2의 배경·SVG 로고·시작·설정·공방 소품 배치와 반응형 화면
+- SVG 슬라임 휴식 모션, 포션 기포, 가마솥 수축·팽창 모션
 - 참고 이미지 배치의 고정 공방 맵과 좌측 시간·골드 배지, 우측 패널 UI
 - 시작 전 첫 직원 선택 화면 (4종 중 1마리, 코어·CLI는 1~3마리 지원)
 - 레시피·목표 패널, 기본 접힘 디버그, 플레이어 옆 첫 스폰
@@ -84,6 +90,7 @@ sources:
 - 두 솥의 독립 상태 전이와 자동 타이머, 미지정 시 가까운 솥 자동 배정
 - 180초 제한, 8권 성공, 납품당 100G, 시간 만료 실패와 재시작
 - 오디오와 스쿼드를 Gemini 명령 JSON으로 바꾸는 API와 서버 allowlist
+- 라운드 시작부터 종료까지 켜지는 음성 대기와 말이 끝난 뒤 자동 전송
 - 같은 코어를 실행하는 CLI(액터 접두사·PLAYER 위치)와 결정론 테스트
 - 한 판이 끝나면 요약 지표를 D1에 저장하는 플레이테스트 기록 API
 
