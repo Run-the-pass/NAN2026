@@ -10,8 +10,8 @@ export default function Home() {
         <img
           className="home-logo"
           src="/home/logo.svg"
-          width={804}
-          height={420}
+          width={782}
+          height={402}
           alt="터진다! 슬라임 공방"
         />
 

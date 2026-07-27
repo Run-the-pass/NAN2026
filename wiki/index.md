@@ -4,6 +4,7 @@ status: current
 updated: 2026-07-27
 sources:
   - raw/project-brief.md
+  - raw/home/home_reference.png
   - raw/home v2/home_reference.png
   - raw/home v2/
   - raw/references/upgrade-choice-cards.png

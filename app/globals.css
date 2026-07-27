@@ -37,7 +37,9 @@ button, select { font: inherit; }
   isolation: isolate;
   min-height: 100svh;
   overflow: hidden;
-  background: url("/home/bg.png") center / cover no-repeat;
+  background:
+    linear-gradient(#2f150099, #2f150099),
+    url("/home/bg.png") center / cover no-repeat;
 }
 
 .home-stage {
@@ -52,9 +54,9 @@ button, select { font: inherit; }
 .home-logo {
   position: absolute;
   z-index: 6;
-  top: 10.2%;
+  top: 11.2%;
   left: 50%;
-  width: 47.3%;
+  width: 45.7%;
   height: auto;
   transform: translateX(-50%);
   pointer-events: none;
@@ -67,14 +69,12 @@ button, select { font: inherit; }
   top: 49%;
   left: 50%;
   display: grid;
-  width: 29%;
   justify-items: center;
   transform: translateX(-50%);
 }
 
 .home-menu-button {
   display: grid;
-  width: 100%;
   place-items: center;
   border: 0;
   background: transparent;
@@ -94,11 +94,12 @@ button, select { font: inherit; }
   outline-offset: 3px;
 }
 
-.home-menu-button img { display: block; width: 100%; height: auto; }
-.home-settings { position: relative; margin-top: 5%; }
+.home-menu-button img { display: block; width: auto; }
+.home-start img { height: 13.6svh; }
+.home-settings { position: relative; margin-top: 2.2svh; }
 .home-settings summary { list-style: none; }
 .home-settings summary::-webkit-details-marker { display: none; }
-.home-settings summary img { width: 53%; }
+.home-settings summary img { height: 12.6svh; }
 
 .home-settings p {
   position: absolute;
@@ -146,9 +147,9 @@ button, select { font: inherit; }
 
 .home-slime {
   z-index: 5;
-  top: 51.7%;
-  left: 57.3%;
-  width: 43%;
+  top: 51.5%;
+  left: 57.5%;
+  width: 46%;
   filter: drop-shadow(0 18px 15px #160b0666);
 }
 

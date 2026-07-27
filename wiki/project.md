@@ -6,6 +6,7 @@ sources:
   - raw/project-brief.md
   - raw/slime-stats-pricing-and-penalties.md
   - raw/fun-test-design-changes.md
+  - raw/home/home_reference.png
   - raw/home v2/home_reference.png
   - raw/home v2/
   - raw/references/upgrade-choice-cards.png
