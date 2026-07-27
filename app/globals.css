@@ -151,7 +151,7 @@ button, select { font: inherit; }
 .home-cauldron-bubble {
   z-index: 1;
   top: 39%;
-  left: 75%;
+  left: 67%;
   width: 9%;
   filter: brightness(.72) saturate(.55);
   animation: cauldron-bubble-rise 3.2s ease-in infinite;
@@ -159,14 +159,14 @@ button, select { font: inherit; }
 
 .cauldron-bubble-2 {
   top: 38%;
-  left: 83%;
+  left: 76%;
   width: 7%;
   animation-delay: -1.1s;
 }
 
 .cauldron-bubble-3 {
   top: 40%;
-  left: 90%;
+  left: 84%;
   width: 10%;
   animation-delay: -2.2s;
 }
