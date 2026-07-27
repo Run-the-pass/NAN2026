@@ -6,8 +6,8 @@ sources:
   - raw/project-brief.md
   - raw/slime-stats-pricing-and-penalties.md
   - raw/fun-test-design-changes.md
-  - raw/home/home_reference.png
-  - raw/home/green-slime.svg
+  - raw/home v2/home_reference.png
+  - raw/home v2/
   - raw/references/upgrade-choice-cards.png
 ---
 
@@ -78,8 +78,8 @@ sources:
 ## 현재 구현
 
 - `/` 홈 화면과 `/game` 게임 화면 분리, 양방향 이동
-- 홈 레퍼런스의 로고·시작·설정·공방 소품 배치와 반응형 화면
-- SVG 슬라임 벡터 그룹의 숨쉬기·눌림·눈깜빡임 휴식 모션
+- 홈 v2의 배경·SVG 로고·시작·설정·공방 소품 배치와 반응형 화면
+- SVG 슬라임 휴식 모션, 포션 기포, 가마솥 수축·팽창 모션
 - 참고 이미지 배치의 고정 공방 맵과 좌측 시간·골드 배지, 우측 패널 UI
 - 시작 전 첫 직원 선택 화면 (4종 중 1마리, 코어·CLI는 1~3마리 지원)
 - 레시피·목표 패널, 기본 접힘 디버그, 플레이어 옆 첫 스폰

@@ -8,19 +8,19 @@ export default function Home() {
 
       <img
         className="home-logo"
-        src="/home/logo.png"
-        width={1448}
-        height={1086}
+        src="/home/logo.svg"
+        width={804}
+        height={420}
         alt="터진다! 슬라임 공방"
       />
 
       <nav className="home-menu" aria-label="메인 메뉴">
         <Link className="home-menu-button home-start" href="/game">
-          <img src="/home/start.png" width={106} height={53} alt="시작하기" />
+          <img src="/home/start.svg" width={1555} height={523} alt="시작하기" />
         </Link>
         <details className="home-settings">
           <summary className="home-menu-button">
-            <img src="/home/settings.png" width={80} height={53} alt="설정" />
+            <img src="/home/setting.svg" width={964} height={574} alt="설정" />
           </summary>
           <p>
             게임이 시작되면 마이크가 자동으로 켜집니다.
@@ -32,16 +32,16 @@ export default function Home() {
 
       <img
         className="home-desk"
-        src="/home/desk.png"
-        width={1182}
-        height={1330}
+        src="/home/potion-desk.svg"
+        width={852}
+        height={754}
         alt=""
       />
       <img
         className="home-cauldron"
-        src="/home/cauldron.png"
-        width={1182}
-        height={1330}
+        src="/home/cauldron.svg"
+        width={856}
+        height={678}
         alt=""
       />
       {/* SVG 내부 벡터 그룹이 서로 다른 박자로 눌리고 늘어난다. */}
