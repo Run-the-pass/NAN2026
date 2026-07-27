@@ -24,6 +24,13 @@ import {
   type GameState,
   type SlimeTypeId,
 } from "../game/core";
+import { nextHint } from "../game/hint";
+import {
+  facingFromDelta,
+  facings,
+  slimeDataUri,
+  type Facing,
+} from "./slime-art";
 
 type View = { sync: (state: GameState) => void };
 
@@ -40,6 +47,10 @@ const typeCssColors: Record<SlimeTypeId, string> = {
   worker: "#e07b39",
 };
 const allTypeIds = Object.keys(slimeTypes) as SlimeTypeId[];
+// 텍스처는 116x90으로 굽고 절반 크기로 그린다.
+const SLIME_SCALE = 0.5;
+// 젓기만 손에 드는 것이 없어 따로 보여 줘야 한다.
+type Motion = "idle" | "walk" | "stir" | "pick";
 const potNames: Record<CauldronId, string> = {
   "cauldron-01": "왼쪽 솥",
   "cauldron-02": "오른쪽 솥",
@@ -51,11 +62,6 @@ const statusNames = {
   READY_FOR_PARCHMENT: "양피지 대기",
   INSCRIBING: "마도서 각인 중",
   BOOK_READY: "마도서 완성",
-} as const;
-const carriedNames = {
-  herb: "약초",
-  parchment: "양피지",
-  book: "마도서",
 } as const;
 const carriedIcons = { herb: "🌿", parchment: "📜", book: "📘" } as const;
 const alertIcons: Record<string, string> = {
@@ -256,32 +262,196 @@ export default function Game() {
           ActorId,
           {
             body: Phaser.GameObjects.Container;
+            art: Phaser.GameObjects.Image;
             carried: Phaser.GameObjects.Text;
             range: Phaser.GameObjects.Arc;
+            facing: Facing;
+            last: { x: number; y: number };
+            mode: Motion;
+            blinking: boolean;
+            motion: Phaser.Tweens.Tween;
           }
         >
       >;
       pots!: Record<CauldronId, Phaser.GameObjects.Text>;
+      swirls!: Record<CauldronId, Phaser.GameObjects.Container>;
+
+      // 가만히 있을 때: 원본 SVG의 숨쉬기를 tween으로 옮긴 것.
+      breathe(art: Phaser.GameObjects.Image) {
+        art.setScale(SLIME_SCALE);
+        return this.tweens.add({
+          targets: art,
+          scaleX: SLIME_SCALE * 0.985,
+          scaleY: SLIME_SCALE * 1.035,
+          y: -2,
+          duration: 1600,
+          yoyo: true,
+          repeat: -1,
+          ease: "Sine.easeInOut",
+        });
+      }
+
+      // 걸을 때: 더 짧고 크게 통통 튄다.
+      walk(art: Phaser.GameObjects.Image) {
+        art.setScale(SLIME_SCALE);
+        return this.tweens.add({
+          targets: art,
+          scaleX: SLIME_SCALE * 1.06,
+          scaleY: SLIME_SCALE * 0.9,
+          y: 3,
+          duration: 240,
+          yoyo: true,
+          repeat: -1,
+          ease: "Sine.easeInOut",
+        });
+      }
+
+      // 젓기: 팔이 없으니 몸을 좌우로 기울여 젓는다.
+      stir(art: Phaser.GameObjects.Image) {
+        art.setScale(SLIME_SCALE).setAngle(-12);
+        return this.tweens.add({
+          targets: art,
+          angle: 12,
+          duration: 260,
+          yoyo: true,
+          repeat: -1,
+          ease: "Sine.easeInOut",
+        });
+      }
+
+      // 집기·놓기: 푹 눌렸다 펴지는 한 동작.
+      pick(art: Phaser.GameObjects.Image) {
+        art.setScale(SLIME_SCALE);
+        return this.tweens.add({
+          targets: art,
+          scaleX: SLIME_SCALE * 1.12,
+          scaleY: SLIME_SCALE * 0.8,
+          y: 6,
+          duration: 300,
+          yoyo: true,
+          repeat: -1,
+          ease: "Quad.easeOut",
+        });
+      }
+
+      startMotion(art: Phaser.GameObjects.Image, mode: Motion) {
+        if (mode === "walk") return this.walk(art);
+        if (mode === "stir") return this.stir(art);
+        if (mode === "pick") return this.pick(art);
+        return this.breathe(art);
+      }
+
+      // 방향과 깜빡임 상태를 하나의 텍스처 키로 합쳐 적용한다.
+      paintSlime(actorId: ActorId) {
+        const sprite = this.slimes[actorId];
+        if (!sprite) return;
+        const blink = sprite.blinking && sprite.facing !== "up" ? "-blink" : "";
+        sprite.art.setTexture(`slime-${actorId}-${sprite.facing}${blink}`);
+      }
+
+      preload() {
+        for (const actorId of roster) {
+          for (const facing of facings) {
+            for (const blink of [false, true]) {
+              this.load.svg(
+                `slime-${actorId}-${facing}${blink ? "-blink" : ""}`,
+                slimeDataUri(actorId, facing, { blink }),
+                { width: 116, height: 90 },
+              );
+            }
+          }
+        }
+      }
 
       create() {
         this.cameras.main.setBackgroundColor("#171527");
-        const colors: Record<string, number> = {
-          ".": 0x332f48,
-          "#": 0x171527,
-          B: 0x4f74c2,
-          T: 0x8a8a8a,
-          H: 0x2f8f4e,
-          P: 0x7a3fa8,
-          C: 0x514369,
+        // 판자 위에 얹는 가구. 나무 공방 톤에 맞춘 색.
+        const furniture: Record<string, [number, number]> = {
+          B: [0x8b5a2b, 0xbb8348],
+          T: [0x554f86, 0x8279cc],
+          H: [0x2f7a3f, 0x54bb63],
+          P: [0x66408c, 0x9d6bc9],
         };
+        // 홈 화면(bg.png + #2f1500 오버레이)과 같은 나무 공방 톤.
+        // 바닥은 어두운 판자, 벽은 밝은 판자, 그 위에 마법 기운을 얹는다.
+        const planks = this.add.graphics().setDepth(0);
         WORKSHOP_ROWS.forEach((row, rowIndex) => {
           [...row].forEach((tile, colIndex) => {
             const { x, y } = tileCenter({ col: colIndex, row: rowIndex });
-            this.add
-              .rectangle(x, y, TILE_SIZE, TILE_SIZE, colors[tile])
-              .setStrokeStyle(1, 0xc6a6ff, tile === "." ? 0.18 : 0.48);
+            const left = x - TILE_SIZE / 2;
+            const top = y - TILE_SIZE / 2;
+            const wall = tile === "#";
+            // 판자마다 결이 조금씩 다르게 보이도록 행마다 색을 흔든다.
+            const shade = (rowIndex * 7 + colIndex * 13) % 3;
+            planks.fillStyle(
+              wall
+                ? [0xa9713a, 0xb0773e, 0xa26c36][shade]
+                : [0x402514, 0x452917, 0x3b2112][shade],
+              1,
+            );
+            planks.fillRect(left, top, TILE_SIZE, TILE_SIZE);
+            if (wall) {
+              // 벽은 세로 널, 바닥은 가로 판자로 결을 반대로 준다.
+              planks.fillStyle(0x7d4f26, 0.85);
+              planks.fillRect(left + TILE_SIZE - 4, top, 4, TILE_SIZE);
+              planks.fillStyle(0xffffff, 0.07);
+              planks.fillRect(left + 3, top, 3, TILE_SIZE);
+            } else {
+              planks.fillStyle(0x2c180d, 0.9);
+              planks.fillRect(left, top + TILE_SIZE - 3, TILE_SIZE, 3);
+              if ((colIndex + rowIndex) % 2 === 0) {
+                planks.fillRect(left, top, 2, TILE_SIZE);
+              }
+              planks.fillStyle(0xffffff, 0.03);
+              planks.fillRect(left, top + 3, TILE_SIZE, 2);
+            }
           });
         });
+        // 상자·작업대·납품대는 판자 위에 한 단 올라온 것처럼 그린다.
+        const props = this.add.graphics().setDepth(1);
+        WORKSHOP_ROWS.forEach((row, rowIndex) => {
+          [...row].forEach((tile, colIndex) => {
+            const paint = furniture[tile];
+            if (!paint) return;
+            const { x, y } = tileCenter({ col: colIndex, row: rowIndex });
+            const left = x - TILE_SIZE / 2;
+            const top = y - TILE_SIZE / 2;
+            props.fillStyle(paint[0], 1);
+            props.fillRect(left + 2, top + 2, TILE_SIZE - 4, TILE_SIZE - 4);
+            props.fillStyle(paint[1], 1);
+            props.fillRect(left + 2, top + 2, TILE_SIZE - 4, 8);
+          });
+        });
+        // 마법 기운: 바닥에 은은한 보라 빛과 떠다니는 불씨.
+        const glow = this.add.graphics().setDepth(0);
+        glow.fillStyle(0x8b5cf6, 0.07);
+        for (const id of ["cauldron-01", "cauldron-02"] as CauldronId[]) {
+          const { x, y } = tileCenter(displayTiles[id]);
+          glow.fillCircle(x, y, 110);
+        }
+        glow.fillStyle(0x7dd3fc, 0.05);
+        glow.fillCircle(...(([tileCenter(displayTiles.submission).x,
+          tileCenter(displayTiles.submission).y, 90]) as [number, number, number]));
+        for (let index = 0; index < 14; index += 1) {
+          const spark = this.add
+            .circle(
+              Phaser.Math.Between(80, 880),
+              Phaser.Math.Between(80, 520),
+              Phaser.Math.Between(1, 2),
+              0xd9b8ff,
+            )
+            .setDepth(0)
+            .setAlpha(0.5);
+          this.tweens.add({
+            targets: spark,
+            y: spark.y - Phaser.Math.Between(24, 54),
+            alpha: 0,
+            duration: Phaser.Math.Between(2600, 5200),
+            delay: Phaser.Math.Between(0, 2600),
+            repeat: -1,
+            ease: "Sine.easeOut",
+          });
+        }
         // 참고 이미지처럼 두 솥을 노랑·주황으로 구분한다.
         const potColors: Record<CauldronId, number> = {
           "cauldron-01": 0xe8a520,
@@ -307,7 +477,7 @@ export default function Game() {
           this.add
             .text(x + offsetX, y + 20, text, {
               color: "#f8efff",
-              fontFamily: "sans-serif",
+              fontFamily: "Jua, sans-serif",
               fontSize: "11px",
               fontStyle: "bold",
               align: "center",
@@ -329,9 +499,37 @@ export default function Game() {
             .setOrigin(0.5)
             .setDepth(3),
         };
+        this.swirls = {} as Record<CauldronId, Phaser.GameObjects.Container>;
         for (const id of ["cauldron-01", "cauldron-02"] as CauldronId[]) {
           const position = tileCenter(displayTiles[id]);
           this.pots[id].setPosition(position.x, position.y);
+          // 조합·각인 중인 솥은 소용돌이가 돈다.
+          const swirl = this.add
+            .container(
+              position.x,
+              position.y,
+              [0, 120, 240].map((degrees) => {
+                const radians = Phaser.Math.DegToRad(degrees);
+                return this.add
+                  .circle(
+                    Math.cos(radians) * 17,
+                    Math.sin(radians) * 17,
+                    3,
+                    0xf3e6ff,
+                  )
+                  .setAlpha(0.85);
+              }),
+            )
+            .setDepth(4)
+            .setVisible(false);
+          this.tweens.add({
+            targets: swirl,
+            angle: 360,
+            duration: 1100,
+            repeat: -1,
+            ease: "Linear",
+          });
+          this.swirls[id] = swirl;
         }
 
         this.slimes = {};
@@ -339,22 +537,24 @@ export default function Game() {
         for (const actorId of roster) {
           const actor = current?.actors[actorId];
           if (!actor) continue;
-          const body = this.add
-            .ellipse(0, 0, 48, 42, typeColors[actorId])
-            .setStrokeStyle(3, 0xffffff);
+          // 텍스처는 116x90으로 굽고 0.5배로 쓴다. tween이 이 값을 기준으로
+          // 늘였다 줄였다 하므로 setDisplaySize 대신 스케일로 고정한다.
+          const art = this.add
+            .image(0, 0, `slime-${actorId}-down`)
+            .setScale(SLIME_SCALE);
           const name = this.add
             .text(0, -34, actor.name, {
               color: "#f8efff",
-              fontFamily: "sans-serif",
+              fontFamily: "Jua, sans-serif",
               fontSize: "12px",
               fontStyle: "bold",
             })
             .setOrigin(0.5);
           const container = this.add
-            .container(actor.x, actor.y, [body, name])
+            .container(actor.x, actor.y, [art, name])
             .setDepth(5)
             .setInteractive(
-              new Phaser.Geom.Rectangle(-24, -21, 48, 42),
+              new Phaser.Geom.Rectangle(-29, -23, 58, 45),
               Phaser.Geom.Rectangle.Contains,
             )
             .on("pointerover", () => setHoveredActor(actorId))
@@ -375,7 +575,34 @@ export default function Game() {
             )
             .setStrokeStyle(1.5, typeColors[actorId], 0.28)
             .setDepth(1);
-          this.slimes[actorId] = { body: container, carried, range };
+          this.slimes[actorId] = {
+            body: container,
+            art,
+            carried,
+            range,
+            facing: "down",
+            last: { x: actor.x, y: actor.y },
+            mode: "idle",
+            blinking: false,
+            motion: this.breathe(art),
+          };
+          // 걷는 중에도 눈은 계속 깜빡이도록 몸 tween과 분리해 둔다.
+          this.time.addEvent({
+            delay: Phaser.Math.Between(3200, 5200),
+            loop: true,
+            callback: () => {
+              const sprite = this.slimes[actorId];
+              if (!sprite || sprite.facing === "up") return;
+              sprite.blinking = true;
+              this.paintSlime(actorId);
+              this.time.delayedCall(140, () => {
+                const open = this.slimes[actorId];
+                if (!open) return;
+                open.blinking = false;
+                this.paintSlime(actorId);
+              });
+            },
+          });
         }
         // 슬라임이 움직여 커서 밑에서 벗어나도 pointerout이 뜨도록 매 프레임
         // 히트 테스트를 갱신한다.
@@ -389,7 +616,7 @@ export default function Game() {
         const playerLabel = this.add
           .text(0, -38, "플레이어", {
             color: "#ffd7dd",
-            fontFamily: "sans-serif",
+            fontFamily: "Jua, sans-serif",
             fontSize: "11px",
             fontStyle: "bold",
           })
@@ -434,6 +661,30 @@ export default function Game() {
               const actor = current.actors[actorId];
               const sprite = this.slimes[actorId];
               if (!actor || !sprite) continue;
+              const facing = facingFromDelta(
+                actor.x - sprite.last.x,
+                actor.y - sprite.last.y,
+                sprite.facing,
+              );
+              if (facing !== sprite.facing) {
+                sprite.facing = facing;
+                this.paintSlime(actorId);
+              }
+              const mode: Motion =
+                actor.status === "MOVING"
+                  ? "walk"
+                  : actor.status === "WORKING"
+                    ? actor.current?.action === "MIX"
+                      ? "stir"
+                      : "pick"
+                    : "idle";
+              if (mode !== sprite.mode) {
+                sprite.mode = mode;
+                sprite.motion.stop();
+                sprite.art.setAngle(0).setY(0);
+                sprite.motion = this.startMotion(sprite.art, mode);
+              }
+              sprite.last = { x: actor.x, y: actor.y };
               sprite.body.setPosition(actor.x, actor.y);
               sprite.range.setPosition(actor.x, actor.y);
               const icon = actor.alert
@@ -455,6 +706,9 @@ export default function Game() {
                 ? `\n${(pot.timerMs / 1000).toFixed(1)}초`
                 : "";
               this.pots[id].setText(`${icon}${timer}`);
+              this.swirls[id].setVisible(
+                pot.status === "MIXING" || pot.status === "INSCRIBING",
+              );
             }
           },
         };
@@ -678,14 +932,7 @@ export default function Game() {
   // 슬라임 선택 화면
   if (!squad || !state) {
     return (
-      <main className="game-shell">
-        <header>
-          <div>
-            <p className="eyebrow">VOICE-LED ARCANE WORKSHOP</p>
-            <h1>터진다! 슬라임 공방</h1>
-          </div>
-          <div className="round-badge">3 MIN FUN TEST</div>
-        </header>
+      <main className="select-shell">
         <section className="select-screen" aria-label="슬라임 선택">
           <p className="select-guide">
             공방의 첫 직원 슬라임을 1마리 고르세요. 음성으로 이름을 불러
@@ -704,14 +951,13 @@ export default function Game() {
                   aria-pressed={active}
                   onClick={() => setPicked(typeId)}
                 >
-                  <span
+                  {/* data URI라 요청이 없다. next/image가 최적화할 것이 없다. */}
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
                     className="slime-portrait"
-                    style={{ background: typeCssColors[typeId] }}
-                    aria-hidden
-                  >
-                    <i />
-                    <i />
-                  </span>
+                    src={slimeDataUri(typeId, "down", { animate: true })}
+                    alt=""
+                  />
                   <strong>{kind.name} 슬라임</strong>
                   <small>{kind.trait}</small>
                   <StatGauges levels={kind.statLevels} />
@@ -731,174 +977,131 @@ export default function Game() {
   }
 
   const hovered = hoveredActor ? state.actors[hoveredActor] : null;
+  const hint = nextHint(state, squad[0]);
   const result =
     state.phase === "won"
       ? "성공! 마도서 8권을 납품했습니다."
       : "시간 종료. 다시 공방을 가동해 보세요.";
 
   return (
-    <main className="game-shell">
-      <header>
-        <div>
-          <p className="eyebrow">VOICE-LED ARCANE WORKSHOP</p>
-          <h1>터진다! 슬라임 공방</h1>
+    <main className="stage">
+      <div className="stage-frame">
+        <div id="game-canvas" aria-label="탑다운 마법 공방 게임 맵" />
+
+        <div className="hud-top">
+          <span className="hud-chip" data-warn={state.timeLeft <= 30 ? "" : undefined}>
+            ⏱ {state.timeLeft}
+          </span>
+          <span className="hud-chip hud-goal">
+            📚 {state.submitted} / {state.goal}
+          </span>
+          <span className="hud-chip">💰 {state.gold}G</span>
         </div>
-        <div className="round-badge">3 MIN FUN TEST</div>
-      </header>
 
-      <div className="workspace">
-        <aside className="side-badges" aria-label="시간과 골드">
-          <div className="badge">
-            <small>남은 시간</small>
-            <strong>⏱ {state.timeLeft}초</strong>
-          </div>
-          <div className="badge">
-            <small>획득 골드</small>
-            <strong>💰 {state.gold}G</strong>
-            <span>📚 납품 {state.submitted} / {state.goal}</span>
-          </div>
-        </aside>
+        <div className="hud-pots" aria-label="솥 상태">
+          {(["cauldron-01", "cauldron-02"] as CauldronId[]).map((id) => {
+            const pot = state.cauldrons[id];
+            return (
+              <span key={id} className="pot-chip" data-status={pot.status}>
+                <b>{potNames[id]}</b>
+                {statusNames[pot.status]}
+                {pot.timerMs ? ` ${(pot.timerMs / 1000).toFixed(1)}초` : ""}
+              </span>
+            );
+          })}
+        </div>
 
-        <section className="canvas-card">
-          <div id="game-canvas" aria-label="탑다운 마법 공방 게임 맵" />
-          <p className="move-tip">
-            WASD / 방향키로 플레이어 이동 · 청력 원 밖 명령은 들리지 않음
-          </p>
-          {hovered && (
-            <aside
-              className="slime-card"
-              data-below={hovered.y < 300 ? "" : undefined}
-              style={{
-                left: `${Math.min(84, Math.max(16, (hovered.x / 960) * 100))}%`,
-                top: `${(hovered.y / 600) * 100}%`,
-              }}
-            >
-              <header>
-                <span
-                  className="slime-portrait"
-                  style={{ background: typeCssColors[hovered.typeId] }}
-                  aria-hidden
-                >
-                  <i />
-                  <i />
-                </span>
-                <div>
-                  <strong>{hovered.name}</strong>
-                  <small>{slimeTypes[hovered.typeId].trait}</small>
-                </div>
-              </header>
-              <StatGauges levels={hovered.statLevels} />
-              <footer>
-                <small>받은 버프</small>
-                {hovered.buffs.length ? (
-                  <div className="slime-buffs">
-                    {hovered.buffs.map((buff) => (
-                      <span key={buff}>{buff}</span>
-                    ))}
-                  </div>
-                ) : (
-                  <span className="slime-buffs-empty">없음</span>
-                )}
-              </footer>
-            </aside>
-          )}
-        </section>
+        <div className="hud-crew" aria-label="슬라임 상태">
+          {squad.map((actorId) => {
+            const actor = state.actors[actorId];
+            if (!actor) return null;
+            return (
+              <span key={actorId} className="crew-chip">
+                <b style={{ color: typeCssColors[actorId] }}>{actor.name}</b>
+                {actor.carrying ? carriedIcons[actor.carrying] : "—"}
+                <i>
+                  {actor.queue.length}/
+                  {statTables.focusCapacity[actor.statLevels.focus]}
+                </i>
+                {actor.alert ? alertIcons[actor.alert] : ""}
+              </span>
+            );
+          })}
+        </div>
 
-        <aside>
-          <div className="recipe" aria-label="레시피와 목표">
-            <small>📖 마도서 레시피</small>
-            <ol>
-              <li>🌿 약초 상자에서 약초 가져오기</li>
-              <li>🫕 빈 솥에 약초 넣고 젓기 → ⏱ 5초</li>
-              <li>📜 양피지 가져와 솥에 담그기 → ⏱ 5초</li>
-              <li>📘 완성된 마도서 꺼내기</li>
-              <li>📚 납품대에 납품하면 +100G</li>
-            </ol>
-            <strong>🎯 3분 안에 8권 납품하면 승리</strong>
-          </div>
-
-          <div className="cauldrons" aria-label="솥 상태">
-            <small>CAULDRONS</small>
-            {(["cauldron-01", "cauldron-02"] as CauldronId[]).map((id) => {
-              const pot = state.cauldrons[id];
-              return (
-                <article key={id}>
-                  <strong>{potNames[id]}</strong>
-                  <span>{statusNames[pot.status]}</span>
-                  <b>{pot.timerMs ? `${(pot.timerMs / 1000).toFixed(1)}초` : "—"}</b>
-                </article>
-              );
-            })}
-          </div>
-
-          <div className="slime-statuses" aria-label="슬라임 작업 큐">
-            {squad.map((actorId) => {
-              const actor = state.actors[actorId];
-              if (!actor) return null;
-              return (
-                <article key={actorId}>
-                  <strong style={{ color: typeCssColors[actorId] }}>
-                    {actor.name} · {actor.status}
-                    {actor.alert ? ` ${alertIcons[actor.alert]}` : ""}
-                  </strong>
-                  <span>
-                    현재: {actor.current
-                      ? `${actor.current.action}${
-                          actor.current.targetId &&
-                          actor.current.targetId in potNames
-                            ? ` · ${potNames[actor.current.targetId as CauldronId]}`
-                            : ""
-                        }`
-                      : "없음"}
-                  </span>
-                  <span>
-                    소지: {actor.carrying ? carriedNames[actor.carrying] : "없음"}
-                    {" · 큐 "}
-                    {actor.queue.length}/{statTables.focusCapacity[actor.statLevels.focus]}
-                  </span>
-                  <span>
-                    대기: {actor.queue.length
-                      ? actor.queue.map(({ action }) => action).join(" → ")
-                      : "비어 있음"}
-                  </span>
-                </article>
-              );
-            })}
-          </div>
-
-          <div className="event" role="status" aria-live="polite">
-            <small>최근 상황</small>
-            <strong>{state.lastEvent}</strong>
-          </div>
-
-          <button
-            className="mic"
-            onClick={() => void startListening(squad)}
-            disabled={state.phase !== "playing" || listening.current}
+        {hovered && (
+          <aside
+            className="slime-card"
+            data-below={hovered.y < 300 ? "" : undefined}
+            style={{
+              left: `${Math.min(84, Math.max(16, (hovered.x / 960) * 100))}%`,
+              top: `${(hovered.y / 600) * 100}%`,
+            }}
           >
-            🎙 {listening.current ? "상시 음성 인식 중" : "음성 인식 켜기"}
-          </button>
-          <p className="mic-state">{mic}</p>
+            <header>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                className="slime-portrait"
+                src={slimeDataUri(hovered.typeId, "down", { animate: true })}
+                alt=""
+              />
+              <div>
+                <strong>{hovered.name}</strong>
+                <small>{slimeTypes[hovered.typeId].trait}</small>
+              </div>
+            </header>
+            <StatGauges levels={hovered.statLevels} />
+            <footer>
+              <small>받은 버프</small>
+              {hovered.buffs.length ? (
+                <div className="slime-buffs">
+                  {hovered.buffs.map((buff) => (
+                    <span key={buff}>{buff}</span>
+                  ))}
+                </div>
+              ) : (
+                <span className="slime-buffs-empty">없음</span>
+              )}
+            </footer>
+          </aside>
+        )}
 
-          {voice && (
-            <div
-              className="voice-feedback"
-              data-kind={voice.kind}
-              role="status"
-              aria-label="마지막 음성 명령 해석"
-            >
-              <small>{voiceKindLabels[voice.kind]}</small>
-              {voice.transcript && <q>{voice.transcript}</q>}
-              {voice.commands.map((line) => (
-                <span key={line}>{line}</span>
-              ))}
-              <em>{voice.detail}</em>
+        <div className="hud-bottom">
+          {/* 레시피 전체 대신 지금 할 일 하나만 크게 보여 준다. */}
+          <div className="step" role="status" aria-live="polite">
+            <small>지금 할 일</small>
+            <strong>{hint.title}</strong>
+            {hint.say && <q>{hint.say}</q>}
+          </div>
+
+          <div className="hud-right">
+            <div className="feed">
+              <span className="feed-event">{state.lastEvent}</span>
+              {voice && (
+                <span className="feed-voice" data-kind={voice.kind}>
+                  {voice.transcript ? `“${voice.transcript}”` : voiceKindLabels[voice.kind]}
+                  {voice.commands.length ? ` → ${voice.commands.join(", ")}` : ""}
+                </span>
+              )}
+              <span className="feed-mic">{mic}</span>
             </div>
-          )}
+            <button
+              className="mic"
+            onClick={toggleMic}
+            disabled={state.phase !== "playing"}
+              data-recording={recorder.current?.state === "recording" ? "" : undefined}
+            >
+              🎙
+              <span>
+                {recorder.current?.state === "recording" ? "중지" : "말하기"}
+              </span>
+            </button>
+          </div>
+        </div>
 
-          <details className="debug-wrap">
-            <summary>🛠 키 없이 시연 · 디버그 버튼</summary>
-            <div className="debug">
+        <details className="debug-wrap">
+          <summary>🛠</summary>
+          <div className="debug">
             <label>
               지시할 슬라임
               <select
@@ -934,9 +1137,8 @@ export default function Game() {
             <button onClick={() => run("DIP_PARCHMENT")}>5. 양피지 담그기</button>
             <button onClick={() => run("TAKE_BOOK")}>6. 마도서 꺼내기</button>
             <button onClick={() => run("SUBMIT")}>7. 납품하기</button>
-            </div>
-          </details>
-        </aside>
+          </div>
+        </details>
       </div>
 
       {state.phase !== "playing" && (

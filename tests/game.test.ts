@@ -5,6 +5,12 @@ import { fileURLToPath } from "node:url";
 import { POST } from "../app/api/command/route.js";
 import { simulate } from "../game/cli.js";
 import { parseSession } from "../game/session.js";
+import { nextHint } from "../game/hint.js";
+import {
+  facingFromDelta,
+  slimeSvg,
+  type Facing,
+} from "../app/slime-art.js";
 import {
   TILE_SIZE,
   WORKSHOP_ROWS,
@@ -481,4 +487,75 @@ test("플레이테스트 세션은 위조된 요약을 저장 전에 거부한�
   ]) {
     assert.equal(parseSession(bad).ok, false);
   }
+});
+
+test("슬라임 아트는 종류별 색과 방향별 얼굴을 만든다", () => {
+  // 종류마다 색이 다르다.
+  const colors = new Set(
+    (["nerd", "swift", "keen", "worker"] as const).map(
+      (typeId) => slimeSvg(typeId, "down").match(/stop-color="(#[0-9a-f]{6})"/)![1],
+    ),
+  );
+  assert.equal(colors.size, 4);
+
+  // 좌우는 얼굴을 반대로 옮기고, 위는 얼굴을 감춘다.
+  const face = (facing: Facing) =>
+    slimeSvg("keen", facing).match(/translate\((-?\d+) /)?.[1] ?? null;
+  assert.equal(face("down"), "0");
+  assert.equal(Number(face("left")) < 0, true);
+  assert.equal(Number(face("right")) > 0, true);
+  assert.equal(face("up"), null);
+  assert.equal(slimeSvg("keen", "up").includes("<circle"), false);
+
+  // 깜빡임은 눈만 감기고 입은 남는다. 애니메이션은 img로 띄울 때만 붙는다.
+  const open = slimeSvg("keen", "down");
+  const shut = slimeSvg("keen", "down", { blink: true });
+  assert.equal(open.includes("<circle cx=\"526\""), true);
+  assert.equal(shut.includes("<circle cx=\"526\""), false);
+  assert.equal(shut.includes("M 581 718"), true);
+  assert.equal(open.includes("@keyframes"), false);
+  assert.equal(slimeSvg("keen", "down", { animate: true }).includes("@keyframes"), true);
+
+  // 큰 축이 방향을 정하고, 멈춰 있으면 이전 방향을 유지한다.
+  assert.equal(facingFromDelta(9, -2, "down"), "right");
+  assert.equal(facingFromDelta(-9, 2, "down"), "left");
+  assert.equal(facingFromDelta(1, 9, "left"), "down");
+  assert.equal(facingFromDelta(1, -9, "left"), "up");
+  assert.equal(facingFromDelta(0, 0, "right"), "right");
+});
+
+test("다음 할 일 힌트는 소지품과 솥 상태를 따라 한 걸음씩 안내한다", () => {
+  const base = initialState(1, ["keen"]);
+  // 아무것도 없을 때는 약초부터.
+  assert.match(nextHint(base, "keen").title, /약초를 가져/);
+  assert.match(nextHint(base, "keen").say ?? "", /쫑긋/);
+
+  const carrying = (item: "herb" | "parchment" | "book") => ({
+    ...base,
+    actors: { keen: { ...base.actors.keen!, carrying: item } },
+  });
+  assert.match(nextHint(carrying("herb"), "keen").title, /솥에 약초를 넣/);
+  assert.match(nextHint(carrying("parchment"), "keen").title, /양피지를 담그/);
+  assert.match(nextHint(carrying("book"), "keen").title, /납품/);
+
+  const pots = (
+    one: GameState["cauldrons"]["cauldron-01"]["status"],
+    two: GameState["cauldrons"]["cauldron-02"]["status"],
+  ) => ({
+    ...base,
+    cauldrons: {
+      "cauldron-01": { status: one, timerMs: 0 },
+      "cauldron-02": { status: two, timerMs: 0 },
+    },
+  });
+  assert.match(nextHint(pots("HERB_LOADED", "EMPTY"), "keen").title, /저어/);
+  assert.match(
+    nextHint(pots("READY_FOR_PARCHMENT", "EMPTY"), "keen").title,
+    /양피지를 가져/,
+  );
+  assert.match(nextHint(pots("BOOK_READY", "EMPTY"), "keen").title, /꺼내/);
+  // 두 솥이 모두 돌아가는 중이면 기다리는 것 말고 할 일이 없다.
+  const waiting = nextHint(pots("MIXING", "INSCRIBING"), "keen");
+  assert.match(waiting.title, /기다리/);
+  assert.equal(waiting.say, null);
 });
