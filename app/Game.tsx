@@ -1085,17 +1085,17 @@ export default function Game() {
               )}
               <span className="feed-mic">{mic}</span>
             </div>
-            <button
+            <div
               className="mic"
-            onClick={toggleMic}
-            disabled={state.phase !== "playing"}
+              role="status"
+              aria-live="polite"
               data-recording={recorder.current?.state === "recording" ? "" : undefined}
             >
               🎙
               <span>
-                {recorder.current?.state === "recording" ? "중지" : "말하기"}
+                {recorder.current?.state === "recording" ? "듣는 중" : "대기 중"}
               </span>
-            </button>
+            </div>
           </div>
         </div>
 

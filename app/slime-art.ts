@@ -49,7 +49,7 @@ export function slimeSvg(
 <rect x="693" y="668" width="66" height="16" rx="8" fill="#000000"/>`
     : `<circle cx="526" cy="676" r="33" fill="#000000"/>
 <circle cx="726" cy="676" r="33" fill="#000000"/>`;
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="1018" height="784" viewBox="120 258 1018 784">
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="1018" height="862" viewBox="120 180 1018 862">
 <defs>
 <linearGradient id="o" x1="0.5" y1="0" x2="0.5" y2="1">
 <stop offset="0" stop-color="${outer}"/><stop offset="1" stop-color="${outer}"/>
