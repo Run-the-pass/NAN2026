@@ -45,6 +45,16 @@ export default function Home() {
           height={678}
           alt=""
         />
+        {[1, 2, 3].map((bubble) => (
+          <img
+            key={bubble}
+            className={`home-cauldron-bubble cauldron-bubble-${bubble}`}
+            src="/home/cauldron-bubble.svg"
+            width={48}
+            height={48}
+            alt=""
+          />
+        ))}
         {/* SVG 내부 벡터 그룹이 서로 다른 박자로 눌리고 늘어난다. */}
         <img
           className="home-slime"
