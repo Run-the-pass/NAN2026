@@ -1,8 +1,11 @@
 import {
+  allItems,
+  allStations,
   slimeTypes,
   validateEnvelope,
   type ActorId,
 } from "../../../game/core.js";
+import { actorAliases } from "../../../game/phrase.js";
 
 const allTypeIds = Object.keys(slimeTypes) as ActorId[];
 
@@ -16,9 +19,25 @@ export async function POST(request: Request) {
       { status: 400 },
     );
   }
+  // 실시간 STT가 문장을 준 경우에는 오디오 추론을 건너뛴다. 텍스트
+  // 추론이 훨씬 빨라 게임 반응이 끊기지 않는다.
+  const spoken = form.get("text");
+  const transcriptIn =
+    typeof spoken === "string" && spoken.trim()
+      ? spoken.trim().slice(0, 200)
+      : null;
   const audio = form.get("audio");
-  if (!(audio instanceof File) || !audio.type.startsWith("audio/") || audio.size < 1 || audio.size > 8_000_000) {
-    return Response.json({ reason: "8MB 이하 오디오 파일이 필요합니다." }, { status: 400 });
+  if (
+    !transcriptIn &&
+    (!(audio instanceof File) ||
+      !audio.type.startsWith("audio/") ||
+      audio.size < 1 ||
+      audio.size > 8_000_000)
+  ) {
+    return Response.json(
+      { reason: "8MB 이하 오디오 파일 또는 text가 필요합니다." },
+      { status: 400 },
+    );
   }
   // 이번 판에 선택된 스쿼드. 프롬프트와 스키마를 그 이름들로 제한한다.
   const squadField = String(form.get("actors") ?? allTypeIds.join(","));
@@ -49,37 +68,11 @@ export async function POST(request: Request) {
           type: "object",
           properties: {
             actorId: { type: "string", enum: squad },
-            action: {
-              type: "string",
-              enum: [
-                "GET_HERB",
-                "ADD_HERB",
-                "MIX",
-                "GET_PARCHMENT",
-                "DIP_PARCHMENT",
-                "TAKE_BOOK",
-                "SUBMIT",
-              ],
-            },
-            targetId: {
-              anyOf: [
-                {
-                  type: "string",
-                  enum: [
-                    "herb-box",
-                    "parchment-box",
-                    "cauldron-01",
-                    "cauldron-02",
-                    "submission-table",
-                  ],
-                },
-                { type: "null" },
-              ],
-            },
-            destinationId: { type: ["string", "null"] },
+            item: { type: "string", enum: allItems },
+            target: { type: "string", enum: allStations },
             sequence: { type: "integer" },
           },
-          required: ["actorId", "action", "targetId", "destinationId", "sequence"],
+          required: ["actorId", "item", "target", "sequence"],
         },
       },
       reason: { type: ["string", "null"] },
@@ -87,7 +80,10 @@ export async function POST(request: Request) {
     required: ["status", "confidence", "commands", "reason", "transcript"],
   };
   const nameGuide = squad
-    .map((typeId) => `${slimeTypes[typeId as keyof typeof slimeTypes].name}=${typeId}`)
+    .map(
+      (typeId) =>
+        `${slimeTypes[typeId].name}(${actorAliases[typeId].join("/")})=${typeId}`,
+    )
     .join(", ");
   const response = await fetch(
     `https://generativelanguage.googleapis.com/v1beta/models/${process.env.GEMINI_MODEL || "gemini-3.6-flash"}:generateContent`,
@@ -100,21 +96,30 @@ export async function POST(request: Request) {
           parts: [
             {
               text: [
-                "한국어 음성 명령을 실행 순서의 JSON 명령으로 바꿔라.",
+                "한국어 음성 명령을 JSON 명령으로 바꿔라.",
                 "들은 문장을 한국어 그대로 transcript에 넣어라.",
                 "게임 명령으로 해석할 수 없으면 status를 UNKNOWN으로 하고 commands는 빈 배열, reason에 한국어 이유를 넣어라.",
                 `공방의 슬라임과 actorId: ${nameGuide}.`,
+                "이름이 조금 뭉개져 들려도 괄호 안 비슷한 발음과 가장 가까운 슬라임을 고른다.",
                 "명령에 슬라임 이름이 없으면 첫 번째 슬라임을 대상으로 한다.",
-                "약초 가져오기=GET_HERB→herb-box.",
-                "약초 넣기=ADD_HERB, 젓기=MIX, 양피지 담그기=DIP_PARCHMENT, 마도서 꺼내기=TAKE_BOOK.",
-                "이 네 행동은 왼쪽/1번=cauldron-01, 오른쪽/2번=cauldron-02를 대상으로 한다.",
-                "양피지 가져오기=GET_PARCHMENT→parchment-box.",
-                "납품하기=SUBMIT→submission-table.",
-                "사용자가 솥을 지정하지 않은 솥 행동은 targetId를 null로 두어라. 그러면 슬라임이 가까운 솥을 스스로 고른다.",
-                "허용 후보 외 이름과 행동을 만들지 마라.",
+                "명령 하나는 물품 하나를 목적지 하나로 보내는 것이다. 집기와 넣기를 따로 나누지 마라.",
+                "물품 item: 붉은 약초=red-herb, 파란 약초=blue-herb, 붉은 물약=red-potion, 파란 물약=blue-potion, 붉은 스크롤=red-scroll, 파란 스크롤=blue-scroll.",
+                "목적지 target: 양조기=brewer, 마법 테이블=table, 제출대=submission, 쓰레기통=trash.",
+                "양조기와 테이블에는 약초만 보낼 수 있다. 양조기는 같은 색 물약을, 테이블은 같은 색 스크롤을 만든다.",
+                "물약과 스크롤은 submission 또는 trash로만 보낼 수 있다.",
+                "소환진은 목적지가 아니다. 허용 후보 외 이름과 물품을 만들지 마라.",
               ].join(" "),
             },
-            { inlineData: { mimeType: audio.type, data: Buffer.from(await audio.arrayBuffer()).toString("base64") } },
+            transcriptIn
+              ? { text: `플레이어가 말한 문장: ${transcriptIn}` }
+              : {
+                  inlineData: {
+                    mimeType: (audio as File).type,
+                    data: Buffer.from(
+                      await (audio as File).arrayBuffer(),
+                    ).toString("base64"),
+                  },
+                },
           ],
         }],
         generationConfig: { responseMimeType: "application/json", responseJsonSchema: schema },
@@ -134,9 +139,10 @@ export async function POST(request: Request) {
     };
     // 표시용 문장은 길이만 제한하고 명령 해석에는 사용하지 않는다.
     const transcript =
-      typeof parsed.transcript === "string"
+      transcriptIn ??
+      (typeof parsed.transcript === "string"
         ? parsed.transcript.slice(0, 200)
-        : null;
+        : null);
     if (parsed.status === "UNKNOWN") {
       return Response.json(
         {

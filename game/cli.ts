@@ -1,32 +1,23 @@
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
+  allItems,
+  allStations,
   command,
   executeEnvelope,
   initialState,
+  isValidRoute,
   movePlayer,
   slimeTypes,
   tick,
   tileCenter,
   validateEnvelope,
-  type Action,
   type ActorId,
-  type CauldronId,
   type GameState,
+  type ItemId,
   type SlimeTypeId,
-  type TargetId,
+  type StationId,
 } from "./core.js";
-
-const actions: Action[] = [
-  "GET_HERB",
-  "ADD_HERB",
-  "MIX",
-  "GET_PARCHMENT",
-  "DIP_PARCHMENT",
-  "TAKE_BOOK",
-  "SUBMIT",
-];
-const cauldrons: CauldronId[] = ["cauldron-01", "cauldron-02"];
 
 function runFor(state: GameState, durationMs: number) {
   let next = state;
@@ -43,13 +34,12 @@ function runFor(state: GameState, durationMs: number) {
 type Operation =
   | { token: string; waitMs: number }
   | { token: string; playerTile: { col: number; row: number } }
-  | { token: string; actorId: ActorId; action: Action; targetId?: TargetId };
+  | { token: string; actorId: ActorId; item: ItemId; target: StationId };
 
+// 토큰 형식: [actor.]ITEM>TARGET  예) keen.red-herb>brewer
 export function simulate(args: string[]) {
   let seed = 2026;
   let squad: SlimeTypeId[] = ["keen"];
-  // 기본은 플레이어가 명령 대상 슬라임을 따라다닌다고 가정한다.
-  // --player 또는 PLAYER 토큰을 쓰면 고정 위치로 청력 판정을 한다.
   let followPlayer = true;
   let fixedPlayer: { col: number; row: number } | null = null;
   const operations: Operation[] = [];
@@ -78,17 +68,16 @@ export function simulate(args: string[]) {
       fixedPlayer = { col, row };
       continue;
     }
-    const parts = token.split(":");
-    if (parts[0] === "WAIT" && parts.length === 2) {
-      const waitMs = Number(parts[1]);
+    if (token.startsWith("WAIT:")) {
+      const waitMs = Number(token.slice(5));
       if (!Number.isSafeInteger(waitMs) || waitMs < 0) {
         throw new Error(`잘못된 대기: ${token}`);
       }
       operations.push({ token, waitMs });
       continue;
     }
-    if (parts[0] === "PLAYER" && parts.length === 3) {
-      const [col, row] = [Number(parts[1]), Number(parts[2])];
+    if (token.startsWith("PLAYER:")) {
+      const [col, row] = token.slice(7).split(",").map(Number);
       if (!Number.isSafeInteger(col) || !Number.isSafeInteger(row)) {
         throw new Error(`잘못된 플레이어 위치: ${token}`);
       }
@@ -96,17 +85,17 @@ export function simulate(args: string[]) {
       operations.push({ token, playerTile: { col, row } });
       continue;
     }
-    // [actor.]ACTION[:target] — actor 생략 시 스쿼드의 첫 슬라임.
-    const [head, target, extra] = token.split(":");
-    const [actorPart, actionPart] = head.includes(".")
+    const [head, target, extra] = token.split(">");
+    const [actorPart, itemPart] = head.includes(".")
       ? head.split(".")
       : [null, head];
     if (
       extra !== undefined ||
-      (head.match(/\./g) ?? []).length > 1 ||
+      !target ||
       (actorPart !== null && !(actorPart in slimeTypes)) ||
-      !actions.includes(actionPart as Action) ||
-      (target !== undefined && !cauldrons.includes(target as CauldronId))
+      !allItems.includes(itemPart as ItemId) ||
+      !allStations.includes(target as StationId) ||
+      !isValidRoute(itemPart as ItemId, target as StationId)
     ) {
       throw new Error(`허용되지 않은 명령: ${token}`);
     }
@@ -117,8 +106,8 @@ export function simulate(args: string[]) {
     operations.push({
       token,
       actorId,
-      action: actionPart as Action,
-      targetId: target as TargetId | undefined,
+      item: itemPart as ItemId,
+      target: target as StationId,
     });
   }
 
@@ -137,7 +126,7 @@ export function simulate(args: string[]) {
       state = movePlayer(state, center.x, center.y);
     } else {
       const checked = validateEnvelope(
-        command(operation.actorId, operation.action, operation.targetId),
+        command(operation.actorId, operation.item, operation.target),
       );
       if ("reason" in checked) throw new Error(checked.reason);
       if (followPlayer) {
@@ -158,12 +147,12 @@ export function simulate(args: string[]) {
       operation: operation.token,
       elapsedMs,
       event: state.lastEvent,
-      carrying: Object.fromEntries(
-        Object.entries(state.actors).map(([id, actor]) => [id, actor.carrying]),
-      ),
-      submitted: state.submitted,
+      summons: state.summons,
+      brewer: state.brewer,
+      table: state.table,
+      order: state.order,
+      filled: state.filled,
       gold: state.gold,
-      cauldrons: state.cauldrons,
     };
   });
 
@@ -175,10 +164,13 @@ export function simulate(args: string[]) {
     final: {
       phase: state.phase,
       timeLeftMs: state.timeLeftMs,
-      submitted: state.submitted,
+      filled: state.filled,
       gold: state.gold,
+      summons: state.summons,
+      brewer: state.brewer,
+      table: state.table,
+      order: state.order,
       actors: state.actors,
-      cauldrons: state.cauldrons,
       history: state.history,
     },
   };

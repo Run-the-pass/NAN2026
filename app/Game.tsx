@@ -1,7 +1,7 @@
 "use client";
 
 import * as Phaser from "phaser";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   TILE_SIZE,
   WORKSHOP_ROWS,
@@ -11,20 +11,32 @@ import {
   initialState,
   isWalkable,
   movePlayer,
+  nextPlayerAction,
   pixelToTile,
+  playerAct,
   playerStartTile,
   slimeTypes,
   statTables,
+  taskTiles,
   tick,
   tileCenter,
   validateEnvelope,
-  type Action,
+  voiceRadiusPx,
+  STORAGE_MAX,
+  SUMMON_MAX,
+  allItems,
+  allStations,
+  isValidRoute,
+  itemLabel,
+  stationLabels,
   type ActorId,
-  type CauldronId,
   type GameState,
+  type ItemId,
   type SlimeTypeId,
+  type StationId,
 } from "../game/core";
 import { nextHint } from "../game/hint";
+import { matchPhrase } from "../game/phrase";
 import {
   facingFromDelta,
   facings,
@@ -33,6 +45,23 @@ import {
 } from "./slime-art";
 
 type View = { sync: (state: GameState) => void };
+
+// Web Speech API는 표준 d.ts에 없어 쓰는 만큼만 좁게 선언한다.
+type SpeechRecognitionLike = {
+  lang: string;
+  interimResults: boolean;
+  continuous: boolean;
+  onresult: (event: SpeechRecognitionEventLike) => void;
+  onerror: () => void;
+  onend: () => void;
+  start: () => void;
+  stop: () => void;
+};
+type SpeechRecognitionEventLike = {
+  resultIndex: number;
+  results: ArrayLike<{ isFinal: boolean; 0: { transcript: string } }>;
+};
+type SpeechRecognitionCtor = new () => SpeechRecognitionLike;
 
 const typeColors: Record<SlimeTypeId, number> = {
   nerd: 0x7d8bff,
@@ -47,43 +76,46 @@ const typeCssColors: Record<SlimeTypeId, string> = {
   worker: "#e07b39",
 };
 const allTypeIds = Object.keys(slimeTypes) as SlimeTypeId[];
-// 텍스처는 116x90으로 굽고 절반 크기로 그린다.
-const SLIME_SCALE = 0.5;
+// 캔버스 내부 해상도 배율. 카메라 zoom도 같은 값을 써서 보이는
+// 영역은 그대로 두고 픽셀만 촘촘하게 만든다.
+const RENDER_SCALE = 3;
+// 텍스처는 world 58x45로 그린다. 확대에 견디도록 넉넉히 구워 둔다.
+const SLIME_TEXTURE = { width: 348, height: 270 };
+const SLIME_SCALE = 58 / SLIME_TEXTURE.width;
 // 젓기만 손에 드는 것이 없어 따로 보여 줘야 한다.
 type Motion = "idle" | "walk" | "stir" | "pick";
-const potNames: Record<CauldronId, string> = {
-  "cauldron-01": "왼쪽 솥",
-  "cauldron-02": "오른쪽 솥",
+const itemIcons: Record<ItemId, string> = {
+  "red-herb": "🍁",
+  "blue-herb": "🌿",
+  "red-potion": "🧪",
+  "blue-potion": "🫙",
+  "red-scroll": "📕",
+  "blue-scroll": "📘",
 };
-const statusNames = {
-  EMPTY: "비어 있음",
-  HERB_LOADED: "약초 투입",
-  MIXING: "마력액 조합 중",
-  READY_FOR_PARCHMENT: "양피지 대기",
-  INSCRIBING: "마도서 각인 중",
-  BOOK_READY: "마도서 완성",
-} as const;
-const carriedIcons = { herb: "🌿", parchment: "📜", book: "📘" } as const;
 const alertIcons: Record<string, string> = {
   NOT_HEARD: "🙉",
   TOO_COMPLEX: "🤯",
   QUEUE_FULL: "❗",
+  SOURCE_EMPTY: "🫙",
+  TARGET_FULL: "🚫",
+  INVALID_ROUTE: "❓",
 };
-const actionNames: Record<Action, string> = {
-  GET_HERB: "약초 가져오기",
-  ADD_HERB: "약초 넣기",
-  MIX: "젓기",
-  GET_PARCHMENT: "양피지 가져오기",
-  DIP_PARCHMENT: "양피지 담그기",
-  TAKE_BOOK: "마도서 꺼내기",
-  SUBMIT: "납품하기",
+// 설비 타일 색. 소환진은 자원 색, 가공은 보라, 출구는 회색 계열.
+const stationColors: Record<StationId, number> = {
+  "summon-red": 0xb2432f,
+  "summon-blue": 0x2f5fb2,
+  brewer: 0x6b4aa0,
+  table: 0x8a6a2f,
+  submission: 0x3f7f4a,
+  trash: 0x585264,
 };
-const targetNames: Record<string, string> = {
-  "herb-box": "약초 상자",
-  "parchment-box": "양피지 상자",
-  "cauldron-01": "왼쪽 솥",
-  "cauldron-02": "오른쪽 솥",
-  "submission-table": "납품대",
+const stationIcons: Record<StationId, string> = {
+  "summon-red": "🔴",
+  "summon-blue": "🔵",
+  brewer: "⚗️",
+  table: "📜",
+  submission: "📬",
+  trash: "🗑",
 };
 
 // 문서의 실패 구분: 인식 실패 / 해석 실패 / (상태 불가와 접수는 최근
@@ -149,54 +181,41 @@ export default function Game() {
   const [picked, setPicked] = useState<SlimeTypeId>("keen");
   const [state, setState] = useState<GameState | null>(null);
   const [selectedActor, setSelectedActor] = useState<ActorId>("keen");
-  const [selectedCauldron, setSelectedCauldron] = useState<CauldronId | "auto">(
-    "auto",
-  );
+  const [selectedItem, setSelectedItem] = useState<ItemId>("red-herb");
+  const [selectedTarget, setSelectedTarget] = useState<StationId>("brewer");
   const [mic, setMic] = useState("마이크 준비");
   const [voice, setVoice] = useState<VoiceFeedback | null>(null);
+
   const [saved, setSaved] = useState("");
   const [hoveredActor, setHoveredActor] = useState<ActorId | null>(null);
   const stateRef = useRef(state);
   const view = useRef<View | null>(null);
   const recorder = useRef<MediaRecorder | null>(null);
-  const micStream = useRef<MediaStream | null>(null);
-  const audioContext = useRef<AudioContext | null>(null);
-  const voiceFrame = useRef(0);
-  const listening = useRef(false);
-  const voiceBusy = useRef(false);
+  const listening = useRef<SpeechRecognitionLike | null>(null);
+  const keepListening = useRef(false);
+  // 발화 중 가장 컸던 목소리. 소리 원 반지름을 정하는 값이다.
+  const loudness = useRef(0);
+  const meter = useRef<{ stop: () => void } | null>(null);
+  // 지금 내는 소리 크기. Phaser가 소리 원을 그릴 때 읽는다.
+  const voiceLevel = useRef(0);
+  const chunks = useRef<Blob[]>([]);
   const metrics = useRef<Metrics>(emptyMetrics());
   const savedRef = useRef(false);
   const roundSeed = useRef(0);
   // 청력 판정에 쓰는 플레이어 위치. Phaser가 매 프레임 갱신한다.
   const playerPos = useRef(tileCenter(playerStartTile));
-
-  const stopMic = useCallback((message?: string) => {
-    listening.current = false;
-    cancelAnimationFrame(voiceFrame.current);
-    if (recorder.current?.state === "recording") {
-      recorder.current.onstop = null;
-      recorder.current.stop();
-    }
-    micStream.current?.getTracks().forEach((track) => track.stop());
-    void audioContext.current?.close();
-    recorder.current = null;
-    micStream.current = null;
-    audioContext.current = null;
-    voiceBusy.current = false;
-    if (message) setMic(message);
-  }, []);
+  const phase = state?.phase;
 
   useEffect(() => {
     stateRef.current = state;
   }, [state]);
 
   useEffect(() => {
-    if (state?.phase && state.phase !== "playing") {
-      stopMic("라운드 종료 · 음성 인식 꺼짐");
-    }
-  }, [state?.phase, stopMic]);
-
-  useEffect(() => () => stopMic(), [stopMic]);
+    if (!phase || phase === "playing") return;
+    keepListening.current = false;
+    listening.current?.stop();
+    meter.current?.stop();
+  }, [phase]);
 
   useEffect(() => {
     if (!squad) return;
@@ -228,7 +247,7 @@ export default function Game() {
       body: JSON.stringify({
         seed: roundSeed.current,
         result: state.phase,
-        booksSubmitted: state.submitted,
+        booksSubmitted: state.filled,
         goal: state.goal,
         elapsedMs: 180_000 - state.timeLeftMs,
         voiceCommands: counts.voiceCommands,
@@ -273,8 +292,7 @@ export default function Game() {
           }
         >
       >;
-      pots!: Record<CauldronId, Phaser.GameObjects.Text>;
-      swirls!: Record<CauldronId, Phaser.GameObjects.Container>;
+      stations!: Record<StationId, Phaser.GameObjects.Text>;
 
       // 가만히 있을 때: 원본 SVG의 숨쉬기를 tween으로 옮긴 것.
       breathe(art: Phaser.GameObjects.Image) {
@@ -356,7 +374,7 @@ export default function Game() {
               this.load.svg(
                 `slime-${actorId}-${facing}${blink ? "-blink" : ""}`,
                 slimeDataUri(actorId, facing, { blink }),
-                { width: 116, height: 90 },
+                SLIME_TEXTURE,
               );
             }
           }
@@ -364,14 +382,10 @@ export default function Game() {
       }
 
       create() {
-        this.cameras.main.setBackgroundColor("#171527");
-        // 판자 위에 얹는 가구. 나무 공방 톤에 맞춘 색.
-        const furniture: Record<string, [number, number]> = {
-          B: [0x8b5a2b, 0xbb8348],
-          T: [0x554f86, 0x8279cc],
-          H: [0x2f7a3f, 0x54bb63],
-          P: [0x66408c, 0x9d6bc9],
-        };
+        this.cameras.main
+          .setBackgroundColor("#171527")
+          .setZoom(RENDER_SCALE)
+          .centerOn(480, 300);
         // 홈 화면(bg.png + #2f1500 오버레이)과 같은 나무 공방 톤.
         // 바닥은 어두운 판자, 벽은 밝은 판자, 그 위에 마법 기운을 얹는다.
         const planks = this.add.graphics().setDepth(0);
@@ -407,31 +421,18 @@ export default function Game() {
             }
           });
         });
-        // 상자·작업대·납품대는 판자 위에 한 단 올라온 것처럼 그린다.
-        const props = this.add.graphics().setDepth(1);
-        WORKSHOP_ROWS.forEach((row, rowIndex) => {
-          [...row].forEach((tile, colIndex) => {
-            const paint = furniture[tile];
-            if (!paint) return;
-            const { x, y } = tileCenter({ col: colIndex, row: rowIndex });
-            const left = x - TILE_SIZE / 2;
-            const top = y - TILE_SIZE / 2;
-            props.fillStyle(paint[0], 1);
-            props.fillRect(left + 2, top + 2, TILE_SIZE - 4, TILE_SIZE - 4);
-            props.fillStyle(paint[1], 1);
-            props.fillRect(left + 2, top + 2, TILE_SIZE - 4, 8);
-          });
-        });
         // 마법 기운: 바닥에 은은한 보라 빛과 떠다니는 불씨.
         const glow = this.add.graphics().setDepth(0);
         glow.fillStyle(0x8b5cf6, 0.07);
-        for (const id of ["cauldron-01", "cauldron-02"] as CauldronId[]) {
+        for (const id of ["brewer", "table"] as StationId[]) {
           const { x, y } = tileCenter(displayTiles[id]);
           glow.fillCircle(x, y, 110);
         }
         glow.fillStyle(0x7dd3fc, 0.05);
-        glow.fillCircle(...(([tileCenter(displayTiles.submission).x,
-          tileCenter(displayTiles.submission).y, 90]) as [number, number, number]));
+        for (const id of ["summon-red", "summon-blue"] as StationId[]) {
+          const { x, y } = tileCenter(displayTiles[id]);
+          glow.fillCircle(x, y, 90);
+        }
         for (let index = 0; index < 14; index += 1) {
           const spark = this.add
             .circle(
@@ -452,84 +453,98 @@ export default function Game() {
             ease: "Sine.easeOut",
           });
         }
-        // 참고 이미지처럼 두 솥을 노랑·주황으로 구분한다.
-        const potColors: Record<CauldronId, number> = {
-          "cauldron-01": 0xe8a520,
-          "cauldron-02": 0xd96f2e,
-        };
-        for (const id of ["cauldron-01", "cauldron-02"] as CauldronId[]) {
+        // 설비 6종을 서로 다른 실루엣으로 그리고 재고는 sync에서 갱신한다.
+        this.stations = {} as Record<StationId, Phaser.GameObjects.Text>;
+        for (const id of allStations) {
           const { x, y } = tileCenter(displayTiles[id]);
+          const shape = this.add.graphics().setDepth(1);
+          if (id.startsWith("summon-")) {
+            shape
+              .fillStyle(stationColors[id], 0.3)
+              .fillCircle(x, y, 28)
+              .lineStyle(3, stationColors[id], 0.95)
+              .strokeCircle(x, y, 25)
+              .lineStyle(1, 0xffe8cb, 0.8)
+              .strokeCircle(x, y, 16);
+            for (let angle = 0; angle < 360; angle += 60) {
+              const rad = Phaser.Math.DegToRad(angle);
+              shape.fillStyle(0xffe8cb, 0.85).fillCircle(
+                x + Math.cos(rad) * 21,
+                y + Math.sin(rad) * 21,
+                2,
+              );
+            }
+          } else if (id === "brewer") {
+            shape
+              .fillStyle(0x241a2b, 1)
+              .fillRoundedRect(x - 25, y - 15, 50, 40, 12)
+              .fillStyle(stationColors[id], 0.9)
+              .fillEllipse(x, y - 13, 50, 15)
+              .lineStyle(2, 0xdac7ff, 0.75)
+              .strokeEllipse(x, y - 13, 52, 17)
+              .fillStyle(0xb58cff, 0.8)
+              .fillCircle(x - 9, y - 20, 3)
+              .fillCircle(x + 7, y - 25, 4);
+          } else if (id === "table") {
+            shape
+              .fillStyle(0x3d2517, 1)
+              .fillRect(x - 25, y - 15, 6, 42)
+              .fillRect(x + 19, y - 15, 6, 42)
+              .fillStyle(stationColors[id], 1)
+              .fillRoundedRect(x - 29, y - 20, 58, 18, 4)
+              .lineStyle(2, 0xf1cf87, 0.8)
+              .strokeRoundedRect(x - 29, y - 20, 58, 18, 4);
+          } else if (id === "submission") {
+            shape
+              .fillStyle(stationColors[id], 1)
+              .fillRoundedRect(x - 27, y - 22, 54, 45, 5)
+              .lineStyle(2, 0xb9edbd, 0.75)
+              .strokeRoundedRect(x - 27, y - 22, 54, 45, 5)
+              .fillStyle(0x183b24, 1)
+              .fillRect(x - 14, y - 8, 28, 4);
+          } else {
+            shape
+              .fillStyle(stationColors[id], 1)
+              .fillRoundedRect(x - 20, y - 20, 40, 43, 8)
+              .fillStyle(0x2b2731, 1)
+              .fillEllipse(x, y - 19, 46, 10)
+              .lineStyle(2, 0xbdb6c9, 0.55)
+              .strokeLineShape(new Phaser.Geom.Line(x - 13, y - 8, x - 13, y + 16))
+              .strokeLineShape(new Phaser.Geom.Line(x + 13, y - 8, x + 13, y + 16));
+          }
+          const workAt = tileCenter(taskTiles[id]);
           this.add
-            .rectangle(x, y, TILE_SIZE, TILE_SIZE, potColors[id])
-            .setStrokeStyle(1, 0xc6a6ff, 0.48);
-        }
-        const label = (
-          tile: { col: number; row: number },
-          icon: string,
-          text: string,
-          offsetX = 0,
-        ) => {
-          const { x, y } = tileCenter(tile);
+            .circle(workAt.x, workAt.y, 5, stationColors[id], 0.38)
+            .setStrokeStyle(1, 0xffefd2, 0.55)
+            .setDepth(1);
           this.add
-            .text(x + offsetX, y - 7, icon, { fontSize: "26px" })
-            .setOrigin(0.5)
-            .setDepth(2);
-          this.add
-            .text(x + offsetX, y + 20, text, {
-              color: "#f8efff",
-              fontFamily: "Jua, sans-serif",
-              fontSize: "11px",
-              fontStyle: "bold",
-              align: "center",
+            .text(x, y - 10, stationIcons[id], {
+              fontSize: id.startsWith("summon-") ? "18px" : "20px",
+              resolution: RENDER_SCALE,
             })
             .setOrigin(0.5)
             .setDepth(2);
-        };
-        label(displayTiles.herb, "🌿", "약초 상자", 26);
-        label(displayTiles.parchment, "📜", "양피지 상자", -26);
-        label(displayTiles.submission, "📚", "납품대");
-
-        this.pots = {
-          "cauldron-01": this.add
-            .text(0, 0, "", { fontSize: "22px", align: "center" })
+          this.add
+            .text(x, y + 22, stationLabels[id], {
+              color: "#f8efff",
+              fontFamily: "Jua, sans-serif",
+              fontSize: "10px",
+              align: "center",
+              resolution: RENDER_SCALE,
+            })
             .setOrigin(0.5)
-            .setDepth(3),
-          "cauldron-02": this.add
-            .text(0, 0, "", { fontSize: "22px", align: "center" })
+            .setDepth(2);
+          // 재고 표시. 소환진은 약초 수, 가공 설비는 채운 칸.
+          this.stations[id] = this.add
+            .text(x, y - 30, "", {
+              color: "#ffe9b8",
+              fontFamily: "Jua, sans-serif",
+              fontSize: "12px",
+              align: "center",
+              resolution: RENDER_SCALE,
+            })
             .setOrigin(0.5)
-            .setDepth(3),
-        };
-        this.swirls = {} as Record<CauldronId, Phaser.GameObjects.Container>;
-        for (const id of ["cauldron-01", "cauldron-02"] as CauldronId[]) {
-          const position = tileCenter(displayTiles[id]);
-          this.pots[id].setPosition(position.x, position.y);
-          // 조합·각인 중인 솥은 소용돌이가 돈다.
-          const swirl = this.add
-            .container(
-              position.x,
-              position.y,
-              [0, 120, 240].map((degrees) => {
-                const radians = Phaser.Math.DegToRad(degrees);
-                return this.add
-                  .circle(
-                    Math.cos(radians) * 17,
-                    Math.sin(radians) * 17,
-                    3,
-                    0xf3e6ff,
-                  )
-                  .setAlpha(0.85);
-              }),
-            )
-            .setDepth(4)
-            .setVisible(false);
-          this.tweens.add({
-            targets: swirl,
-            angle: 360,
-            duration: 1100,
-            repeat: -1,
-            ease: "Linear",
-          });
-          this.swirls[id] = swirl;
+            .setDepth(3);
         }
 
         this.slimes = {};
@@ -548,6 +563,7 @@ export default function Game() {
               fontFamily: "Jua, sans-serif",
               fontSize: "12px",
               fontStyle: "bold",
+              resolution: RENDER_SCALE,
             })
             .setOrigin(0.5);
           const container = this.add
@@ -562,7 +578,7 @@ export default function Game() {
               setHoveredActor((prev) => (prev === actorId ? null : prev)),
             );
           const carried = this.add
-            .text(actor.x, actor.y - 52, "", { fontSize: "24px" })
+            .text(actor.x, actor.y - 52, "", { fontSize: "24px", resolution: RENDER_SCALE })
             .setOrigin(0.5)
             .setDepth(8);
           // 청력 범위. 이 원 밖에서 부른 명령은 NOT_HEARD가 된다.
@@ -619,12 +635,26 @@ export default function Game() {
             fontFamily: "Jua, sans-serif",
             fontSize: "11px",
             fontStyle: "bold",
+            resolution: RENDER_SCALE,
           })
           .setOrigin(0.5);
         const player = this.add
           .container(start.x, start.y, [playerBody, playerLabel])
           .setDepth(6);
         playerPos.current = { x: start.x, y: start.y };
+        // 목소리가 닿는 범위. 슬라임의 청력 원과 겹치면 명령이 들린다.
+        const playerCarry = this.add
+          .text(start.x, start.y - 52, "", {
+            fontSize: "24px",
+            resolution: RENDER_SCALE,
+          })
+          .setOrigin(0.5)
+          .setDepth(8);
+        const voiceRing = this.add
+          .circle(start.x, start.y, 1)
+          .setStrokeStyle(2, 0xffd46b, 0.5)
+          .setDepth(1)
+          .setVisible(false);
         const keys = this.input.keyboard?.addKeys(
           "W,A,S,D,UP,DOWN,LEFT,RIGHT",
         ) as Record<string, Phaser.Input.Keyboard.Key>;
@@ -653,6 +683,12 @@ export default function Game() {
             player.y += dy * distance;
           }
           playerPos.current = { x: player.x, y: player.y };
+          playerCarry.setPosition(player.x, player.y - 52);
+          const level = voiceLevel.current;
+          voiceRing.setPosition(player.x, player.y).setVisible(level > 0.01);
+          if (level > 0.01) {
+            voiceRing.setRadius(voiceRadiusPx(level));
+          }
         });
 
         view.current = {
@@ -674,7 +710,9 @@ export default function Game() {
                 actor.status === "MOVING"
                   ? "walk"
                   : actor.status === "WORKING"
-                    ? actor.current?.action === "MIX"
+                    ? actor.leg === "DELIVER" &&
+                      (actor.current?.target === "brewer" ||
+                        actor.current?.target === "table")
                       ? "stir"
                       : "pick"
                     : "idle";
@@ -690,25 +728,27 @@ export default function Game() {
               const icon = actor.alert
                 ? alertIcons[actor.alert]
                 : actor.carrying
-                  ? carriedIcons[actor.carrying]
+                  ? itemIcons[actor.carrying]
                   : "";
               sprite.carried
                 .setText(icon ?? "")
                 .setPosition(actor.x, actor.y - 52);
             }
-            for (const id of [
-              "cauldron-01",
-              "cauldron-02",
-            ] as CauldronId[]) {
-              const pot = current.cauldrons[id];
-              const icon = pot.status === "BOOK_READY" ? "📘" : "🫕";
-              const timer = pot.timerMs
-                ? `\n${(pot.timerMs / 1000).toFixed(1)}초`
-                : "";
-              this.pots[id].setText(`${icon}${timer}`);
-              this.swirls[id].setVisible(
-                pot.status === "MIXING" || pot.status === "INSCRIBING",
-              );
+            playerCarry.setText(
+              current.player.carrying ? itemIcons[current.player.carrying] : "",
+            );
+            for (const id of allStations) {
+              const label =
+                id === "summon-red"
+                  ? `${current.summons.red.stock}/${SUMMON_MAX}`
+                  : id === "summon-blue"
+                    ? `${current.summons.blue.stock}/${SUMMON_MAX}`
+                    : id === "brewer"
+                      ? `${current.brewer.length}/${STORAGE_MAX}`
+                      : id === "table"
+                        ? `${current.table.length}/${STORAGE_MAX}`
+                        : "";
+              this.stations[id].setText(label);
             }
           },
         };
@@ -716,11 +756,14 @@ export default function Game() {
       }
     }
 
+    // 맵은 960x600 좌표계지만 화면에서는 1.5배 넘게 늘어난다. 캔버스
+    // 내부 해상도를 RENDER_SCALE배로 잡고 카메라를 같은 배율로 당겨
+    // 같은 영역을 더 촘촘한 픽셀로 그린다.
     const game = new Phaser.Game({
       type: Phaser.AUTO,
       parent: "game-canvas",
-      width: 960,
-      height: 600,
+      width: 960 * RENDER_SCALE,
+      height: 600 * RENDER_SCALE,
       backgroundColor: "#171527",
       scene: Workshop,
       render: { antialias: true },
@@ -741,19 +784,15 @@ export default function Game() {
     setMic("마이크 준비");
     setVoice(null);
     setSelectedActor(list[0]);
-    setSelectedCauldron("auto");
+    setSelectedItem("red-herb");
+    setSelectedTarget("brewer");
     setHoveredActor(null);
     setState(next);
     setSquad(list);
-    void startListening(list);
   }
 
-  function run(action: Action) {
-    const envelope = command(
-      selectedActor,
-      action,
-      selectedCauldron === "auto" ? undefined : selectedCauldron,
-    );
+  function run(item: ItemId, target: StationId) {
+    const envelope = command(selectedActor, item, target);
     const checked = validateEnvelope(envelope);
     if (!checked.ok) {
       setState((current) =>
@@ -772,160 +811,282 @@ export default function Game() {
     );
   }
 
-  async function submitVoice(blob: Blob, list: SlimeTypeId[]) {
-    setMic("Gemini 해석 중…");
-    const form = new FormData();
-    form.append("audio", blob, "command.webm");
-    form.append("actors", list.join(","));
-    try {
-      const response = await fetch("/api/command", {
-        method: "POST",
-        body: form,
-      });
-      const payload = (await response.json()) as {
-        reason?: string;
-        transcript?: string | null;
-      };
-      const transcript =
-        typeof payload.transcript === "string" ? payload.transcript : null;
-      if (!response.ok) {
-        const reason = payload.reason || "명령 해석 실패";
-        metrics.current.voiceFailures += 1;
-        setMic(`${reason} · 계속 듣는 중`);
-        setVoice({
-          // 문장이 있으면 해석 실패, 없으면 인식 실패로 구분한다.
-          kind: transcript ? "uninterpreted" : "unheard",
-          transcript,
-          commands: [],
-          detail: reason,
-        });
+  // E는 플레이어가 앞에 있는 설비를 직접 다루는 전담키다.
+  useEffect(() => {
+    if (!squad) return;
+    const isTyping = (target: EventTarget | null) =>
+      target instanceof HTMLElement &&
+      ["SELECT", "INPUT", "TEXTAREA"].includes(target.tagName);
+    const down = (event: KeyboardEvent) => {
+      if (isTyping(event.target) || event.repeat) return;
+      if (event.code === "KeyE") {
+        event.preventDefault();
         setState((current) =>
-          current ? { ...current, lastEvent: reason } : current,
+          current
+            ? playerAct(
+                movePlayer(current, playerPos.current.x, playerPos.current.y),
+              )
+            : current,
         );
         return;
       }
-      const checked = validateEnvelope(payload);
-      if (!checked.ok) {
-        metrics.current.voiceFailures += 1;
-        setMic(`${checked.reason} · 계속 듣는 중`);
-        setVoice({
-          kind: "uninterpreted",
-          transcript,
-          commands: [],
-          detail: checked.reason,
-        });
-        setState((current) =>
-          current ? { ...current, lastEvent: checked.reason } : current,
-        );
-        return;
-      }
-      metrics.current.voiceCommands += 1;
-      metrics.current.confidenceSum += checked.value.confidence;
-      setVoice({
-        kind: "accepted",
-        transcript,
-        commands: checked.value.commands.map((item) => {
-          const name = slimeTypes[item.actorId].name;
-          const target = item.targetId
-            ? targetNames[item.targetId]
-            : "가까운 솥 자동";
-          return `${name} · ${actionNames[item.action]} → ${target}`;
-        }),
-        detail: `신뢰도 ${Math.round(checked.value.confidence * 100)}% · 실행 가능 여부는 최근 상황에서 확인`,
-      });
-      setState((current) =>
-        current
-          ? executeEnvelope(
-              movePlayer(current, playerPos.current.x, playerPos.current.y),
-              checked.value,
-            )
-          : current,
-      );
-      setMic(
-        `인식 완료 · 신뢰도 ${Math.round(checked.value.confidence * 100)}% · 계속 듣는 중`,
-      );
-    } catch {
-      const reason = "음성 서버에 연결하지 못했습니다.";
-      metrics.current.voiceFailures += 1;
-      setMic(`${reason} · 계속 듣는 중`);
-      setVoice({
-        kind: "unheard",
-        transcript: null,
-        commands: [],
-        detail: reason,
-      });
-      setState((current) =>
-        current ? { ...current, lastEvent: reason } : current,
-      );
-    }
-  }
+    };
+    window.addEventListener("keydown", down);
+    keepListening.current = true;
+    void startListening();
+    return () => {
+      window.removeEventListener("keydown", down);
+      keepListening.current = false;
+      listening.current?.stop();
+    };
+    // 핸들러는 ref만 보므로 squad가 바뀔 때만 다시 건다.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [squad]);
 
-  async function startListening(list: SlimeTypeId[]) {
-    if (listening.current) return;
+  // 마이크 입력의 RMS로 목소리 크기를 잰다. Web Speech와는 별도
+  // 스트림을 열어 소리 원 크기만 계산한다.
+  async function startMeter() {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       const context = new AudioContext();
       const analyser = context.createAnalyser();
-      analyser.fftSize = 256;
+      analyser.fftSize = 1024;
       context.createMediaStreamSource(stream).connect(analyser);
-      const samples = new Uint8Array(analyser.fftSize);
-      micStream.current = stream;
-      audioContext.current = context;
-      listening.current = true;
-      setMic("상시 음성 인식 중 · 말씀하세요");
-
-      let lastVoiceAt = 0;
-      let startedAt = 0;
-      let voicedFrames = 0;
-      const watchVoice = () => {
-        if (!listening.current) return;
-        analyser.getByteTimeDomainData(samples);
-        const level = Math.sqrt(
-          samples.reduce((sum, sample) => {
-            const value = (sample - 128) / 128;
-            return sum + value * value;
-          }, 0) / samples.length,
-        );
-        const now = performance.now();
-        const active = recorder.current?.state === "recording";
-
-        if (!active && !voiceBusy.current && level > 0.035) {
-          const chunks: Blob[] = [];
-          const next = new MediaRecorder(stream);
-          recorder.current = next;
-          startedAt = now;
-          lastVoiceAt = now;
-          voicedFrames = 1;
-          next.ondataavailable = (event) => chunks.push(event.data);
-          next.onstop = () => {
-            if (voicedFrames < 12) {
-              voiceBusy.current = false;
-              setMic("상시 음성 인식 중 · 말씀하세요");
-              return;
-            }
-            const blob = new Blob(chunks, { type: next.mimeType });
-            void submitVoice(blob, list).finally(() => {
-              voiceBusy.current = false;
-            });
-          };
-          next.start();
-          setMic("말씀을 듣는 중…");
-        } else if (active) {
-          if (level > 0.02) {
-            lastVoiceAt = now;
-            voicedFrames += 1;
-          }
-          if (now - lastVoiceAt > 800 || now - startedAt > 8_000) {
-            voiceBusy.current = true;
-            recorder.current?.stop();
-          }
-        }
-
-        voiceFrame.current = requestAnimationFrame(watchVoice);
+      const buffer = new Float32Array(analyser.fftSize);
+      let live = true;
+      const sample = () => {
+        if (!live) return;
+        analyser.getFloatTimeDomainData(buffer);
+        let sum = 0;
+        for (const value of buffer) sum += value * value;
+        const rms = Math.sqrt(sum / buffer.length);
+        // 말소리 RMS는 대체로 0.02~0.25 범위라 그 구간을 0~1로 편다.
+        const level = Math.min(1, Math.max(0, (rms - 0.02) / 0.2));
+        loudness.current = Math.max(loudness.current, level);
+        voiceLevel.current = level;
+        requestAnimationFrame(sample);
       };
-      watchVoice();
+      sample();
+      meter.current = {
+        stop: () => {
+          live = false;
+          stream.getTracks().forEach((track) => track.stop());
+          void context.close();
+          meter.current = null;
+          voiceLevel.current = 0;
+        },
+      };
     } catch {
-      stopMic("마이크 권한이 필요합니다. 버튼을 눌러 다시 시도하세요.");
+      // 볼륨을 못 재면 기본 크기로 말한 것으로 본다.
+      loudness.current = 0.5;
+    }
+  }
+
+  // 브라우저 내장 STT. 말하는 중 자막을 띄우고 끝나면 바로 명령으로
+  // 바꾼다. 지원하지 않는 브라우저에서는 false를 돌려 오디오 경로로
+  // 넘어간다.
+  function startListening() {
+    const Recognition =
+      (window as unknown as { SpeechRecognition?: SpeechRecognitionCtor })
+        .SpeechRecognition ??
+      (window as unknown as { webkitSpeechRecognition?: SpeechRecognitionCtor })
+        .webkitSpeechRecognition;
+    if (!Recognition) return false;
+    const recognition = new Recognition();
+    recognition.lang = "ko-KR";
+    recognition.interimResults = true;
+    recognition.continuous = false;
+    let finalText = "";
+    recognition.onresult = (event: SpeechRecognitionEventLike) => {
+      let interim = "";
+      for (let index = event.resultIndex; index < event.results.length; index += 1) {
+        const result = event.results[index];
+        if (result.isFinal) finalText += result[0].transcript;
+        else interim += result[0].transcript;
+      }
+      setMic(`${finalText}${interim}` || "듣는 중…");
+    };
+    recognition.onerror = () => setMic("음성을 인식하지 못했습니다.");
+    recognition.onend = () => {
+      listening.current = null;
+      meter.current?.stop();
+      const text = finalText.trim();
+      if (text) void runPhrase(text);
+      else {
+        metrics.current.voiceFailures += 1;
+        setMic("음성을 인식하지 못했습니다.");
+        setVoice({
+          kind: "unheard",
+          transcript: null,
+          commands: [],
+          detail: "다시 눌러 말해 보세요.",
+        });
+      }
+      if (keepListening.current) {
+        window.setTimeout(() => startListening(), 250);
+      }
+    };
+    listening.current = recognition;
+    loudness.current = 0;
+    void startMeter();
+    recognition.start();
+    setMic("듣는 중…");
+    return true;
+  }
+
+  // 로컬 사전으로 먼저 맞춰 보고, 걸리지 않는 문장만 Gemini로 넘긴다.
+  async function runPhrase(text: string) {
+    const list = squad ?? [];
+    const local = matchPhrase(text, list);
+    if (local) {
+      metrics.current.voiceCommands += 1;
+      metrics.current.confidenceSum += 1;
+      setVoice({
+        kind: "accepted",
+        transcript: text,
+        commands: local.map(
+          (entry) =>
+            `${slimeTypes[entry.actorId].name} · ${itemLabel(entry.item)} → ${stationLabels[entry.target]}`,
+        ),
+        detail: "즉시 인식",
+      });
+      setMic("즉시 인식");
+      setState((current) =>
+        current
+          ? executeEnvelope(
+              movePlayer(current, playerPos.current.x, playerPos.current.y),
+              { status: "OK", confidence: 1, commands: local, reason: null },
+              loudness.current,
+            )
+          : current,
+      );
+      return;
+    }
+    setMic("Gemini 해석 중…");
+    const form = new FormData();
+    form.append("text", text);
+    form.append("actors", list.join(","));
+    await sendCommand(form);
+  }
+
+  async function toggleMic() {
+    if (listening.current) {
+      keepListening.current = false;
+      listening.current.stop();
+      setMic("음성 인식 일시 정지");
+      return;
+    }
+    keepListening.current = true;
+    if (startListening()) return;
+    if (recorder.current?.state === "recording") {
+      recorder.current.stop();
+      return;
+    }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      chunks.current = [];
+      const next = new MediaRecorder(stream);
+      recorder.current = next;
+      next.ondataavailable = (event) => chunks.current.push(event.data);
+      next.onstop = async () => {
+        stream.getTracks().forEach((track) => track.stop());
+        setMic("Gemini 해석 중…");
+        const form = new FormData();
+        form.append(
+          "audio",
+          new Blob(chunks.current, { type: next.mimeType }),
+          "command.webm",
+        );
+        form.append("actors", (squad ?? []).join(","));
+        await sendCommand(form);
+      };
+      next.start();
+      setMic("듣는 중… 스페이스를 떼면 전송");
+    } catch {
+      setMic("마이크 권한이 필요합니다.");
+    }
+  }
+
+  async function sendCommand(form: FormData) {
+    {
+        try {
+          const response = await fetch("/api/command", {
+            method: "POST",
+            body: form,
+          });
+          const payload = (await response.json()) as {
+            reason?: string;
+            transcript?: string | null;
+          };
+          const transcript =
+            typeof payload.transcript === "string" ? payload.transcript : null;
+          if (!response.ok) {
+            const reason = payload.reason || "명령 해석 실패";
+            metrics.current.voiceFailures += 1;
+            setMic(reason);
+            setVoice({
+              // 문장이 있으면 해석 실패, 없으면 인식 실패로 구분한다.
+              kind: transcript ? "uninterpreted" : "unheard",
+              transcript,
+              commands: [],
+              detail: reason,
+            });
+            setState((current) =>
+              current ? { ...current, lastEvent: reason } : current,
+            );
+            return;
+          }
+          const checked = validateEnvelope(payload);
+          if (!checked.ok) {
+            metrics.current.voiceFailures += 1;
+            setMic(checked.reason);
+            setVoice({
+              kind: "uninterpreted",
+              transcript,
+              commands: [],
+              detail: checked.reason,
+            });
+            setState((current) =>
+              current ? { ...current, lastEvent: checked.reason } : current,
+            );
+            return;
+          }
+          metrics.current.voiceCommands += 1;
+          metrics.current.confidenceSum += checked.value.confidence;
+          setVoice({
+            kind: "accepted",
+            transcript,
+            commands: checked.value.commands.map(
+              (entry) =>
+                `${slimeTypes[entry.actorId].name} · ${itemLabel(entry.item)} → ${stationLabels[entry.target]}`,
+            ),
+            detail: `신뢰도 ${Math.round(checked.value.confidence * 100)}% · 실행 가능 여부는 최근 상황에서 확인`,
+          });
+          setState((current) =>
+            current
+              ? executeEnvelope(
+                  movePlayer(
+                    current,
+                    playerPos.current.x,
+                    playerPos.current.y,
+                  ),
+                  checked.value,
+                  loudness.current,
+                )
+              : current,
+          );
+          setMic(
+            `인식 완료 · 신뢰도 ${Math.round(checked.value.confidence * 100)}%`,
+          );
+        } catch {
+          const reason = "음성 서버에 연결하지 못했습니다.";
+          metrics.current.voiceFailures += 1;
+          setMic(reason);
+          setVoice({ kind: "unheard", transcript: null, commands: [], detail: reason });
+          setState((current) =>
+            current ? { ...current, lastEvent: reason } : current,
+          );
+        }
     }
   }
 
@@ -937,7 +1098,7 @@ export default function Game() {
           <p className="select-guide">
             공방의 첫 직원 슬라임을 1마리 고르세요. 음성으로 이름을 불러
             지휘하고, 청력이 낮은 슬라임에게는 가까이 가서 말해야 합니다.
-            목표는 3분 안에 마도서 8권 납품입니다.
+            목표는 3분 안에 주문 5건 완료입니다.
           </p>
           <div className="select-grid">
             {allTypeIds.map((typeId) => {
@@ -978,9 +1139,10 @@ export default function Game() {
 
   const hovered = hoveredActor ? state.actors[hoveredActor] : null;
   const hint = nextHint(state, squad[0]);
+  const reach = nextPlayerAction(state);
   const result =
     state.phase === "won"
-      ? "성공! 마도서 8권을 납품했습니다."
+      ? "성공! 주문 5건을 완료했습니다."
       : "시간 종료. 다시 공방을 가동해 보세요.";
 
   return (
@@ -993,22 +1155,42 @@ export default function Game() {
             ⏱ {state.timeLeft}
           </span>
           <span className="hud-chip hud-goal">
-            📚 {state.submitted} / {state.goal}
+            📦 {state.filled} / {state.goal}
           </span>
           <span className="hud-chip">💰 {state.gold}G</span>
         </div>
 
-        <div className="hud-pots" aria-label="솥 상태">
-          {(["cauldron-01", "cauldron-02"] as CauldronId[]).map((id) => {
-            const pot = state.cauldrons[id];
-            return (
-              <span key={id} className="pot-chip" data-status={pot.status}>
-                <b>{potNames[id]}</b>
-                {statusNames[pot.status]}
-                {pot.timerMs ? ` ${(pot.timerMs / 1000).toFixed(1)}초` : ""}
-              </span>
-            );
-          })}
+        <div className="hud-pots" aria-label="주문과 재고">
+          {/* 주문은 색과 형태만 보여 준다. 효과명은 쓰지 않는다. */}
+          <span className="pot-chip" data-status="ORDER">
+            <b>주문</b>
+            {(Object.entries(state.order.need) as [ItemId, number][]).map(
+              ([item, count]) => (
+                <span key={item}>
+                  {itemIcons[item]} {state.order.done[item] ?? 0}/{count}
+                </span>
+              ),
+            )}
+          </span>
+          <span className="pot-chip">
+            <b>소환진</b>
+            🔴 {state.summons.red.stock}/{SUMMON_MAX} 🔵{" "}
+            {state.summons.blue.stock}/{SUMMON_MAX}
+          </span>
+          <span className="pot-chip" data-status={state.brewer.length >= STORAGE_MAX ? "FULL" : undefined}>
+            <b>양조기</b>
+            {state.brewer.map((item, index) => (
+              <span key={`${item}-${index}`}>{itemIcons[item]}</span>
+            ))}
+            {state.brewer.length}/{STORAGE_MAX}
+          </span>
+          <span className="pot-chip" data-status={state.table.length >= STORAGE_MAX ? "FULL" : undefined}>
+            <b>테이블</b>
+            {state.table.map((item, index) => (
+              <span key={`${item}-${index}`}>{itemIcons[item]}</span>
+            ))}
+            {state.table.length}/{STORAGE_MAX}
+          </span>
         </div>
 
         <div className="hud-crew" aria-label="슬라임 상태">
@@ -1018,7 +1200,7 @@ export default function Game() {
             return (
               <span key={actorId} className="crew-chip">
                 <b style={{ color: typeCssColors[actorId] }}>{actor.name}</b>
-                {actor.carrying ? carriedIcons[actor.carrying] : "—"}
+                {actor.carrying ? itemIcons[actor.carrying] : "—"}
                 <i>
                   {actor.queue.length}/
                   {statTables.focusCapacity[actor.statLevels.focus]}
@@ -1072,6 +1254,12 @@ export default function Game() {
             <small>지금 할 일</small>
             <strong>{hint.title}</strong>
             {hint.say && <q>{hint.say}</q>}
+            {/* 앞에 설비가 있으면 직접 할 수 있는 일을 알려 준다. */}
+            {reach && (
+              <span className="reach">
+                <b>E</b> {reach.label}
+              </span>
+            )}
           </div>
 
           <div className="hud-right">
@@ -1085,17 +1273,17 @@ export default function Game() {
               )}
               <span className="feed-mic">{mic}</span>
             </div>
-            <div
+            <button
               className="mic"
-              role="status"
-              aria-live="polite"
+              onClick={toggleMic}
+              disabled={state.phase !== "playing"}
               data-recording={recorder.current?.state === "recording" ? "" : undefined}
             >
               🎙
               <span>
-                {recorder.current?.state === "recording" ? "듣는 중" : "대기 중"}
+                {keepListening.current ? "항상 듣는 중" : "다시 듣기"}
               </span>
-            </div>
+            </button>
           </div>
         </div>
 
@@ -1118,25 +1306,40 @@ export default function Game() {
               </select>
             </label>
             <label>
-              작업할 솥
+              물품
               <select
-                value={selectedCauldron}
+                value={selectedItem}
                 onChange={(event) =>
-                  setSelectedCauldron(event.target.value as CauldronId | "auto")
+                  setSelectedItem(event.target.value as ItemId)
                 }
               >
-                <option value="auto">가까운 솥 자동</option>
-                <option value="cauldron-01">왼쪽 솥</option>
-                <option value="cauldron-02">오른쪽 솥</option>
+                {allItems.map((item) => (
+                  <option key={item} value={item}>
+                    {itemLabel(item)}
+                  </option>
+                ))}
               </select>
             </label>
-            <button onClick={() => run("GET_HERB")}>1. 약초 가져오기</button>
-            <button onClick={() => run("ADD_HERB")}>2. 약초 넣기</button>
-            <button onClick={() => run("MIX")}>3. 젓기</button>
-            <button onClick={() => run("GET_PARCHMENT")}>4. 양피지 가져오기</button>
-            <button onClick={() => run("DIP_PARCHMENT")}>5. 양피지 담그기</button>
-            <button onClick={() => run("TAKE_BOOK")}>6. 마도서 꺼내기</button>
-            <button onClick={() => run("SUBMIT")}>7. 납품하기</button>
+            <label>
+              목적지
+              <select
+                value={selectedTarget}
+                onChange={(event) =>
+                  setSelectedTarget(event.target.value as StationId)
+                }
+              >
+                {allStations
+                  .filter((id) => isValidRoute(selectedItem, id))
+                  .map((id) => (
+                    <option key={id} value={id}>
+                      {stationLabels[id]}
+                    </option>
+                  ))}
+              </select>
+            </label>
+            <button onClick={() => run(selectedItem, selectedTarget)}>
+              보내기
+            </button>
           </div>
         </details>
       </div>
@@ -1152,7 +1355,7 @@ export default function Game() {
             <p className="eyebrow">{state.phase === "won" ? "SUCCESS" : "TIME UP"}</p>
             <h2 id="result-title">{result}</h2>
             <p className="mic-state">
-              💰 {state.gold}G · 📚 {state.submitted}/{state.goal}
+              💰 {state.gold}G · 📦 {state.filled}/{state.goal}
             </p>
             <p className="mic-state">{saved}</p>
             <div className="result-actions">
