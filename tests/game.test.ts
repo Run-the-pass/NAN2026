@@ -6,7 +6,16 @@ import { POST } from "../app/api/command/route.js";
 import { simulate } from "../game/cli.js";
 import { parseSession } from "../game/session.js";
 import { nextHint } from "../game/hint.js";
-import { matchPhrase } from "../game/phrase.js";
+import {
+  inspectPhrase,
+  matchCarriedPhrase,
+  matchPhrase,
+} from "../game/phrase.js";
+import {
+  parseVoiceTest,
+  voiceLabSquad,
+  voiceTestRow,
+} from "../game/voice-test.js";
 import { facingFromDelta, slimeSvg, type Facing } from "../app/slime-art.js";
 import {
   MAX_VOICE_TILES,
@@ -27,6 +36,7 @@ import {
   nextPlayerAction,
   playerAct,
   productOf,
+  redirectCarried,
   slimeTypes,
   sourceOf,
   stockOf,
@@ -191,6 +201,63 @@ test("버린 물품은 재고에서 사라지고 되돌아오지 않는다", () 
   assert.match(state.lastEvent, /버렸습니다/);
 });
 
+test("그거 명령은 현재 든 물품의 목적지를 바꾼다", () => {
+  const squad: ActorId[] = ["keen", "swift"];
+  assert.deepEqual(matchCarriedPhrase("날쌘아 그거 테이블로 가져가", squad), {
+    actorId: "swift",
+    target: "table",
+  });
+  assert.deepEqual(matchCarriedPhrase("들고 있는 거 버려", squad), {
+    actorId: "keen",
+    target: "trash",
+  });
+  assert.deepEqual(matchCarriedPhrase("가지고 있는 거 제출해", squad), {
+    actorId: "keen",
+    target: "submission",
+  });
+  assert.equal(matchCarriedPhrase("날쌘아 붉은 물약 버려", squad), null);
+
+  let state = initialState(1, ["swift"]);
+  state = executeEnvelope(
+    follow(state, "swift"),
+    command("swift", "red-herb", "brewer"),
+  );
+  for (let count = 0; count < 1_000 && !state.actors.swift!.carrying; count += 1) {
+    state = tick(state, 50);
+  }
+  assert.equal(state.actors.swift!.carrying, "red-herb");
+  assert.equal(state.actors.swift!.current?.target, "brewer");
+
+  state = redirectCarried(follow(state, "swift"), "swift", "table");
+  assert.equal(state.actors.swift!.carrying, "red-herb");
+  assert.equal(state.actors.swift!.current?.target, "table");
+  assert.deepEqual(state.brewer, []);
+  state = untilIdle(state);
+  assert.equal(state.actors.swift!.carrying, null);
+  assert.deepEqual(state.brewer, []);
+  assert.deepEqual(state.table, ["red-scroll"]);
+
+  state = executeEnvelope(
+    follow(state, "swift"),
+    command("swift", "red-scroll", "submission"),
+  );
+  for (let count = 0; count < 1_000 && !state.actors.swift!.carrying; count += 1) {
+    state = tick(state, 50);
+  }
+  const invalid = redirectCarried(follow(state, "swift"), "swift", "table");
+  assert.equal(invalid.actors.swift!.carrying, "red-scroll");
+  assert.equal(invalid.actors.swift!.current?.target, "submission");
+  assert.match(invalid.lastEvent, /보낼 수 없습니다/);
+
+  const empty = redirectCarried(
+    follow(initialState(1, ["swift"]), "swift"),
+    "swift",
+    "table",
+  );
+  assert.equal(empty.actors.swift!.current, null);
+  assert.match(empty.lastEvent, /들고 있는 물품이 없습니다/);
+});
+
 test("신뢰 경계는 허용된 슬라임·물품·목적지만 받는다", () => {
   assert.equal(validateEnvelope(command("keen", "red-herb", "brewer")).ok, true);
   const base = command("keen", "red-herb", "brewer");
@@ -283,16 +350,123 @@ test("실시간 문장은 물품과 목적지를 잡아 바로 명령이 된다"
   assert.equal(one("종끗아 불근 약추를 양주기에 넣어")?.actorId, "keen");
   assert.equal(one("종끗아 불근 약추를 양주기에 넣어")?.item, "red-herb");
   assert.equal(one("종끗아 불근 약추를 양주기에 넣어")?.target, "brewer");
+  assert.deepEqual(one("좀 끄자 붉은 양초를 양조기에 넣어"), {
+    actorId: "keen",
+    item: "red-herb",
+    target: "brewer",
+    sequence: 1,
+  });
   assert.equal(one("일꾸니 파랑 무략 재출해")?.actorId, "worker");
   assert.equal(one("일꾸니 파랑 무략 재출해")?.item, "blue-potion");
   assert.equal(one("일꾸니 파랑 무략 재출해")?.target, "submission");
 
-  // 목적지나 물품이 빠지면 사전이 잡지 않고 Gemini로 넘긴다.
+  // 목적지나 물품이 빠지면 사전이 명령을 만들지 않는다.
   assert.equal(matchPhrase("붉은 약초 가져와", squad), null);
   assert.equal(matchPhrase("양조기에 넣어", squad), null);
   // 물약을 양조기에 넣는 말은 규칙상 성립하지 않는다.
   assert.equal(matchPhrase("붉은 물약을 양조기에 넣어", squad), null);
   assert.equal(matchPhrase("오늘 날씨 좋다", squad), null);
+
+  const inspected = inspectPhrase("붉은 양초 양쪽에", [
+    "nerd",
+    "keen",
+    "swift",
+  ]);
+  assert.deepEqual(inspected.matches, [
+    {
+      field: "actor",
+      spoken: null,
+      canonical: "너드",
+      source: "default",
+    },
+    {
+      field: "color",
+      spoken: "붉은",
+      canonical: "붉은색",
+      source: "dictionary",
+    },
+    {
+      field: "item",
+      spoken: "양초",
+      canonical: "약초",
+      source: "dictionary",
+    },
+    {
+      field: "target",
+      spoken: "양쪽",
+      canonical: "양조기",
+      source: "dictionary",
+    },
+  ]);
+});
+
+test("음성 실험 결과는 기대값과 로컬·Gemini 일치 여부를 정형화한다", () => {
+  const input = {
+    batchId: "batch-1",
+    expectedActor: "keen",
+    expectedItem: "red-herb",
+    expectedTarget: "brewer",
+    transcript: "좀 끄자 붉은 양초를 양조기에 넣어",
+    sttConfidence: 0.72,
+    durationMs: 1800,
+    gemini: {
+      status: "OK",
+      confidence: 0.91,
+      commands: [{
+        actorId: "keen",
+        item: "red-herb",
+        target: "brewer",
+        sequence: 1,
+      }],
+      reason: null,
+    },
+  };
+  const parsed = parseVoiceTest(input);
+  assert.equal(parsed.ok, true);
+  if (!parsed.ok) return;
+  const row = voiceTestRow(parsed.value);
+  assert.equal(voiceLabSquad("keen")[0] === "keen", false);
+  assert.equal(row.localAllMatch, true);
+  assert.equal(row.geminiAllMatch, true);
+  assert.equal(
+    parseVoiceTest({ ...input, expectedItem: "red-potion" }).ok,
+    false,
+  );
+});
+
+test("음성 실험실은 현재 든 물품의 목적지 변경을 기대값으로 검증한다", () => {
+  const input = {
+    batchId: "batch-carried",
+    expectedActor: "swift",
+    expectedItem: "carried",
+    expectedTarget: "table",
+    expectedPhraseStyle: "holding",
+    transcript: "날쌘아 들고 있는 거 테이블로 가져가",
+    sttConfidence: 0.9,
+    durationMs: 1200,
+    gemini: {
+      status: "SKIPPED",
+      confidence: null,
+      commands: [],
+      reason: "브라우저 STT 텍스트는 Gemini로 재분석하지 않습니다.",
+    },
+  };
+  const parsed = parseVoiceTest(input);
+  assert.equal(parsed.ok, true);
+  if (!parsed.ok) return;
+  const row = voiceTestRow(parsed.value);
+  assert.equal(row.expectedPhrase, "날쌘아, 들고 있는 거 테이블로 가져가");
+  assert.equal(row.localStatus, "CONTEXTUAL");
+  assert.equal(row.localAllMatch, true);
+  assert.equal(row.localItemMatch, true);
+  assert.equal(
+    parseVoiceTest({ ...input, expectedTarget: "summon-red" }).ok,
+    false,
+  );
+  assert.equal(
+    parseVoiceTest({ ...input, expectedPhraseStyle: "unknown" }).ok,
+    false,
+  );
 });
 
 test("다음 할 일 힌트는 주문에서 부족한 것을 짚는다", () => {
@@ -330,6 +504,18 @@ test("Content-Type 없는 명령 요청은 400 JSON을 반환한다", async () =
   assert.equal(response.status, 400);
   assert.deepEqual(await response.json(), {
     reason: "multipart/form-data 요청이 필요합니다.",
+  });
+});
+
+test("브라우저 STT 텍스트는 Gemini 명령 API가 다시 분석하지 않는다", async () => {
+  const form = new FormData();
+  form.set("text", "쫑긋아 붉은 약초를 양조기에 넣어");
+  const response = await POST(
+    new Request("http://localhost/api/command", { method: "POST", body: form }),
+  );
+  assert.equal(response.status, 400);
+  assert.deepEqual(await response.json(), {
+    reason: "8MB 이하 오디오 파일이 필요합니다.",
   });
 });
 

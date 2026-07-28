@@ -571,6 +571,68 @@ export function executeEnvelope(
   return next;
 }
 
+export function redirectCarried(
+  state: GameState,
+  actorId: ActorId,
+  target: StationId,
+  loudness = 0,
+): GameState {
+  if (state.phase !== "playing") {
+    return event(state, "종료된 공방에서는 명령을 받을 수 없습니다.", {});
+  }
+  const actor = state.actors[actorId];
+  if (!actor) {
+    return event(state, "이번 판에 선택되지 않은 슬라임입니다.", {});
+  }
+  if (!canHear(state, actor, voiceRadiusPx(loudness))) {
+    return event(
+      state,
+      `${actor.name}이(가) 명령을 듣지 못했습니다 — 더 가까이 가세요.`,
+      {
+        actors: patchActor(state, actorId, {
+          ...actor,
+          alert: "NOT_HEARD",
+          alertMs: 1_800,
+        }),
+      },
+    );
+  }
+  if (!actor.carrying) {
+    return event(state, `${actor.name}이(가) 들고 있는 물품이 없습니다.`, {});
+  }
+  const item = actor.carrying;
+  if (!isValidRoute(item, target)) {
+    return event(
+      state,
+      `${itemLabel(item)}은(는) ${stationLabels[target]}에 보낼 수 없습니다.`,
+      {},
+    );
+  }
+  const path = findPath(pixelToTile(actor.x, actor.y), taskTiles[target]);
+  if (!path) return event(state, `${stationLabels[target]}에 갈 수 없습니다.`, {});
+  return event(
+    state,
+    `${actor.name}이(가) ${withParticle(itemLabel(item))} ${stationLabels[target]}에 가져갑니다.`,
+    {
+      actors: patchActor(state, actorId, {
+        ...actor,
+        current: {
+          actorId,
+          item,
+          target,
+          sequence: actor.current?.sequence ?? 1,
+        },
+        leg: "DELIVER",
+        path,
+        status: "MOVING",
+        workLeftMs: 0,
+        alert: null,
+        alertMs: 0,
+      }),
+    },
+  );
+}
+
 function takeStock(state: GameState, item: ItemId): Partial<GameState> {
   const kind = itemKind(item);
   if (kind === "herb") {

@@ -19,23 +19,15 @@ export async function POST(request: Request) {
       { status: 400 },
     );
   }
-  // 실시간 STT가 문장을 준 경우에는 오디오 추론을 건너뛴다. 텍스트
-  // 추론이 훨씬 빨라 게임 반응이 끊기지 않는다.
-  const spoken = form.get("text");
-  const transcriptIn =
-    typeof spoken === "string" && spoken.trim()
-      ? spoken.trim().slice(0, 200)
-      : null;
   const audio = form.get("audio");
   if (
-    !transcriptIn &&
-    (!(audio instanceof File) ||
-      !audio.type.startsWith("audio/") ||
-      audio.size < 1 ||
-      audio.size > 8_000_000)
+    !(audio instanceof File) ||
+    !audio.type.startsWith("audio/") ||
+    audio.size < 1 ||
+    audio.size > 8_000_000
   ) {
     return Response.json(
-      { reason: "8MB 이하 오디오 파일 또는 text가 필요합니다." },
+      { reason: "8MB 이하 오디오 파일이 필요합니다." },
       { status: 400 },
     );
   }
@@ -110,16 +102,12 @@ export async function POST(request: Request) {
                 "소환진은 목적지가 아니다. 허용 후보 외 이름과 물품을 만들지 마라.",
               ].join(" "),
             },
-            transcriptIn
-              ? { text: `플레이어가 말한 문장: ${transcriptIn}` }
-              : {
-                  inlineData: {
-                    mimeType: (audio as File).type,
-                    data: Buffer.from(
-                      await (audio as File).arrayBuffer(),
-                    ).toString("base64"),
-                  },
-                },
+            {
+              inlineData: {
+                mimeType: audio.type,
+                data: Buffer.from(await audio.arrayBuffer()).toString("base64"),
+              },
+            },
           ],
         }],
         generationConfig: { responseMimeType: "application/json", responseJsonSchema: schema },
@@ -139,10 +127,9 @@ export async function POST(request: Request) {
     };
     // 표시용 문장은 길이만 제한하고 명령 해석에는 사용하지 않는다.
     const transcript =
-      transcriptIn ??
-      (typeof parsed.transcript === "string"
+      typeof parsed.transcript === "string"
         ? parsed.transcript.slice(0, 200)
-        : null);
+        : null;
     if (parsed.status === "UNKNOWN") {
       return Response.json(
         {

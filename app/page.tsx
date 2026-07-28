@@ -24,11 +24,14 @@ export default function Home() {
               <img src="/home/setting.svg" width={964} height={574} alt="설정" />
             </summary>
             <p>
-              게임이 시작되면 마이크가 자동으로 켜집니다.
+              스페이스바를 누르는 동안만 마이크가 켜집니다.
               <br />
               음량은 브라우저나 기기 설정에서 조절해 주세요.
             </p>
           </details>
+          <Link className="home-lab-link" href="/voice-lab">
+            🎙 음성 인식 실험실
+          </Link>
         </nav>
 
         <img

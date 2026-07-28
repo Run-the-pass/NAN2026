@@ -20,3 +20,37 @@ export const playtestSessions = sqliteTable("playtest_sessions", {
 
 export type PlaytestSessionRow = typeof playtestSessions.$inferSelect;
 export type PlaytestSessionInsert = typeof playtestSessions.$inferInsert;
+
+export const voiceTestResults = sqliteTable("voice_test_results", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  batchId: text("batch_id").notNull(),
+  expectedActor: text("expected_actor").notNull(),
+  expectedItem: text("expected_item").notNull(),
+  expectedTarget: text("expected_target").notNull(),
+  expectedPhrase: text("expected_phrase").notNull(),
+  transcript: text("transcript").notNull(),
+  sttConfidence: real("stt_confidence"),
+  durationMs: integer("duration_ms").notNull(),
+  localStatus: text("local_status").notNull(),
+  localActor: text("local_actor"),
+  localItem: text("local_item"),
+  localTarget: text("local_target"),
+  localActorMatch: integer("local_actor_match", { mode: "boolean" }).notNull(),
+  localItemMatch: integer("local_item_match", { mode: "boolean" }).notNull(),
+  localTargetMatch: integer("local_target_match", { mode: "boolean" }).notNull(),
+  localAllMatch: integer("local_all_match", { mode: "boolean" }).notNull(),
+  geminiStatus: text("gemini_status").notNull(),
+  geminiCommands: text("gemini_commands").notNull(),
+  geminiActor: text("gemini_actor"),
+  geminiItem: text("gemini_item"),
+  geminiTarget: text("gemini_target"),
+  geminiConfidence: real("gemini_confidence"),
+  geminiReason: text("gemini_reason"),
+  geminiActorMatch: integer("gemini_actor_match", { mode: "boolean" }).notNull(),
+  geminiItemMatch: integer("gemini_item_match", { mode: "boolean" }).notNull(),
+  geminiTargetMatch: integer("gemini_target_match", { mode: "boolean" }).notNull(),
+  geminiAllMatch: integer("gemini_all_match", { mode: "boolean" }).notNull(),
+  createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+});
+
+export type VoiceTestResultRow = typeof voiceTestResults.$inferSelect;

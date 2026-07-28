@@ -19,7 +19,15 @@ const CALLBACK_PATH = "/callback";
 export async function getChatGPTUser(): Promise<ChatGPTUser | null> {
   const requestHeaders = await headers();
   const email = requestHeaders.get(USER_EMAIL_HEADER);
-  if (!email) return null;
+  if (!email) {
+    return process.env.NODE_ENV === "development"
+      ? {
+          displayName: "Local Voice Tester",
+          email: "voice-tester@local.invalid",
+          fullName: "Local Voice Tester",
+        }
+      : null;
+  }
 
   const encodedFullName = requestHeaders.get(USER_FULL_NAME_HEADER);
   const fullName =

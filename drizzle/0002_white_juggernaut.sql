@@ -1,0 +1,1 @@
+ALTER TABLE `voice_test_results` ADD `stt_confidence` real;

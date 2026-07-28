@@ -15,6 +15,7 @@ import {
   pixelToTile,
   playerAct,
   playerStartTile,
+  redirectCarried,
   slimeTypes,
   statTables,
   taskTiles,
@@ -36,7 +37,7 @@ import {
   type StationId,
 } from "../game/core";
 import { nextHint } from "../game/hint";
-import { matchPhrase } from "../game/phrase";
+import { matchCarriedPhrase, matchPhrase } from "../game/phrase";
 import {
   facingFromDelta,
   facings,
@@ -192,7 +193,7 @@ export default function Game() {
   const view = useRef<View | null>(null);
   const recorder = useRef<MediaRecorder | null>(null);
   const listening = useRef<SpeechRecognitionLike | null>(null);
-  const keepListening = useRef(false);
+  const micHeld = useRef(false);
   // 발화 중 가장 컸던 목소리. 소리 원 반지름을 정하는 값이다.
   const loudness = useRef(0);
   const meter = useRef<{ stop: () => void } | null>(null);
@@ -212,8 +213,9 @@ export default function Game() {
 
   useEffect(() => {
     if (!phase || phase === "playing") return;
-    keepListening.current = false;
+    micHeld.current = false;
     listening.current?.stop();
+    if (recorder.current?.state === "recording") recorder.current.stop();
     meter.current?.stop();
   }, [phase]);
 
@@ -452,6 +454,22 @@ export default function Game() {
             repeat: -1,
             ease: "Sine.easeOut",
           });
+        }
+        // 동선은 그대로 두고, 방의 경계와 작업 구역만 더 읽기 쉽게 만든다.
+        const decor = this.add.graphics().setDepth(0);
+        decor.fillStyle(0x24150c, 0.85);
+        decor.fillRect(60, 60, 840, 10).fillRect(60, 530, 840, 10);
+        decor.fillStyle(0x8a4f24, 0.35);
+        decor.fillRoundedRect(300, 400, 360, 65, 12);
+        decor.lineStyle(2, 0xe3a44d, 0.35).strokeRoundedRect(300, 400, 360, 65, 12);
+        for (const x of [95, 805]) {
+          decor.fillStyle(0x2b170d, 0.9).fillRect(x, 150, 60, 8);
+          decor.fillStyle(0x9c5e2c, 0.75).fillRect(x + 8, 130, 18, 20);
+          decor.fillStyle(0x7d4321, 0.8).fillRect(x + 32, 136, 18, 14);
+        }
+        for (const x of [120, 840]) {
+          decor.fillStyle(0xf6bd5b, 0.16).fillCircle(x, 105, 54);
+          decor.fillStyle(0xf6d48e, 0.95).fillCircle(x, 105, 5);
         }
         // 설비 6종을 서로 다른 실루엣으로 그리고 재고는 sync에서 갱신한다.
         this.stations = {} as Record<StationId, Phaser.GameObjects.Text>;
@@ -811,7 +829,7 @@ export default function Game() {
     );
   }
 
-  // E는 플레이어가 앞에 있는 설비를 직접 다루는 전담키다.
+  // E는 직접 조작, 스페이스는 누르는 동안만 음성을 받는다.
   useEffect(() => {
     if (!squad) return;
     const isTyping = (target: EventTarget | null) =>
@@ -830,14 +848,22 @@ export default function Game() {
         );
         return;
       }
+      if (event.code === "Space") {
+        event.preventDefault();
+        startMic();
+      }
+    };
+    const up = (event: KeyboardEvent) => {
+      if (isTyping(event.target) || event.code !== "Space") return;
+      event.preventDefault();
+      stopMic();
     };
     window.addEventListener("keydown", down);
-    keepListening.current = true;
-    void startListening();
+    window.addEventListener("keyup", up);
     return () => {
       window.removeEventListener("keydown", down);
-      keepListening.current = false;
-      listening.current?.stop();
+      window.removeEventListener("keyup", up);
+      stopMic();
     };
     // 핸들러는 ref만 보므로 squad가 바뀔 때만 다시 건다.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -848,6 +874,10 @@ export default function Game() {
   async function startMeter() {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      if (!micHeld.current) {
+        stream.getTracks().forEach((track) => track.stop());
+        return;
+      }
       const context = new AudioContext();
       const analyser = context.createAnalyser();
       analyser.fftSize = 1024;
@@ -922,9 +952,6 @@ export default function Game() {
           detail: "다시 눌러 말해 보세요.",
         });
       }
-      if (keepListening.current) {
-        window.setTimeout(() => startListening(), 250);
-      }
     };
     listening.current = recognition;
     loudness.current = 0;
@@ -934,9 +961,35 @@ export default function Game() {
     return true;
   }
 
-  // 로컬 사전으로 먼저 맞춰 보고, 걸리지 않는 문장만 Gemini로 넘긴다.
-  async function runPhrase(text: string) {
+  // 브라우저 STT 문장은 로컬 사전까지만 사용한다. Gemini는 Web Speech를
+  // 쓸 수 없을 때 녹음한 원본 오디오만 해석한다.
+  function runPhrase(text: string) {
     const list = squad ?? [];
+    const carried = matchCarriedPhrase(text, list);
+    if (carried) {
+      metrics.current.voiceCommands += 1;
+      metrics.current.confidenceSum += 1;
+      setVoice({
+        kind: "accepted",
+        transcript: text,
+        commands: [
+          `${slimeTypes[carried.actorId].name} · 현재 든 물품 → ${stationLabels[carried.target]}`,
+        ],
+        detail: "즉시 인식",
+      });
+      setMic("즉시 인식");
+      setState((current) =>
+        current
+          ? redirectCarried(
+              movePlayer(current, playerPos.current.x, playerPos.current.y),
+              carried.actorId,
+              carried.target,
+              loudness.current,
+            )
+          : current,
+      );
+      return;
+    }
     const local = matchPhrase(text, list);
     if (local) {
       metrics.current.voiceCommands += 1;
@@ -962,28 +1015,48 @@ export default function Game() {
       );
       return;
     }
-    setMic("Gemini 해석 중…");
-    const form = new FormData();
-    form.append("text", text);
-    form.append("actors", list.join(","));
-    await sendCommand(form);
+    const reason = "로컬 사전에 없는 문장입니다.";
+    metrics.current.voiceFailures += 1;
+    setMic(reason);
+    setVoice({
+      kind: "uninterpreted",
+      transcript: text,
+      commands: [],
+      detail: reason,
+    });
+    setState((current) =>
+      current ? { ...current, lastEvent: reason } : current,
+    );
   }
 
-  async function toggleMic() {
+  function startMic() {
+    if (micHeld.current) return;
+    micHeld.current = true;
+    if (startListening()) return;
+    void startRecording();
+  }
+
+  function stopMic() {
+    if (!micHeld.current) return;
+    micHeld.current = false;
     if (listening.current) {
-      keepListening.current = false;
       listening.current.stop();
-      setMic("음성 인식 일시 정지");
       return;
     }
-    keepListening.current = true;
-    if (startListening()) return;
+    if (recorder.current?.state === "recording") recorder.current.stop();
+    else setMic("마이크 준비");
+  }
+
+  async function startRecording() {
     if (recorder.current?.state === "recording") {
-      recorder.current.stop();
       return;
     }
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      if (!micHeld.current) {
+        stream.getTracks().forEach((track) => track.stop());
+        return;
+      }
       chunks.current = [];
       const next = new MediaRecorder(stream);
       recorder.current = next;
@@ -1273,17 +1346,16 @@ export default function Game() {
               )}
               <span className="feed-mic">{mic}</span>
             </div>
-            <button
+            <div
               className="mic"
-              onClick={toggleMic}
-              disabled={state.phase !== "playing"}
-              data-recording={recorder.current?.state === "recording" ? "" : undefined}
+              data-recording={micHeld.current ? "" : undefined}
+              role="status"
             >
               🎙
               <span>
-                {keepListening.current ? "항상 듣는 중" : "다시 듣기"}
+                {micHeld.current ? "말하는 중" : "스페이스를 누르고 말하기"}
               </span>
-            </button>
+            </div>
           </div>
         </div>
 
