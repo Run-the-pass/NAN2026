@@ -149,7 +149,7 @@ export default function VoiceLab() {
   const [actor, setActor] = useState<ActorId>("keen");
   const [taskKey, setTaskKey] = useState(tasks[0].key);
   const [liveText, setLiveText] = useState("");
-  const [status, setStatus] = useState("스페이스바를 누르고 말해 주세요.");
+  const [status, setStatus] = useState("E를 누르고 말해 주세요.");
   const [holding, setHolding] = useState(false);
   const [current, setCurrent] = useState<TestRow | null>(null);
   const [recent, setRecent] = useState<TestRow[]>([]);
@@ -287,7 +287,7 @@ export default function VoiceLab() {
     setHolding(true);
     setLiveText("");
     setCurrent(null);
-    setStatus("듣는 중… 스페이스바를 떼면 저장합니다.");
+    setStatus("듣는 중… E를 떼면 저장합니다.");
     startedAt.current = eventTime;
     finalText.current = "";
     finalConfidences.current = [];
@@ -346,14 +346,14 @@ export default function VoiceLab() {
       target instanceof HTMLElement &&
       ["SELECT", "INPUT", "TEXTAREA"].includes(target.tagName);
     const down = (event: KeyboardEvent) => {
-      if (event.code !== "Space" || event.repeat || isTyping(event.target)) {
+      if (event.code !== "KeyE" || event.repeat || isTyping(event.target)) {
         return;
       }
       event.preventDefault();
       startEvent(event.timeStamp);
     };
     const up = (event: KeyboardEvent) => {
-      if (event.code !== "Space" || isTyping(event.target)) return;
+      if (event.code !== "KeyE" || isTyping(event.target)) return;
       event.preventDefault();
       stopEvent();
     };
@@ -431,7 +431,7 @@ export default function VoiceLab() {
             <small>{status}</small>
             <strong>{liveText || "실시간 인식 문장이 여기에 표시됩니다."}</strong>
           </div>
-          <kbd>SPACE</kbd>
+          <kbd>E</kbd>
         </div>
       </section>
 

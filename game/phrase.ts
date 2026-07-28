@@ -32,7 +32,7 @@ const kindWords: { kind: ItemKind; pattern: RegExp }[] = [
 const targetWords: { target: StationId; pattern: RegExp }[] = [
   { target: "trash", pattern: /(버려|버리|폐기|쓰레기)/ },
   { target: "submission", pattern: /(제출|재출|납품|갖다\s*줘|배달)/ },
-  { target: "brewer", pattern: /(양조|양주|양족|끓|달여|물약으로|양쪽|역시|조항조|약정|조향|양 조개도|조개도|양주 위에다|양주|안 주게|양 중에도|약 처량|왕조개|왕조|조개)/ },
+  { target: "brewer", pattern: /(양조|양주|양족|끓|달여|물약으로|양쪽|역시|조항조|약정|조향|양 조개도|조개도|양주 위에다|양주|안 주게|양 중에도|약 처량|왕조개|왕조|조개|안쪽에도)/ },
   { target: "table", pattern: /(테이블|태이블|테이불|책상|스크롤로|적어|써|어떻게|불러|업|테일로|가져(?!와))/ },
 ];
 
