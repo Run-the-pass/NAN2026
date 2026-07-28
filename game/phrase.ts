@@ -1,6 +1,7 @@
 import {
   allItems,
   isValidRoute,
+  itemLabel,
   itemKind,
   slimeTypes,
   stationLabels,
@@ -13,33 +14,37 @@ import {
 } from "./core.js";
 
 const carriedItemPattern =
-  /(그거|꺼|그것|들고\s*있는\s*(?:거|것)|가지고\s*있는\s*(?:거|것)|갖고\s*있는\s*(?:거|것)|손에\s*든\s*(?:거|것)|손에\s*들고\s*있는\s*(?:거|것))/;
+  /(그거|커|꺼|가|고|그것|고향|건|들고\s*있는\s*(?:거|것)|가지고\s*있는\s*(?:거|것)|갖고\s*있는\s*(?:거|것)|손에\s*든\s*(?:거|것)|손에\s*들고\s*있는\s*(?:거|것))/;
 
 // "붉은 약초를 양조기에 넣어"처럼 물품과 목적지만 담은 한 문장을
 // 바로 명령으로 바꾼다. 사전에 걸리는 발화는 Gemini 왕복이 없다.
 const colorWords: { color: ItemColor; pattern: RegExp }[] = [
-  { color: "red", pattern: /(붉은|불근|불은|빨간|빨강|레드|적색|분양|불균형|불 그냥|불면증|불 그냥 조용히|부른|불광역|부근|부르는)/ },
+  { color: "red", pattern: /(붉은|불근|불은|빨간|빨강|부원역|레드|적색|분양|불균형|불 그냥|불면증|불 그냥 조용히|부른|불광역|부근|부르는)/ },
   { color: "blue", pattern: /(파란|파랑|파랑색|푸른|블루|청색)/ },
 ];
 
 const kindWords: { kind: ItemKind; pattern: RegExp }[] = [
   { kind: "potion", pattern: /(물약|무략|뭐야|물략|포션)/ },
-  { kind: "scroll", pattern: /(스크롤|스크룰|주문서|두루마리)/ },
-  { kind: "herb", pattern: /(약초|약추|약쵸|야초|양초|풀|허브|이파리|약술)/ },
+  { kind: "scroll", pattern: /(스크롤|스크룰|주문서|두루마리|스쿨)/ },
+  { kind: "herb", pattern: /(약초|약추|약쵸|야초|조리법|양초|풀|허브|이파리|왕|으로|약술|약 처형)/ },
+];
+
+const itemPhraseAliases: { item: ItemId; pattern: RegExp }[] = [
+  { item: "blue-herb", pattern: /프랑스/ },
 ];
 
 // 목적지는 더 구체적인 말부터 본다.
 const targetWords: { target: StationId; pattern: RegExp }[] = [
   { target: "trash", pattern: /(버려|버리|폐기|쓰레기)/ },
   { target: "submission", pattern: /(제출|재출|납품|갖다\s*줘|배달)/ },
-  { target: "brewer", pattern: /(양조|양주|양족|끓|달여|물약으로|양쪽|역시|조항조|약정|조향|양 조개도|조개도|양주 위에다|양주|안 주게|양 중에도|약 처량|왕조개|왕조|조개|안쪽에도)/ },
-  { target: "table", pattern: /(테이블|태이블|테이불|책상|스크롤로|적어|써|어떻게|불러|업|테일로|가져(?!와))/ },
+  { target: "brewer", pattern: /(양조|양주|왼쪽에도|연주회도|주제로|연주해도|중에도|양족|끓|달여|주여|물약으로|주유소|호|양쪽|역시|주위로|조항조|약정|조향|양 조개도|조개도|양주 위에다|양주|안 주게|양 중에도|약 처량|왕조개|왕조|조개|안쪽에도)/ },
+  { target: "table", pattern: /(테이블|도와줘|태이블|대블|테이불|책상|스크롤로|적어|써|어떻게|불러|업|테일러|테일로|가져(?!와))/ },
 ];
 
 export const actorAliases: Record<ActorId, string[]> = {
   nerd: ["너드", "너두", "너디", "널드", "네드", "너 어디야", "너 어디", "너 내가", "교대역", "너 네가", "너도야", "너도", "너네", "너내", "로데오", "노재혁", "너 대화", ""],
   swift: ["날쌘", "날센", "날쎈", "날샌", "날쌔니"],
-  keen: ["쫑긋", "종긋", "쫑끗", "종끗", "쫑기시", "좀 끄자", "좀끄자", "전국에서", "좀 크서", "중고서", "중국에서", "중고차", "중고사", "중사", "춤 고사", "중구에서", "청구서", "전구 앞으로","중구", "좀 커서", "좀 꺼져", "좀비고등학교", "좀 부근에", "촌구석", "좀 끄다", "중고사", "중고", "좀 꺼서", "손가락", "증권사"],
+  keen: ["쫑긋", "좀 더", "전구", "전구사", "종긋", "쫑끗", "종끗", "전구색", "정크", "종교사", "똥꼬", "좀 꺼", "좀 그저", "쫑기시", "좀 구석", "좀 끄자", "좀끄자", "전국에서", "좀 크서", "중고서", "중국에서", "중고차", "중고사", "중사", "춤 고사", "중구에서", "청구서", "전구 앞으로","중구", "좀 커서", "좀 꺼져", "좀비고등학교", "좀 부근에", "촌구석", "좀 끄다", "중고사", "중고", "좀 꺼서", "손가락", "증권사"],
   worker: ["일꾼", "일군", "일꾸니", "일군이"],
 };
 
@@ -75,6 +80,7 @@ export function inspectPhrase(text: string, squad: ActorId[]): PhraseInspection 
   const actor = findActor(text, squad);
   const colorEntry = colorWords.find(({ pattern }) => pattern.test(text));
   const kindEntry = kindWords.find(({ pattern }) => pattern.test(text));
+  const itemPhraseEntry = itemPhraseAliases.find(({ pattern }) => pattern.test(text));
   const targetEntry = targetWords.find(({ pattern }) => pattern.test(text));
   const carriedSpoken = carriedItemPattern.exec(text)?.[0];
   const matches: PhraseMatch[] = [{
@@ -92,8 +98,16 @@ export function inspectPhrase(text: string, squad: ActorId[]): PhraseInspection 
       source: "dictionary",
     });
   }
+  const itemPhraseSpoken = itemPhraseEntry?.pattern.exec(text)?.[0];
   const kindSpoken = kindEntry?.pattern.exec(text)?.[0];
-  if (kindEntry && kindSpoken) {
+  if (itemPhraseEntry && itemPhraseSpoken) {
+    matches.push({
+      field: "item",
+      spoken: itemPhraseSpoken,
+      canonical: itemLabel(itemPhraseEntry.item),
+      source: "dictionary",
+    });
+  } else if (kindEntry && kindSpoken) {
     matches.push({
       field: "item",
       spoken: kindSpoken,
@@ -119,13 +133,12 @@ export function inspectPhrase(text: string, squad: ActorId[]): PhraseInspection 
       source: "dictionary",
     });
   }
-  if (!colorEntry || !kindEntry || !targetEntry) {
+  if ((!itemPhraseEntry && (!colorEntry || !kindEntry)) || !targetEntry) {
     return { commands: null, matches };
   }
-  const { color } = colorEntry;
-  const { kind } = kindEntry;
   const { target } = targetEntry;
-  const item = `${color}-${kind}` as ItemId;
+  const item = itemPhraseEntry?.item ??
+    `${colorEntry!.color}-${kindEntry!.kind}` as ItemId;
   if (!allItems.includes(item) || !isValidRoute(item, target)) {
     return { commands: null, matches };
   }

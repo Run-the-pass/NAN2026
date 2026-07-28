@@ -343,6 +343,12 @@ test("실시간 문장은 물품과 목적지를 잡아 바로 명령이 된다"
   });
   assert.equal(one("파란 약초를 테이블로 가져가")?.target, "table");
   assert.equal(one("파란 약초를 테이블로 가져가")?.item, "blue-herb");
+  assert.deepEqual(one("프랑스 양조기에 넣어"), {
+    actorId: "keen",
+    item: "blue-herb",
+    target: "brewer",
+    sequence: 1,
+  });
   assert.equal(one("붉은 물약 제출해")?.target, "submission");
   assert.equal(one("붉은 물약 제출해")?.item, "red-potion");
   assert.equal(one("파란 스크롤 버려")?.target, "trash");
@@ -394,6 +400,26 @@ test("실시간 문장은 물품과 목적지를 잡아 바로 명령이 된다"
     {
       field: "target",
       spoken: "양쪽",
+      canonical: "양조기",
+      source: "dictionary",
+    },
+  ]);
+  assert.deepEqual(inspectPhrase("프랑스 양조기에 넣어", squad).matches, [
+    {
+      field: "actor",
+      spoken: null,
+      canonical: "쫑긋",
+      source: "default",
+    },
+    {
+      field: "item",
+      spoken: "프랑스",
+      canonical: "파란 약초",
+      source: "dictionary",
+    },
+    {
+      field: "target",
+      spoken: "양조",
       canonical: "양조기",
       source: "dictionary",
     },
