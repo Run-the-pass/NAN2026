@@ -194,6 +194,7 @@ export default function Game() {
   const recorder = useRef<MediaRecorder | null>(null);
   const listening = useRef<SpeechRecognitionLike | null>(null);
   const micHeld = useRef(false);
+  const recognizedText = useRef("");
   // 발화 중 가장 컸던 목소리. 소리 원 반지름을 정하는 값이다.
   const loudness = useRef(0);
   const meter = useRef<{ stop: () => void } | null>(null);
@@ -912,9 +913,9 @@ export default function Game() {
     }
   }
 
-  // 브라우저 내장 STT. 말하는 중 자막을 띄우고 끝나면 바로 명령으로
-  // 바꾼다. 지원하지 않는 브라우저에서는 false를 돌려 오디오 경로로
-  // 넘어간다.
+  // 브라우저 내장 STT. 누르는 동안에는 결과만 모으고, 키를 뗀 뒤에만
+  // 명령으로 바꾼다. 지원하지 않는 브라우저에서는 false를 돌려 오디오
+  // 경로로 넘어간다.
   function startListening() {
     const Recognition =
       (window as unknown as { SpeechRecognition?: SpeechRecognitionCtor })
@@ -926,21 +927,29 @@ export default function Game() {
     recognition.lang = "ko-KR";
     recognition.interimResults = true;
     recognition.continuous = false;
-    let finalText = "";
+    let canRestart = true;
     recognition.onresult = (event: SpeechRecognitionEventLike) => {
       let interim = "";
       for (let index = event.resultIndex; index < event.results.length; index += 1) {
         const result = event.results[index];
-        if (result.isFinal) finalText += result[0].transcript;
+        if (result.isFinal) recognizedText.current += result[0].transcript;
         else interim += result[0].transcript;
       }
-      setMic(`${finalText}${interim}` || "듣는 중…");
+      setMic(`${recognizedText.current}${interim}` || "듣는 중…");
     };
-    recognition.onerror = () => setMic("음성을 인식하지 못했습니다.");
+    recognition.onerror = () => {
+      canRestart = false;
+      setMic("음성을 인식하지 못했습니다.");
+    };
     recognition.onend = () => {
       listening.current = null;
+      if (micHeld.current && canRestart) {
+        startListening();
+        return;
+      }
       meter.current?.stop();
-      const text = finalText.trim();
+      if (micHeld.current) return;
+      const text = recognizedText.current.trim();
       if (text) void runPhrase(text);
       else {
         metrics.current.voiceFailures += 1;
@@ -954,8 +963,6 @@ export default function Game() {
       }
     };
     listening.current = recognition;
-    loudness.current = 0;
-    void startMeter();
     recognition.start();
     setMic("듣는 중…");
     return true;
@@ -1032,6 +1039,9 @@ export default function Game() {
   function startMic() {
     if (micHeld.current) return;
     micHeld.current = true;
+    recognizedText.current = "";
+    loudness.current = 0;
+    void startMeter();
     if (startListening()) return;
     void startRecording();
   }
