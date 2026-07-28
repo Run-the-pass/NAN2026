@@ -972,31 +972,7 @@ export default function Game() {
   // 쓸 수 없을 때 녹음한 원본 오디오만 해석한다.
   function runPhrase(text: string) {
     const list = squad ?? [];
-    const carried = matchCarriedPhrase(text, list);
-    if (carried) {
-      metrics.current.voiceCommands += 1;
-      metrics.current.confidenceSum += 1;
-      setVoice({
-        kind: "accepted",
-        transcript: text,
-        commands: [
-          `${slimeTypes[carried.actorId].name} · 현재 든 물품 → ${stationLabels[carried.target]}`,
-        ],
-        detail: "즉시 인식",
-      });
-      setMic("즉시 인식");
-      setState((current) =>
-        current
-          ? redirectCarried(
-              movePlayer(current, playerPos.current.x, playerPos.current.y),
-              carried.actorId,
-              carried.target,
-              loudness.current,
-            )
-          : current,
-      );
-      return;
-    }
+    // 물품을 명시한 문장은 짧은 "그거" 계열 오인식보다 우선한다.
     const local = matchPhrase(text, list);
     if (local) {
       metrics.current.voiceCommands += 1;
@@ -1016,6 +992,31 @@ export default function Game() {
           ? executeEnvelope(
               movePlayer(current, playerPos.current.x, playerPos.current.y),
               { status: "OK", confidence: 1, commands: local, reason: null },
+              loudness.current,
+            )
+          : current,
+      );
+      return;
+    }
+    const carried = matchCarriedPhrase(text, list);
+    if (carried) {
+      metrics.current.voiceCommands += 1;
+      metrics.current.confidenceSum += 1;
+      setVoice({
+        kind: "accepted",
+        transcript: text,
+        commands: [
+          `${slimeTypes[carried.actorId].name} · 현재 든 물품 → ${stationLabels[carried.target]}`,
+        ],
+        detail: "즉시 인식",
+      });
+      setMic("즉시 인식");
+      setState((current) =>
+        current
+          ? redirectCarried(
+              movePlayer(current, playerPos.current.x, playerPos.current.y),
+              carried.actorId,
+              carried.target,
               loudness.current,
             )
           : current,

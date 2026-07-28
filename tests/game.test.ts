@@ -362,6 +362,12 @@ test("실시간 문장은 물품과 목적지를 잡아 바로 명령이 된다"
     target: "brewer",
     sequence: 1,
   });
+  assert.deepEqual(one("좀 꺼서 붉은 약초 양주 위에도"), {
+    actorId: "keen",
+    item: "red-herb",
+    target: "brewer",
+    sequence: 1,
+  });
   assert.equal(one("일꾸니 파랑 무략 재출해")?.actorId, "worker");
   assert.equal(one("일꾸니 파랑 무략 재출해")?.item, "blue-potion");
   assert.equal(one("일꾸니 파랑 무략 재출해")?.target, "submission");
