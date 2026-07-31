@@ -5,7 +5,7 @@ import Link from "next/link";
 
 const Game = dynamic(() => import("../Game"), {
   ssr: false,
-  loading: () => <main className="loading">공방 가동 준비 중…</main>,
+  loading: () => <main className="loading">식당 영업 준비 중…</main>,
 });
 
 export default function GamePage() {

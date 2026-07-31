@@ -1,125 +1,101 @@
-export type SlimeTypeId = "nerd" | "swift" | "keen" | "worker";
+export type SlimeElement = "water" | "fire" | "lightning" | "earth";
+export type SlimeTypeId = SlimeElement;
 export type ActorId = SlimeTypeId;
-
-// 색이 결과물의 색을, 가져간 장소가 결과물의 형태를 정한다.
-export type ItemColor = "red" | "blue";
-export type ItemKind = "herb" | "potion" | "scroll";
-export type ItemId = `${ItemColor}-${ItemKind}`;
-
-// 설비. 소환진에서 약초가 나오고 양조기·테이블이 가공한다.
+export type ItemId = "mushroom" | "grilled-mushroom";
 export type StationId =
-  | "summon-red"
-  | "summon-blue"
-  | "brewer"
-  | "table"
+  | "ingredient-box"
+  | "stove"
   | "submission"
   | "trash";
-
-export type ActorStatus = "IDLE" | "MOVING" | "WORKING";
+export type ActorStatus = "IDLE" | "MOVING" | "WORKING" | "WAITING";
+export type WorkstationStatus =
+  | "IDLE"
+  | "MISSING_MATERIAL"
+  | "WORKING"
+  | "COMPLETE";
 export type TilePosition = { col: number; row: number };
+export type Position = { x: number; y: number };
 
-export const itemColor = (item: ItemId) => item.split("-")[0] as ItemColor;
-export const itemKind = (item: ItemId) => item.split("-")[1] as ItemKind;
+export const itemLabel = (item: ItemId) =>
+  item === "mushroom" ? "버섯" : "버섯 구이";
 
-export function itemLabel(item: ItemId) {
-  const color = itemColor(item) === "red" ? "붉은" : "파란";
-  const kind = { herb: "약초", potion: "물약", scroll: "스크롤" }[itemKind(item)];
-  return `${color} ${kind}`;
-}
-
-// 한글 받침을 보고 목적격 조사를 붙인다.
 export function withParticle(word: string, pair: [string, string] = ["을", "를"]) {
   const code = word.charCodeAt(word.length - 1);
-  const isHangul = code >= 0xac00 && code <= 0xd7a3;
-  const hasFinal = isHangul && (code - 0xac00) % 28 !== 0;
+  const hasFinal =
+    code >= 0xac00 && code <= 0xd7a3 && (code - 0xac00) % 28 !== 0;
   return `${word}${hasFinal ? pair[0] : pair[1]}`;
 }
 
 export const stationLabels: Record<StationId, string> = {
-  "summon-red": "붉은 소환진",
-  "summon-blue": "파란 소환진",
-  brewer: "양조기",
-  table: "마법 테이블",
-  submission: "제출대",
-  trash: "쓰레기통",
+  "ingredient-box": "재료 상자",
+  stove: "조리 도구",
+  submission: "음식 제출대",
+  trash: "쓰레기 처리 공간",
 };
 
-export const allItems: ItemId[] = [
-  "red-herb",
-  "blue-herb",
-  "red-potion",
-  "blue-potion",
-  "red-scroll",
-  "blue-scroll",
-];
+export const allItems: ItemId[] = ["mushroom", "grilled-mushroom"];
 export const allStations: StationId[] = [
-  "summon-red",
-  "summon-blue",
-  "brewer",
-  "table",
+  "ingredient-box",
+  "stove",
   "submission",
   "trash",
 ];
 
-export type StatLevels = {
-  workSpeed: number;
-  moveSpeed: number;
-  hearing: number;
-  focus: number;
-};
+export type StatLevels = { workSpeed: number; moveSpeed: number };
 
 export const slimeTypes: Record<
   SlimeTypeId,
-  { name: string; trait: string; statLevels: StatLevels }
+  {
+    name: string;
+    trait: string;
+    role: string;
+    element: SlimeElement;
+    elementLabel: string;
+    statLevels: StatLevels;
+  }
 > = {
-  nerd: {
-    name: "너드",
-    trait: "느리게 이동하지만 복잡한 작업을 잘 기억함",
-    statLevels: { workSpeed: 2, moveSpeed: 0, hearing: 1, focus: 3 },
+  water: {
+    name: "물",
+    trait: "물을 공급하고 설거지와 화재 진화를 담당합니다.",
+    role: "물 공급 · 설거지 · 소화",
+    element: "water",
+    elementLabel: "물",
+    statLevels: { workSpeed: 2, moveSpeed: 1 },
   },
-  swift: {
-    name: "날쌘",
-    trait: "이동이 빠르지만 긴 명령에는 약함",
-    statLevels: { workSpeed: 1, moveSpeed: 3, hearing: 1, focus: 1 },
+  fire: {
+    name: "불",
+    trait: "열을 다뤄 음식을 조리하고 쓰레기를 소각합니다.",
+    role: "가열 · 조리 · 소각",
+    element: "fire",
+    elementLabel: "불",
+    statLevels: { workSpeed: 3, moveSpeed: 1 },
   },
-  keen: {
-    name: "쫑긋",
-    trait: "멀리서도 명령을 받아 맵 반대편 작업에 대응함",
-    statLevels: { workSpeed: 1, moveSpeed: 1, hearing: 3, focus: 1 },
+  lightning: {
+    name: "번개",
+    trait: "빠르게 재료와 음식을 운반하고 전자 기구를 작동합니다.",
+    role: "운반 · 발전 · 전자 기구",
+    element: "lightning",
+    elementLabel: "번개",
+    statLevels: { workSpeed: 1, moveSpeed: 3 },
   },
-  worker: {
-    name: "일꾼",
-    trait: "가까이에서 지시해야 하지만 작업이 빠름",
-    statLevels: { workSpeed: 3, moveSpeed: 1, hearing: 0, focus: 2 },
+  earth: {
+    name: "땅",
+    trait: "재료를 손질하고 여러 그릇을 안정적으로 나릅니다.",
+    role: "손질 · 썰기 · 다중 운반",
+    element: "earth",
+    elementLabel: "땅",
+    statLevels: { workSpeed: 2, moveSpeed: 1 },
   },
 };
 
 export const statTables = {
-  workSpeedMultiplier: [0.7, 0.85, 1.0, 1.2, 1.45, 1.75],
+  workSpeedMultiplier: [0.7, 0.85, 1, 1.2, 1.45, 1.75],
   moveTilesPerSecond: [1.6, 1.9, 2.2, 2.5, 2.8, 3.1],
-  hearingRangeTiles: [2, 3, 4, 5, 6, 7],
-  focusCapacity: [1, 2, 3, 4, 5, 6],
 } as const;
 
-// 명령 하나는 행동 하나가 아니라 물품 이동의 목적 하나다.
-// 슬라임이 집기·이동·투입을 알아서 잇는다.
-export type Command = {
-  actorId: ActorId;
-  item: ItemId;
-  target: StationId;
-  sequence: number;
-};
-
-export type CommandEnvelope = {
-  status: "OK";
-  confidence: number;
-  commands: Command[];
-  reason: string | null;
-  transcript?: string | null;
-};
-
-// 한 명령을 처리하는 단계. 집으러 갔다가 넣으러 간다.
-export type Leg = "FETCH" | "DELIVER";
+export type ActorIntent =
+  | { kind: "MOVE"; destination: Position; route: Position[] }
+  | { kind: "INTERACT"; station: StationId; leader: ActorId | null; route: Position[] };
 
 export type ActorState = {
   typeId: SlimeTypeId;
@@ -129,10 +105,7 @@ export type ActorState = {
   moveSpeed: number;
   status: ActorStatus;
   carrying: ItemId | null;
-  current: Command | null;
-  leg: Leg;
-  queue: Command[];
-  path: TilePosition[];
+  intent: ActorIntent | null;
   workLeftMs: number;
   statLevels: StatLevels;
   buffs: string[];
@@ -148,11 +121,15 @@ export type GameState = {
   filled: number;
   goal: number;
   gold: number;
-  player: { x: number; y: number; carrying: ItemId | null };
   actors: Partial<Record<ActorId, ActorState>>;
-  summons: Record<ItemColor, { stock: number; timerMs: number }>;
-  brewer: ItemId[];
-  table: ItemId[];
+  ingredients: { stock: number; timerMs: number };
+  stove: ItemId[];
+  workstation: {
+    status: WorkstationStatus;
+    workerId: ActorId | null;
+    progressMs: number;
+    totalMs: number;
+  };
   order: {
     need: Partial<Record<ItemId, number>>;
     done: Partial<Record<ItemId, number>>;
@@ -163,19 +140,18 @@ export type GameState = {
 
 export const TILE_SIZE = 60;
 export const GOLD_PER_ORDER = 100;
-export const SUMMON_MAX = 4;
-export const SUMMON_INTERVAL_MS = 6_000;
-export const STORAGE_MAX = 3;
+export const INGREDIENT_MAX = 4;
+export const INGREDIENT_INTERVAL_MS = 6_000;
+export const STORAGE_MAX = 1;
 
-// R 붉은 소환진, B 파란 소환진, W 양조기, T 마법 테이블,
-// S 제출대, X 쓰레기통.
-export const WORKSHOP_ROWS = [
+// I 재료 상자, C 조리 도구, S 음식 제출대, X 쓰레기 처리 공간.
+export const KITCHEN_ROWS = [
   "################",
   "#..............#",
   "#..............#",
-  "#...R......B...#",
+  "#...I..........#",
   "#..............#",
-  "#..W........T..#",
+  "#..C...........#",
   "#..............#",
   "#.....S..X.....#",
   "#..............#",
@@ -183,20 +159,15 @@ export const WORKSHOP_ROWS = [
 ] as const;
 
 export const displayTiles: Record<StationId, TilePosition> = {
-  "summon-red": { col: 4, row: 3 },
-  "summon-blue": { col: 11, row: 3 },
-  brewer: { col: 3, row: 5 },
-  table: { col: 12, row: 5 },
+  "ingredient-box": { col: 4, row: 3 },
+  stove: { col: 3, row: 5 },
   submission: { col: 6, row: 7 },
   trash: { col: 9, row: 7 },
 };
 
-// 작업 타일은 설비와 상하좌우로 인접한 바닥이다.
 export const taskTiles: Record<StationId, TilePosition> = {
-  "summon-red": { col: 4, row: 4 },
-  "summon-blue": { col: 11, row: 4 },
-  brewer: { col: 3, row: 6 },
-  table: { col: 12, row: 6 },
+  "ingredient-box": { col: 4, row: 4 },
+  stove: { col: 3, row: 6 },
   submission: { col: 6, row: 6 },
   trash: { col: 9, row: 6 },
 };
@@ -205,102 +176,121 @@ export const spawnTiles: TilePosition[] = [
   { col: 7, row: 5 },
   { col: 5, row: 8 },
   { col: 10, row: 8 },
+  { col: 8, row: 8 },
 ];
-export const playerStartTile: TilePosition = { col: 8, row: 4 };
 
-const workDuration = { pick: 700, put: 700 };
+const workDuration = { interact: 700, cook: 4_000 };
 
 export const tileCenter = ({ col, row }: TilePosition) => ({
   x: col * TILE_SIZE + TILE_SIZE / 2,
   y: row * TILE_SIZE + TILE_SIZE / 2,
 });
 
+const hitboxHalfSize = { x: 46, y: 42 };
+export const stationHitboxes = allStations.map((id) => {
+  const center = tileCenter(displayTiles[id]);
+  return {
+    centerX: center.x,
+    centerY: center.y,
+    halfWidth: hitboxHalfSize.x,
+    halfHeight: hitboxHalfSize.y,
+  };
+});
+
+function segmentCrossesHitbox(from: Position, to: Position) {
+  return stationHitboxes.some((box) => {
+    const dx = to.x - from.x;
+    const dy = to.y - from.y;
+    let near = 0;
+    let far = 1;
+    for (const [direction, distance] of [
+      [-dx, from.x - (box.centerX - box.halfWidth)],
+      [dx, box.centerX + box.halfWidth - from.x],
+      [-dy, from.y - (box.centerY - box.halfHeight)],
+      [dy, box.centerY + box.halfHeight - from.y],
+    ]) {
+      if (direction === 0) {
+        if (distance < 0) return false;
+        continue;
+      }
+      const ratio = distance / direction;
+      if (direction < 0) near = Math.max(near, ratio);
+      else far = Math.min(far, ratio);
+      if (near > far) return false;
+    }
+    return near < 1 && far > 0;
+  });
+}
+
+function routeBetween(from: Position, to: Position) {
+  const nodes = [
+    from,
+    to,
+    ...stationHitboxes.flatMap((box) => [
+      { x: box.centerX - box.halfWidth - 2, y: box.centerY - box.halfHeight - 2 },
+      { x: box.centerX + box.halfWidth + 2, y: box.centerY - box.halfHeight - 2 },
+      { x: box.centerX - box.halfWidth - 2, y: box.centerY + box.halfHeight + 2 },
+      { x: box.centerX + box.halfWidth + 2, y: box.centerY + box.halfHeight + 2 },
+    ]),
+  ];
+  const costs = nodes.map(() => Infinity);
+  const previous = nodes.map(() => -1);
+  const visited = nodes.map(() => false);
+  costs[0] = 0;
+  for (let count = 0; count < nodes.length; count += 1) {
+    let current = -1;
+    for (let index = 0; index < nodes.length; index += 1) {
+      if (!visited[index] && (current < 0 || costs[index] < costs[current])) current = index;
+    }
+    if (current < 0 || !Number.isFinite(costs[current]) || current === 1) break;
+    visited[current] = true;
+    for (let index = 1; index < nodes.length; index += 1) {
+      if (visited[index] || segmentCrossesHitbox(nodes[current], nodes[index])) continue;
+      const cost = costs[current] + Math.hypot(
+        nodes[index].x - nodes[current].x,
+        nodes[index].y - nodes[current].y,
+      );
+      if (cost < costs[index]) {
+        costs[index] = cost;
+        previous[index] = current;
+      }
+    }
+  }
+  if (!Number.isFinite(costs[1])) return [];
+  const route: Position[] = [];
+  for (let index = 1; index > 0; index = previous[index]) route.unshift(nodes[index]);
+  return route;
+}
+
+function routeLength(from: Position, route: Position[]) {
+  let total = 0;
+  for (const point of route) {
+    total += Math.hypot(point.x - from.x, point.y - from.y);
+    from = point;
+  }
+  return total;
+}
+
 export const pixelToTile = (x: number, y: number): TilePosition => ({
   col: Math.floor(x / TILE_SIZE),
   row: Math.floor(y / TILE_SIZE),
 });
 
-export const isWalkable = ({ col, row }: TilePosition) =>
-  WORKSHOP_ROWS[row]?.[col] === ".";
-
-export function findPath(
-  start: TilePosition,
-  destination: TilePosition,
-): TilePosition[] | null {
-  if (!isWalkable(start) || !isWalkable(destination)) return null;
-  const key = ({ col, row }: TilePosition) => `${col},${row}`;
-  const previous = new Map<string, TilePosition | null>([[key(start), null]]);
-  const queue = [start];
-  const directions = [
-    { col: 0, row: -1 },
-    { col: 1, row: 0 },
-    { col: 0, row: 1 },
-    { col: -1, row: 0 },
-  ];
-  for (let index = 0; index < queue.length; index += 1) {
-    const current = queue[index];
-    if (current.col === destination.col && current.row === destination.row) {
-      const path: TilePosition[] = [];
-      let cursor: TilePosition | null = current;
-      while (cursor && key(cursor) !== key(start)) {
-        path.unshift(cursor);
-        cursor = previous.get(key(cursor)) ?? null;
-      }
-      return path;
-    }
-    for (const direction of directions) {
-      const next = {
-        col: current.col + direction.col,
-        row: current.row + direction.row,
-      };
-      if (isWalkable(next) && !previous.has(key(next))) {
-        previous.set(key(next), current);
-        queue.push(next);
-      }
-    }
-  }
-  return null;
-}
-
-// 물품을 어디서 집는지. 약초는 소환진, 가공품은 만든 설비에 있다.
-export function sourceOf(item: ItemId): StationId {
-  const kind = itemKind(item);
-  if (kind === "herb") {
-    return itemColor(item) === "red" ? "summon-red" : "summon-blue";
-  }
-  return kind === "potion" ? "brewer" : "table";
-}
-
-// 그 물품을 그 설비로 보내는 것이 말이 되는지.
-export function isValidRoute(item: ItemId, target: StationId) {
-  if (target === "submission" || target === "trash") return true;
-  return (
-    (target === "brewer" || target === "table") && itemKind(item) === "herb"
-  );
-}
-
-// 가공 결과. 양조기는 물약, 테이블은 스크롤을 만든다.
-export function productOf(item: ItemId, target: StationId): ItemId | null {
-  if (itemKind(item) !== "herb") return null;
-  if (target === "brewer") return `${itemColor(item)}-potion`;
-  if (target === "table") return `${itemColor(item)}-scroll`;
-  return null;
+export function isWalkable({ col, row }: TilePosition) {
+  return KITCHEN_ROWS[row]?.[col] === ".";
 }
 
 function makeActor(typeId: SlimeTypeId, spawn: TilePosition): ActorState {
   const kind = slimeTypes[typeId];
   return {
     typeId,
-    name: kind.name,
+    name: `${kind.name} 슬라임`,
     ...tileCenter(spawn),
     moveSpeed:
       statTables.moveTilesPerSecond[kind.statLevels.moveSpeed] * TILE_SIZE,
     status: "IDLE",
     carrying: null,
-    current: null,
-    leg: "FETCH",
-    queue: [],
-    path: [],
+    intent: null,
     workLeftMs: 0,
     statLevels: { ...kind.statLevels },
     buffs: [],
@@ -309,23 +299,9 @@ function makeActor(typeId: SlimeTypeId, spawn: TilePosition): ActorState {
   };
 }
 
-// 주문은 색과 형태만 보여 준다. 효과명은 쓰지 않는다.
-const orderPool: Partial<Record<ItemId, number>>[] = [
-  { "red-herb": 2 },
-  { "blue-potion": 1, "red-herb": 1 },
-  { "red-scroll": 1, "blue-scroll": 1 },
-  { "blue-herb": 1, "red-potion": 1 },
-  { "red-potion": 2 },
-  { "blue-scroll": 2 },
-];
-
-function pickOrder(seed: number) {
-  return orderPool[seed % orderPool.length];
-}
-
 export function initialState(
   seed = 2026,
-  squad: SlimeTypeId[] = ["keen"],
+  squad: SlimeTypeId[] = ["water"],
 ): GameState {
   if (
     squad.length < 1 ||
@@ -333,7 +309,7 @@ export function initialState(
     new Set(squad).size !== squad.length ||
     squad.some((typeId) => !(typeId in slimeTypes))
   ) {
-    throw new Error("스쿼드는 서로 다른 슬라임 1~3마리여야 합니다.");
+    throw new Error("스쿼드는 서로 다른 속성 슬라임 1~4마리여야 합니다.");
   }
   const actors: Partial<Record<ActorId, ActorState>> = {};
   squad.forEach((typeId, index) => {
@@ -347,22 +323,19 @@ export function initialState(
     filled: 0,
     goal: 5,
     gold: 0,
-    player: { ...tileCenter(playerStartTile), carrying: null },
     actors,
-    summons: {
-      red: { stock: 1, timerMs: SUMMON_INTERVAL_MS },
-      blue: { stock: 1, timerMs: SUMMON_INTERVAL_MS },
+    ingredients: { stock: 1, timerMs: INGREDIENT_INTERVAL_MS },
+    stove: [],
+    workstation: {
+      status: "MISSING_MATERIAL",
+      workerId: null,
+      progressMs: 0,
+      totalMs: workDuration.cook,
     },
-    brewer: [],
-    table: [],
-    order: { need: pickOrder(seed), done: {} },
-    lastEvent: "3분 동안 주문 5건을 채우세요.",
-    history: ["공방 작업 시작"],
+    order: { need: { "grilled-mushroom": 1 }, done: {} },
+    lastEvent: "3분 동안 음식 주문 5건을 완료하세요.",
+    history: ["식당 영업 시작"],
   };
-}
-
-export function movePlayer(state: GameState, x: number, y: number): GameState {
-  return { ...state, player: { ...state.player, x, y } };
 }
 
 function advanceSeed(seed: number) {
@@ -391,448 +364,467 @@ function patchActor(
   return { ...state.actors, [actorId]: next };
 }
 
-export function shelfOf(state: GameState, target: StationId): ItemId[] | null {
-  if (target === "brewer") return state.brewer;
-  if (target === "table") return state.table;
-  return null;
-}
-
-// 그 물품을 지금 몇 개 꺼낼 수 있는지.
-export function stockOf(state: GameState, item: ItemId) {
-  const kind = itemKind(item);
-  if (kind === "herb") return state.summons[itemColor(item)].stock;
-  const shelf = kind === "potion" ? state.brewer : state.table;
-  return shelf.filter((entry) => entry === item).length;
-}
-
-export function validateEnvelope(
-  value: unknown,
-  squad?: ActorId[],
-): { ok: true; value: CommandEnvelope } | { ok: false; reason: string } {
-  if (!value || typeof value !== "object") {
-    return { ok: false, reason: "명령 JSON이 객체가 아닙니다." };
-  }
-  const envelope = value as Partial<CommandEnvelope>;
-  const roster = squad ?? (Object.keys(slimeTypes) as ActorId[]);
+function releaseWork(state: GameState, actorIds: ActorId[]): GameState {
   if (
-    envelope.status !== "OK" ||
-    typeof envelope.confidence !== "number" ||
-    envelope.confidence < 0 ||
-    envelope.confidence > 1 ||
-    !Array.isArray(envelope.commands) ||
-    envelope.commands.length < 1 ||
-    envelope.commands.length > 6 ||
-    (envelope.transcript !== undefined &&
-      envelope.transcript !== null &&
-      typeof envelope.transcript !== "string")
+    !state.workstation.workerId ||
+    !actorIds.includes(state.workstation.workerId)
   ) {
-    return { ok: false, reason: "명령 형식이 올바르지 않습니다." };
+    return state;
   }
-  for (const item of envelope.commands) {
-    if (
-      !item ||
-      !roster.includes(item.actorId) ||
-      !allItems.includes(item.item) ||
-      !allStations.includes(item.target) ||
-      !isValidRoute(item.item, item.target) ||
-      !Number.isInteger(item.sequence)
-    ) {
-      return { ok: false, reason: "허용 목록 밖의 슬라임/물품/목적지입니다." };
-    }
-  }
-  return { ok: true, value: envelope as CommandEnvelope };
+  return {
+    ...state,
+    workstation: {
+      ...state.workstation,
+      status: state.stove.includes("mushroom") ? "IDLE" : "MISSING_MATERIAL",
+      workerId: null,
+      progressMs: 0,
+    },
+  };
 }
 
-function hearingRangePx(actor: ActorState) {
-  return statTables.hearingRangeTiles[actor.statLevels.hearing] * TILE_SIZE;
-}
-
-export const MAX_VOICE_TILES = 4;
-export function voiceRadiusPx(loudness: number) {
-  const clamped = Math.min(1, Math.max(0, loudness));
-  return clamped * MAX_VOICE_TILES * TILE_SIZE;
-}
-
-// 플레이어의 소리 원과 슬라임의 청력 원이 만나면 들린다.
-function canHear(state: GameState, actor: ActorState, voiceRadius: number) {
-  return (
-    Math.hypot(actor.x - state.player.x, actor.y - state.player.y) <=
-    voiceRadius + hearingRangePx(actor)
-  );
-}
-
-// 출발 전에 끝까지 해낼 수 있는 명령인지 본다.
-export function checkCommand(state: GameState, command: Command): string | null {
-  if (!isValidRoute(command.item, command.target)) return "INVALID_ROUTE";
-  if (stockOf(state, command.item) < 1) return "SOURCE_EMPTY";
-  const shelf = shelfOf(state, command.target);
-  if (shelf && shelf.length >= STORAGE_MAX) return "TARGET_FULL";
-  return null;
-}
-
-const failureText: Record<string, string> = {
-  INVALID_ROUTE: "그 물품은 그곳으로 보낼 수 없습니다.",
-  SOURCE_EMPTY: "필요한 물품이 없습니다.",
-  TARGET_FULL: "목적지 재고가 가득 찼습니다.",
-};
-
-export function executeEnvelope(
+export function moveActors(
   state: GameState,
-  envelope: CommandEnvelope,
-  loudness = 0,
+  actorIds: ActorId[],
+  destination: Position,
 ): GameState {
-  const checked = validateEnvelope(envelope);
-  if ("reason" in checked) return event(state, checked.reason, {});
-  if (state.phase !== "playing") {
-    return event(state, "종료된 공방에서는 명령을 받을 수 없습니다.", {});
+  if (
+    state.phase !== "playing" ||
+    !Number.isFinite(destination.x) ||
+    !Number.isFinite(destination.y) ||
+    !isWalkable(pixelToTile(destination.x, destination.y))
+  ) return state;
+  const ids = [...new Set(actorIds)];
+  const base = releaseWork(state, ids);
+  let actors = base.actors;
+  let moved = 0;
+  for (const actorId of ids) {
+    const actor = actors[actorId];
+    if (!actor) continue;
+    const route = routeBetween(actor, destination);
+    if (!route.length) continue;
+    actors = patchActor({ ...base, actors }, actorId, {
+      ...actor,
+      intent: { kind: "MOVE", destination, route },
+      status: "MOVING",
+      workLeftMs: 0,
+      alert: null,
+      alertMs: 0,
+    });
+    moved += 1;
   }
-  const ordered = [...checked.value.commands].sort(
-    (a, b) => a.sequence - b.sequence,
-  );
-  const byActor = new Map<ActorId, Command[]>();
-  for (const item of ordered) {
-    byActor.set(item.actorId, [...(byActor.get(item.actorId) ?? []), item]);
+  return moved
+    ? event(base, `${moved}마리에게 이동을 지시했습니다.`, { actors })
+    : state;
+}
+
+function canUseStation(
+  state: GameState,
+  actor: ActorState,
+  station: StationId,
+) {
+  if (actor.carrying === "mushroom") {
+    return station === "stove" || station === "trash";
   }
-  let next = state;
-  for (const [actorId, commands] of byActor) {
-    const actor = next.actors[actorId];
-    if (!actor) {
-      next = event(next, "이번 판에 선택되지 않은 슬라임입니다.", {});
-      continue;
-    }
-    if (!canHear(next, actor, voiceRadiusPx(loudness))) {
-      next = event(
-        next,
-        `${actor.name}이(가) 명령을 듣지 못했습니다 — 더 가까이 가세요.`,
-        {
-          actors: patchActor(next, actorId, {
-            ...actor,
-            alert: "NOT_HEARD",
-            alertMs: 1_800,
-          }),
-        },
-      );
-      continue;
-    }
-    const capacity = statTables.focusCapacity[actor.statLevels.focus];
-    const used = actor.queue.length + (actor.current ? 1 : 0);
-    if (commands.length > capacity) {
-      next = event(
-        next,
-        `${actor.name}에게 너무 복잡한 명령입니다 (집중력 ${capacity}개).`,
-        {
-          actors: patchActor(next, actorId, {
-            ...actor,
-            alert: "TOO_COMPLEX",
-            alertMs: 1_800,
-          }),
-        },
-      );
-      continue;
-    }
-    if (used + commands.length > capacity) {
-      next = event(
-        next,
-        `${actor.name}의 기억 공간이 가득 찼습니다 (집중력 ${capacity}개).`,
-        {
-          actors: patchActor(next, actorId, {
-            ...actor,
-            alert: "QUEUE_FULL",
-            alertMs: 1_800,
-          }),
-        },
-      );
-      continue;
-    }
-    // 출발 전 검증. 실패하면 슬라임을 보내지 않는다.
-    const blocked = commands
-      .map((item) => checkCommand(next, item))
-      .find(Boolean);
-    if (blocked) {
-      next = event(next, `${actor.name}: ${failureText[blocked] ?? blocked}`, {
-        actors: patchActor(next, actorId, {
-          ...actor,
-          alert: blocked,
-          alertMs: 1_800,
-        }),
-      });
-      continue;
-    }
-    const summary = commands
-      .map((item) => `${itemLabel(item.item)}→${stationLabels[item.target]}`)
-      .join(", ");
-    next = event(next, `${actor.name} 큐에 ${summary}`, {
-      actors: patchActor(next, actorId, {
-        ...actor,
-        queue: [...actor.queue, ...commands],
-      }),
+  if (actor.carrying === "grilled-mushroom") {
+    return station === "submission" || station === "trash";
+  }
+  if (station === "ingredient-box") return true;
+  if (station === "stove") {
+    return (
+      state.stove.includes("grilled-mushroom") ||
+      actor.typeId === "fire"
+    );
+  }
+  return false;
+}
+
+export function interactActors(
+  state: GameState,
+  actorIds: ActorId[],
+  station: StationId,
+): GameState {
+  if (state.phase !== "playing") return state;
+  const ids = [...new Set(actorIds)];
+  const base = releaseWork(state, ids);
+  const orders = ids
+    .map((actorId) => {
+      const actor = base.actors[actorId];
+      return actor ? { actorId, actor } : null;
+    })
+    .filter((order): order is NonNullable<typeof order> => Boolean(order));
+  const leader =
+    orders
+      .filter(({ actor }) => canUseStation(base, actor, station))
+      .sort((a, b) => {
+        const destination = tileCenter(taskTiles[station]);
+        return (
+          routeLength(a.actor, routeBetween(a.actor, destination)) / a.actor.moveSpeed -
+          routeLength(b.actor, routeBetween(b.actor, destination)) / b.actor.moveSpeed
+        );
+      })[0]?.actorId ?? null;
+  let actors = base.actors;
+  for (const { actorId, actor } of orders) {
+    const route = routeBetween(actor, tileCenter(taskTiles[station]));
+    if (!route.length) continue;
+    actors = patchActor({ ...base, actors }, actorId, {
+      ...actor,
+      intent: { kind: "INTERACT", station, leader, route },
+      status: "MOVING",
+      workLeftMs: 0,
+      alert: null,
+      alertMs: 0,
     });
   }
-  return next;
+  return orders.length
+    ? event(
+        base,
+        `${orders.length}마리에게 ${stationLabels[station]} 상호작용을 지시했습니다.`,
+        { actors },
+      )
+    : state;
 }
 
-export function redirectCarried(
+function workDurationFor(actor: ActorState, base: number) {
+  return base / statTables.workSpeedMultiplier[actor.statLevels.workSpeed];
+}
+
+function waitAtStation(actor: ActorState, keepIntent = false): ActorState {
+  return {
+    ...actor,
+    intent: keepIntent ? actor.intent : null,
+    status: "WAITING",
+    workLeftMs: 0,
+    alert: "WAITING",
+    alertMs: 1_800,
+  };
+}
+
+function refuse(
   state: GameState,
   actorId: ActorId,
-  target: StationId,
-  loudness = 0,
-): GameState {
-  if (state.phase !== "playing") {
-    return event(state, "종료된 공방에서는 명령을 받을 수 없습니다.", {});
-  }
-  const actor = state.actors[actorId];
-  if (!actor) {
-    return event(state, "이번 판에 선택되지 않은 슬라임입니다.", {});
-  }
-  if (!canHear(state, actor, voiceRadiusPx(loudness))) {
-    return event(
-      state,
-      `${actor.name}이(가) 명령을 듣지 못했습니다 — 더 가까이 가세요.`,
-      {
-        actors: patchActor(state, actorId, {
-          ...actor,
-          alert: "NOT_HEARD",
-          alertMs: 1_800,
-        }),
-      },
-    );
-  }
-  if (!actor.carrying) {
-    return event(state, `${actor.name}이(가) 들고 있는 물품이 없습니다.`, {});
-  }
-  const item = actor.carrying;
-  if (!isValidRoute(item, target)) {
-    return event(
-      state,
-      `${itemLabel(item)}은(는) ${stationLabels[target]}에 보낼 수 없습니다.`,
-      {},
-    );
-  }
-  const path = findPath(pixelToTile(actor.x, actor.y), taskTiles[target]);
-  if (!path) return event(state, `${stationLabels[target]}에 갈 수 없습니다.`, {});
-  return event(
-    state,
-    `${actor.name}이(가) ${withParticle(itemLabel(item))} ${stationLabels[target]}에 가져갑니다.`,
-    {
-      actors: patchActor(state, actorId, {
-        ...actor,
-        current: {
-          actorId,
-          item,
-          target,
-          sequence: actor.current?.sequence ?? 1,
-        },
-        leg: "DELIVER",
-        path,
-        status: "MOVING",
-        workLeftMs: 0,
-        alert: null,
-        alertMs: 0,
-      }),
-    },
-  );
+  actor: ActorState,
+  message: string,
+  alert = "INVALID_ROUTE",
+) {
+  const nextActor: ActorState = {
+    ...actor,
+    intent: null,
+    status: "IDLE",
+    workLeftMs: 0,
+    alert,
+    alertMs: 1_800,
+  };
+  return event(state, `${actor.name}: ${message}`, {
+    actors: patchActor(state, actorId, nextActor),
+  });
 }
 
-function takeStock(state: GameState, item: ItemId): Partial<GameState> {
-  const kind = itemKind(item);
-  if (kind === "herb") {
-    const color = itemColor(item);
-    return {
-      summons: {
-        ...state.summons,
-        [color]: {
-          ...state.summons[color],
-          stock: Math.max(0, state.summons[color].stock - 1),
-        },
-      },
-    };
-  }
-  const key = kind === "potion" ? "brewer" : "table";
-  const shelf = [...state[key]];
-  const index = shelf.indexOf(item);
-  if (index >= 0) shelf.splice(index, 1);
-  return { [key]: shelf } as Partial<GameState>;
-}
-
-// 들고 있던 물품을 설비에 넘긴다. 슬라임과 플레이어가 같은 규칙을 쓴다.
-function putItem(
+function submitFood(
   state: GameState,
-  who: string,
-  held: ItemId,
-  target: StationId,
-  rest: Partial<GameState>,
-): GameState {
-  if (target === "trash") {
-    return event(state, `${who} ${withParticle(itemLabel(held))} 버렸습니다.`, rest);
-  }
-  if (target === "submission") {
-    const need = state.order.need[held] ?? 0;
-    const done = state.order.done[held] ?? 0;
-    if (done >= need) {
-      return event(state, "주문에 없는 물품이라 제출하지 못했습니다.", rest);
-    }
-    const nextDone = { ...state.order.done, [held]: done + 1 };
-    const complete = Object.entries(state.order.need).every(
-      ([item, count]) => (nextDone[item as ItemId] ?? 0) >= (count ?? 0),
-    );
-    if (!complete) {
-      return event(state, `${itemLabel(held)} 제출 (${done + 1}/${need})`, {
-        ...rest,
-        order: { ...state.order, done: nextDone },
-      });
-    }
-    const filled = state.filled + 1;
-    return event(
-      state,
-      `주문 완료 — ${filled}/${state.goal} (+${GOLD_PER_ORDER}G)`,
-      {
-        ...rest,
-        filled,
-        gold: state.gold + GOLD_PER_ORDER,
-        phase: filled >= state.goal ? "won" : "playing",
-        order: { need: pickOrder(state.seed), done: {} },
-      },
-    );
-  }
-  // 양조기·테이블은 넣는 즉시 같은 색 결과물을 만든다.
-  const product = productOf(held, target);
-  const key = target === "brewer" ? "brewer" : "table";
-  const shelf = state[key];
-  if (!product || shelf.length >= STORAGE_MAX) {
-    return event(state, "목적지 재고가 가득 찼습니다.", rest);
-  }
-  return event(
-    state,
-    `${itemLabel(product)} 완성 (${shelf.length + 1}/${STORAGE_MAX})`,
-    { ...rest, [key]: [...shelf, product] } as Partial<GameState>,
-  );
-}
-
-function workDurationFor(slime: ActorState, base: number) {
-  return base / statTables.workSpeedMultiplier[slime.statLevels.workSpeed];
+  actorId: ActorId,
+  actor: ActorState,
+) {
+  const done = (state.order.done["grilled-mushroom"] ?? 0) + 1;
+  const filled = state.filled + 1;
+  const nextActor = { ...actor, carrying: null, intent: null, status: "IDLE" as const };
+  return event(state, `음식 주문 완료 — ${filled}/${state.goal} (+${GOLD_PER_ORDER}G)`, {
+    actors: patchActor(state, actorId, nextActor),
+    filled,
+    gold: state.gold + GOLD_PER_ORDER,
+    phase: filled >= state.goal ? "won" : "playing",
+    order: done >= 1
+      ? { need: { "grilled-mushroom": 1 }, done: {} }
+      : { ...state.order, done: { "grilled-mushroom": done } },
+  });
 }
 
 function moveActor(state: GameState, actorId: ActorId, deltaMs: number) {
   let next = state;
   let remaining = deltaMs;
-  let slime = next.actors[actorId]!;
-  while (remaining > 0 && next.phase === "playing") {
-    if (!slime.current) {
-      const [pending, ...queue] = slime.queue;
-      if (!pending) {
-        slime = { ...slime, status: "IDLE", path: [], workLeftMs: 0 };
-        break;
-      }
-      const position = pixelToTile(slime.x, slime.y);
-      const path = findPath(position, taskTiles[sourceOf(pending.item)]);
-      if (!path) {
-        slime = { ...slime, current: null, queue, status: "IDLE", path: [] };
-        next = event(next, "물품 위치로 갈 수 없습니다.", {});
-        continue;
-      }
-      slime = {
-        ...slime,
-        current: pending,
-        queue,
-        leg: "FETCH",
-        path,
-        status: "MOVING",
-        workLeftMs: 0,
-      };
-    }
-    if (slime.status === "MOVING") {
-      const waypoint = slime.path[0];
-      if (!waypoint) {
-        slime = {
-          ...slime,
-          status: "WORKING",
-          workLeftMs: workDurationFor(
-            slime,
-            slime.leg === "FETCH" ? workDuration.pick : workDuration.put,
-          ),
+  let actor = next.actors[actorId]!;
+  while (remaining > 0 && next.phase === "playing" && actor.intent) {
+    if (actor.status === "MOVING") {
+      const destination = actor.intent.route[0];
+      if (destination) {
+        const dx = destination.x - actor.x;
+        const dy = destination.y - actor.y;
+        const distance = Math.hypot(dx, dy);
+        if (distance > 0.001) {
+          const travelMs = (distance / actor.moveSpeed) * 1000;
+          if (travelMs > remaining) {
+            const ratio = remaining / travelMs;
+            actor = {
+              ...actor,
+              x: actor.x + dx * ratio,
+              y: actor.y + dy * ratio,
+            };
+            remaining = 0;
+            break;
+          }
+          actor = { ...actor, x: destination.x, y: destination.y };
+          remaining -= travelMs;
+        }
+        actor = {
+          ...actor,
+          intent: { ...actor.intent, route: actor.intent.route.slice(1) },
         };
         continue;
       }
-      const destination = tileCenter(waypoint);
-      const dx = destination.x - slime.x;
-      const dy = destination.y - slime.y;
-      const distance = Math.hypot(dx, dy);
-      const travelMs = (distance / slime.moveSpeed) * 1000;
-      if (travelMs > remaining) {
-        const ratio = remaining / travelMs;
-        slime = { ...slime, x: slime.x + dx * ratio, y: slime.y + dy * ratio };
+
+      if (actor.intent.kind === "MOVE") {
+        actor = { ...actor, intent: null, status: "IDLE" };
+        break;
+      }
+      if (actor.intent.leader !== actorId) {
+        const wrongElement =
+          actor.intent.station === "stove" &&
+          !actor.carrying &&
+          !next.stove.includes("grilled-mushroom") &&
+          actor.typeId !== "fire";
+        if (wrongElement) {
+          next = refuse(
+            next,
+            actorId,
+            actor,
+            "불 슬라임만 가열 조리를 할 수 있습니다.",
+            "WRONG_ELEMENT",
+          );
+          actor = next.actors[actorId]!;
+        } else {
+          actor = waitAtStation(actor);
+          next = event(
+            next,
+            `${actor.name}이(가) 다른 슬라임의 작업을 기다립니다.`,
+            { actors: patchActor(next, actorId, actor) },
+          );
+        }
         remaining = 0;
         break;
       }
-      slime = {
-        ...slime,
-        x: destination.x,
-        y: destination.y,
-        path: slime.path.slice(1),
+      actor = {
+        ...actor,
+        status: "WORKING",
+        workLeftMs: workDurationFor(actor, workDuration.interact),
       };
-      remaining -= travelMs;
       continue;
     }
-    if (slime.workLeftMs > remaining) {
-      slime = { ...slime, workLeftMs: slime.workLeftMs - remaining };
+
+    const cooking =
+      actor.intent.kind === "INTERACT" &&
+      actor.intent.station === "stove" &&
+      next.workstation.status === "WORKING" &&
+      next.workstation.workerId === actorId;
+    if (cooking) {
+      const spent = Math.min(actor.workLeftMs, remaining);
+      const progressMs = Math.min(
+        next.workstation.totalMs,
+        next.workstation.progressMs + spent,
+      );
+      if (actor.workLeftMs > remaining) {
+        actor = { ...actor, workLeftMs: actor.workLeftMs - remaining };
+        next = {
+          ...next,
+          workstation: { ...next.workstation, progressMs },
+        };
+        remaining = 0;
+        break;
+      }
+      remaining -= actor.workLeftMs;
+      actor = {
+        ...actor,
+        intent: null,
+        status: "IDLE",
+        workLeftMs: 0,
+        alert: null,
+        alertMs: 0,
+      };
+      next = event(next, `${actor.name}이(가) 버섯 구이를 완성했습니다.`, {
+        actors: patchActor(next, actorId, actor),
+        stove: ["grilled-mushroom"],
+        workstation: {
+          ...next.workstation,
+          status: "COMPLETE",
+          workerId: null,
+          progressMs: next.workstation.totalMs,
+        },
+      });
+      continue;
+    }
+
+    if (actor.workLeftMs > remaining) {
+      actor = { ...actor, workLeftMs: actor.workLeftMs - remaining };
       remaining = 0;
       break;
     }
-    remaining -= slime.workLeftMs;
-    const current = slime.current!;
-    if (slime.leg === "FETCH") {
-      // 도착해 보니 재고가 비었을 수 있다.
-      if (stockOf(next, current.item) < 1) {
-        next = event(next, `${slime.name}: 필요한 물품이 없습니다.`, {
-          actors: patchActor(next, actorId, {
-            ...slime,
-            current: null,
-            status: "IDLE",
-            path: [],
-            workLeftMs: 0,
-          }),
-        });
-        slime = next.actors[actorId]!;
-        continue;
-      }
-      next = {
-        ...next,
-        ...takeStock(next, current.item),
-        actors: patchActor(next, actorId, { ...slime, carrying: current.item }),
-      };
-      slime = next.actors[actorId]!;
-      const path = findPath(
-        pixelToTile(slime.x, slime.y),
-        taskTiles[current.target],
-      );
-      slime = {
-        ...slime,
-        leg: "DELIVER",
-        path: path ?? [],
-        status: "MOVING",
-        workLeftMs: 0,
-      };
+    remaining -= actor.workLeftMs;
+    if (actor.intent.kind !== "INTERACT") {
+      actor = { ...actor, intent: null, status: "IDLE", workLeftMs: 0 };
       continue;
     }
-    next = putItem(
-      { ...next, actors: patchActor(next, actorId, slime) },
-      `${slime.name}이(가)`,
-      slime.carrying!,
-      current.target,
-      {
-        actors: patchActor(next, actorId, { ...slime, carrying: null }),
-      },
-    );
-    slime = {
-      ...next.actors[actorId]!,
-      current: null,
-      leg: "FETCH",
+    const station = actor.intent.station;
+
+    if (
+      station === "stove" &&
+      next.workstation.status === "WORKING" &&
+      next.workstation.workerId !== actorId
+    ) {
+      actor = waitAtStation(actor);
+      remaining = 0;
+      break;
+    }
+
+    if (station === "ingredient-box") {
+      if (actor.carrying) {
+        next = refuse(next, actorId, actor, "이미 음식이나 재료를 들고 있습니다.");
+        actor = next.actors[actorId]!;
+        continue;
+      }
+      if (next.ingredients.stock < 1) {
+        actor = waitAtStation(actor, true);
+        remaining = 0;
+        break;
+      }
+      actor = {
+        ...actor,
+        carrying: "mushroom",
+        intent: null,
+        status: "IDLE",
+        alert: null,
+        alertMs: 0,
+      };
+      next = event(next, `${actor.name}이(가) 버섯을 들었습니다.`, {
+        actors: patchActor(next, actorId, actor),
+        ingredients: {
+          ...next.ingredients,
+          stock: next.ingredients.stock - 1,
+        },
+      });
+      continue;
+    }
+
+    if (station === "stove") {
+      if (actor.carrying === "mushroom") {
+        if (next.stove.length >= STORAGE_MAX) {
+          next = refuse(next, actorId, actor, "조리 도구가 사용 중입니다.", "TARGET_FULL");
+          actor = next.actors[actorId]!;
+          continue;
+        }
+        actor = {
+          ...actor,
+          carrying: null,
+          intent: null,
+          status: "IDLE",
+        };
+        next = event(next, `${actor.name}이(가) 조리 도구에 버섯을 넣었습니다.`, {
+          actors: patchActor(next, actorId, actor),
+          stove: ["mushroom"],
+          workstation: {
+            ...next.workstation,
+            status: "IDLE",
+            workerId: null,
+            progressMs: 0,
+          },
+        });
+        continue;
+      }
+      if (actor.carrying) {
+        next = refuse(next, actorId, actor, "완성된 음식은 음식 제출대로 옮겨야 합니다.");
+        actor = next.actors[actorId]!;
+        continue;
+      }
+      if (next.stove.includes("grilled-mushroom")) {
+        actor = {
+          ...actor,
+          carrying: "grilled-mushroom",
+          intent: null,
+          status: "IDLE",
+        };
+        next = event(next, `${actor.name}이(가) 버섯 구이를 들었습니다.`, {
+          actors: patchActor(next, actorId, actor),
+          stove: [],
+          workstation: {
+            ...next.workstation,
+            status: "MISSING_MATERIAL",
+            workerId: null,
+            progressMs: 0,
+          },
+        });
+        continue;
+      }
+      if (actor.typeId !== "fire") {
+        next = refuse(
+          next,
+          actorId,
+          actor,
+          "불 슬라임만 가열 조리를 할 수 있습니다.",
+          "WRONG_ELEMENT",
+        );
+        actor = next.actors[actorId]!;
+        continue;
+      }
+      if (!next.stove.includes("mushroom")) {
+        actor = waitAtStation(actor, true);
+        next = {
+          ...next,
+          actors: patchActor(next, actorId, actor),
+          workstation: {
+            ...next.workstation,
+            status: "MISSING_MATERIAL",
+            workerId: actorId,
+            progressMs: 0,
+          },
+        };
+        remaining = 0;
+        break;
+      }
+      const totalMs = workDurationFor(actor, workDuration.cook);
+      actor = {
+        ...actor,
+        status: "WORKING",
+        workLeftMs: totalMs,
+        alert: null,
+        alertMs: 0,
+      };
+      next = event(next, `${actor.name}이(가) 버섯을 굽기 시작했습니다.`, {
+        actors: patchActor(next, actorId, actor),
+        workstation: {
+          status: "WORKING",
+          workerId: actorId,
+          progressMs: 0,
+          totalMs,
+        },
+      });
+      continue;
+    }
+
+    if (station === "submission") {
+      if (actor.carrying !== "grilled-mushroom") {
+        next = refuse(next, actorId, actor, "제출할 완성 음식이 없습니다.");
+        actor = next.actors[actorId]!;
+        continue;
+      }
+      next = submitFood(next, actorId, actor);
+      actor = next.actors[actorId]!;
+      continue;
+    }
+
+    if (!actor.carrying) {
+      next = refuse(next, actorId, actor, "버릴 재료나 음식이 없습니다.");
+      actor = next.actors[actorId]!;
+      continue;
+    }
+    const discarded = itemLabel(actor.carrying);
+    actor = {
+      ...actor,
+      carrying: null,
+      intent: null,
       status: "IDLE",
-      path: [],
-      workLeftMs: 0,
     };
+    next = event(next, `${actor.name}이(가) ${withParticle(discarded)} 버렸습니다.`, {
+      actors: patchActor(next, actorId, actor),
+    });
   }
-  return { ...next, actors: patchActor(next, actorId, slime) };
+  return { ...next, actors: patchActor(next, actorId, actor) };
 }
 
 function decayAlerts(state: GameState, deltaMs: number) {
@@ -842,47 +834,40 @@ function decayAlerts(state: GameState, deltaMs: number) {
     const actor = actors[id]!;
     if (!actor.alert) continue;
     const alertMs = Math.max(0, actor.alertMs - deltaMs);
-    actors[id] = { ...actor, alertMs, alert: alertMs > 0 ? actor.alert : null };
+    actors[id] = {
+      ...actor,
+      status:
+        alertMs === 0 && actor.status === "WAITING" && !actor.intent
+          ? "IDLE"
+          : actor.status,
+      alertMs,
+      alert: alertMs > 0 ? actor.alert : null,
+    };
     changed = true;
   }
   return changed ? { ...state, actors } : state;
 }
 
-// 소환진은 재고가 최대치 미만일 때만 약초를 만든다.
-function advanceSummons(state: GameState, deltaMs: number) {
-  let next = state;
-  for (const color of ["red", "blue"] as ItemColor[]) {
-    const summon = next.summons[color];
-    if (summon.stock >= SUMMON_MAX) {
-      next = {
-        ...next,
-        summons: {
-          ...next.summons,
-          [color]: { ...summon, timerMs: SUMMON_INTERVAL_MS },
-        },
-      };
-      continue;
-    }
-    const timerMs = summon.timerMs - deltaMs;
-    if (timerMs > 0) {
-      next = {
-        ...next,
-        summons: { ...next.summons, [color]: { ...summon, timerMs } },
-      };
-      continue;
-    }
-    next = event(
-      next,
-      `${color === "red" ? "붉은" : "파란"} 약초가 생겼습니다.`,
-      {
-        summons: {
-          ...next.summons,
-          [color]: { stock: summon.stock + 1, timerMs: SUMMON_INTERVAL_MS },
-        },
+function advanceIngredients(state: GameState, deltaMs: number) {
+  if (state.ingredients.stock >= INGREDIENT_MAX) {
+    return {
+      ...state,
+      ingredients: {
+        ...state.ingredients,
+        timerMs: INGREDIENT_INTERVAL_MS,
       },
-    );
+    };
   }
-  return next;
+  const timerMs = state.ingredients.timerMs - deltaMs;
+  if (timerMs > 0) {
+    return { ...state, ingredients: { ...state.ingredients, timerMs } };
+  }
+  return event(state, "재료 상자에 버섯이 채워졌습니다.", {
+    ingredients: {
+      stock: state.ingredients.stock + 1,
+      timerMs: INGREDIENT_INTERVAL_MS,
+    },
+  });
 }
 
 export function tick(state: GameState, deltaMs = 1000): GameState {
@@ -896,96 +881,14 @@ export function tick(state: GameState, deltaMs = 1000): GameState {
     if (next.phase !== "playing") break;
   }
   next = decayAlerts(next, elapsed);
-  next = advanceSummons(next, elapsed);
+  next = advanceIngredients(next, elapsed);
   if (next.phase === "won") return next;
   const timeLeftMs = next.timeLeftMs - elapsed;
   return timeLeftMs === 0
-    ? event(next, `시간 종료 — 주문 ${next.filled}/${next.goal}건 완료`, {
+    ? event(next, `영업 종료 — 음식 주문 ${next.filled}/${next.goal}건 완료`, {
         phase: "lost",
         timeLeft: 0,
         timeLeftMs: 0,
       })
     : { ...next, timeLeftMs, timeLeft: Math.ceil(timeLeftMs / 1000) };
-}
-
-export function command(
-  actorId: ActorId,
-  item: ItemId,
-  target: StationId,
-  sequence = 1,
-): CommandEnvelope {
-  return {
-    status: "OK",
-    confidence: 1,
-    commands: [{ actorId, item, target, sequence }],
-    reason: null,
-  };
-}
-
-// 플레이어가 직접 손을 댈 수 있는 범위.
-const REACH_PX = TILE_SIZE * 1.4;
-
-function nearestStation(state: GameState) {
-  return allStations
-    .map((id) => ({
-      id,
-      distance: Math.hypot(
-        tileCenter(displayTiles[id]).x - state.player.x,
-        tileCenter(displayTiles[id]).y - state.player.y,
-      ),
-    }))
-    .filter((station) => station.distance <= REACH_PX)
-    .sort((a, b) => a.distance - b.distance)[0];
-}
-
-// 앞에 있는 설비와 지금 든 물건으로 할 일 하나가 정해진다.
-export function nextPlayerAction(
-  state: GameState,
-): { label: string; station: StationId; item: ItemId } | null {
-  if (state.phase !== "playing") return null;
-  const near = nearestStation(state);
-  if (!near) return null;
-  const held = state.player.carrying;
-  if (held === null) {
-    if (near.id === "summon-red" && state.summons.red.stock > 0) {
-      return { label: "붉은 약초 집기", station: near.id, item: "red-herb" };
-    }
-    if (near.id === "summon-blue" && state.summons.blue.stock > 0) {
-      return { label: "파란 약초 집기", station: near.id, item: "blue-herb" };
-    }
-    for (const key of ["brewer", "table"] as const) {
-      if (near.id === key && state[key].length > 0) {
-        const item = state[key][state[key].length - 1];
-        return { label: `${itemLabel(item)} 꺼내기`, station: near.id, item };
-      }
-    }
-    return null;
-  }
-  if (!isValidRoute(held, near.id)) return null;
-  if (near.id === "brewer" || near.id === "table") {
-    if (state[near.id].length >= STORAGE_MAX) return null;
-    const product = productOf(held, near.id);
-    return product
-      ? { label: `${itemLabel(product)} 만들기`, station: near.id, item: held }
-      : null;
-  }
-  if (near.id === "submission") {
-    return { label: `${itemLabel(held)} 제출`, station: near.id, item: held };
-  }
-  return { label: `${itemLabel(held)} 버리기`, station: near.id, item: held };
-}
-
-export function playerAct(state: GameState): GameState {
-  const option = nextPlayerAction(state);
-  if (!option) return state;
-  const { station, item } = option;
-  if (state.player.carrying === null) {
-    return event(state, `직접 ${withParticle(itemLabel(item))} 들었습니다.`, {
-      ...takeStock(state, item),
-      player: { ...state.player, carrying: item },
-    });
-  }
-  return putItem(state, "직접", item, station, {
-    player: { ...state.player, carrying: null },
-  });
 }
