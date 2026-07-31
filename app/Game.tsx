@@ -19,6 +19,10 @@ import {
   INGREDIENT_MAX,
   allStations,
   stationLabels,
+  activeOrders,
+  orderComplete,
+  itemLabel,
+  fireConfig,
   type ActorId,
   type GameState,
   type ItemId,
@@ -588,8 +592,11 @@ export default function Game() {
                 .setPosition(actor.x, actor.y - 52);
             }
             for (const id of allStations) {
-              const label =
-                id === "ingredient-box"
+              const fire = current.fires[id];
+              const label = fire?.onFire
+                ? // 불이 난 설비는 진화 진행도를 대신 보여 준다.
+                  `🔥 ${Math.round((fire.extinguishMs / fireConfig.extinguishMs) * 100)}%`
+                : id === "ingredient-box"
                   ? `${current.ingredients.stock}/${INGREDIENT_MAX}`
                   : id === "stove"
                     ? current.workstation.status === "WORKING"
@@ -723,7 +730,7 @@ export default function Game() {
 
   const result =
     state.phase === "won"
-      ? "성공! 주문 5건을 완료했습니다."
+      ? `성공! 주문 ${state.goal}건을 완료했습니다.`
       : "영업 종료. 다시 식당을 열어 보세요.";
 
   return (
@@ -746,25 +753,28 @@ export default function Game() {
         <div className="hud-pots" aria-label="주문과 재고">
           <span className="pot-chip" data-status="ORDER">
             <b>음식 주문</b>
-            {(Object.entries(state.order.need) as [ItemId, number][]).map(
-              ([item, count]) => (
-                <span key={item}>
-                  {itemIcons[item]} {state.order.done[item] ?? 0}/{count}
-                </span>
-              ),
-            )}
+            {activeOrders(state).map((order) => (
+              <span key={order.id}>
+                {itemIcons[order.foodId]} {itemLabel(order.foodId)}{" "}
+                {order.submittedCount}/{order.targetCount}
+                {orderComplete(order) ? " ✅" : ""}
+              </span>
+            ))}
           </span>
           <span className="pot-chip">
             <b>재료 상자</b>
             🍄 {state.ingredients.stock}/{INGREDIENT_MAX}
           </span>
-          <span className="pot-chip" data-status={state.stove.length >= STORAGE_MAX ? "FULL" : undefined}>
+          <span className="pot-chip" data-status={state.fires.stove?.onFire ? "FULL" : state.stove.length >= STORAGE_MAX ? "FULL" : undefined}>
             <b>조리 도구</b>
             <span>
-              {workStatusLabels[state.workstation.status]}
-              {state.workstation.status === "WORKING"
-                ? ` ${Math.round((state.workstation.progressMs / state.workstation.totalMs) * 100)}%`
-                : ""}
+              {state.fires.stove?.onFire
+                ? `🔥 화재 · 진화 ${Math.round((state.fires.stove.extinguishMs / fireConfig.extinguishMs) * 100)}%`
+                : `${workStatusLabels[state.workstation.status]}${
+                    state.workstation.status === "WORKING"
+                      ? ` ${Math.round((state.workstation.progressMs / state.workstation.totalMs) * 100)}%`
+                      : ""
+                  }`}
             </span>
             {state.stove.map((item, index) => (
               <span key={`${item}-${index}`}>{itemIcons[item]}</span>

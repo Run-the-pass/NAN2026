@@ -93,6 +93,48 @@ export const statTables = {
   moveTilesPerSecond: [1.6, 1.9, 2.2, 2.5, 2.8, 3.1],
 } as const;
 
+// 아직 확정되지 않은 주문·화재 규칙은 여기서만 바꾼다. 기본값은 현재
+// 게임 동작을 그대로 유지한다.
+export const orderConfig = {
+  // 동시에 노출하는 주문 수.
+  activeOrderCount: 1,
+  // 주문에 없는 음식 처리. reject는 거부하고 음식을 그대로 들려 둔다.
+  invalidSubmission: "reject" as "reject" | "discard",
+  // 목표를 일찍 채웠을 때 라운드를 바로 끝낼지.
+  endRoundWhenOrdersDone: true,
+};
+
+export const fireConfig = {
+  // 화재가 발생할 수 있는 설비. 여기 없는 설비에는 화재 상태를 만들지 않는다.
+  flammableStations: ["stove"] as StationId[],
+  // 방치 판정을 시작하는 조리 도구 상태.
+  neglectStatus: "COMPLETE" as WorkstationStatus,
+  igniteAfterMs: 12_000,
+  spreadIntervalMs: 6_000,
+  // 설비 배치 타일 거리 기준 인접 판정. 바닥 타일은 대상이 아니다.
+  spreadRange: 1,
+  spreadDiagonal: false,
+  // 명세가 확정한 값.
+  extinguishMs: 5_000,
+  extinguishElement: "water" as SlimeElement,
+  keepExtinguishProgress: false,
+};
+
+export type Order = {
+  id: string;
+  foodId: ItemId;
+  targetCount: number;
+  submittedCount: number;
+};
+
+export type FireState = {
+  neglectMs: number;
+  onFire: boolean;
+  workerId: ActorId | null;
+  extinguishMs: number;
+  spreadMs: number;
+};
+
 export type ActorIntent =
   | { kind: "MOVE"; destination: Position }
   | { kind: "INTERACT"; station: StationId; leader: ActorId | null };
@@ -130,10 +172,8 @@ export type GameState = {
     progressMs: number;
     totalMs: number;
   };
-  order: {
-    need: Partial<Record<ItemId, number>>;
-    done: Partial<Record<ItemId, number>>;
-  };
+  orders: Order[];
+  fires: Partial<Record<StationId, FireState>>;
   lastEvent: string;
   history: string[];
 };
@@ -214,9 +254,58 @@ function makeActor(typeId: SlimeTypeId, spawn: TilePosition): ActorState {
   };
 }
 
+export const defaultOrders = (): Order[] =>
+  Array.from({ length: 5 }, (_, index) => ({
+    id: `order-${index + 1}`,
+    foodId: "grilled-mushroom" as ItemId,
+    targetCount: 1,
+    submittedCount: 0,
+  }));
+
+// 주문 목록은 외부에서 들어올 수 있으므로 코어에 들이기 전에 검증한다.
+function checkOrders(orders: Order[]): Order[] {
+  if (
+    orders.length < 1 ||
+    new Set(orders.map((order) => order.id)).size !== orders.length ||
+    orders.some(
+      (order) =>
+        !order.id ||
+        !allItems.includes(order.foodId) ||
+        !Number.isSafeInteger(order.targetCount) ||
+        order.targetCount < 1 ||
+        !Number.isSafeInteger(order.submittedCount) ||
+        order.submittedCount < 0,
+    )
+  ) {
+    throw new Error("주문 목록이 올바르지 않습니다.");
+  }
+  return orders.map((order) => ({ ...order }));
+}
+
+export const orderComplete = (order: Order) =>
+  order.submittedCount >= order.targetCount;
+
+export const activeOrders = (state: GameState) =>
+  state.orders
+    .filter((order) => !orderComplete(order))
+    .slice(0, orderConfig.activeOrderCount);
+
+// 라운드 종료 판정. 필수 주문을 모두 채웠는지만 본다.
+export const roundResult = (state: GameState): "won" | "lost" =>
+  state.orders.every(orderComplete) ? "won" : "lost";
+
+const newFires = (): Partial<Record<StationId, FireState>> =>
+  Object.fromEntries(
+    fireConfig.flammableStations.map((station) => [
+      station,
+      { neglectMs: 0, onFire: false, workerId: null, extinguishMs: 0, spreadMs: 0 },
+    ]),
+  );
+
 export function initialState(
   seed = 2026,
   squad: SlimeTypeId[] = ["water"],
+  orders: Order[] = defaultOrders(),
 ): GameState {
   if (
     squad.length < 1 ||
@@ -226,6 +315,7 @@ export function initialState(
   ) {
     throw new Error("스쿼드는 서로 다른 속성 슬라임 1~4마리여야 합니다.");
   }
+  const roundOrders = checkOrders(orders);
   const actors: Partial<Record<ActorId, ActorState>> = {};
   squad.forEach((typeId, index) => {
     actors[typeId] = makeActor(typeId, spawnTiles[index]);
@@ -236,7 +326,7 @@ export function initialState(
     timeLeft: 180,
     timeLeftMs: 180_000,
     filled: 0,
-    goal: 5,
+    goal: roundOrders.length,
     gold: 0,
     actors,
     ingredients: { stock: 1, timerMs: INGREDIENT_INTERVAL_MS },
@@ -247,8 +337,9 @@ export function initialState(
       progressMs: 0,
       totalMs: workDuration.cook,
     },
-    order: { need: { "grilled-mushroom": 1 }, done: {} },
-    lastEvent: "3분 동안 음식 주문 5건을 완료하세요.",
+    orders: roundOrders,
+    fires: newFires(),
+    lastEvent: `3분 동안 음식 주문 ${roundOrders.length}건을 완료하세요.`,
     history: ["식당 영업 시작"],
   };
 }
@@ -280,21 +371,49 @@ function patchActor(
 }
 
 function releaseWork(state: GameState, actorIds: ActorId[]): GameState {
+  let next = state;
   if (
-    !state.workstation.workerId ||
-    !actorIds.includes(state.workstation.workerId)
+    next.workstation.workerId &&
+    actorIds.includes(next.workstation.workerId)
   ) {
-    return state;
+    next = {
+      ...next,
+      workstation: {
+        ...next.workstation,
+        status: next.stove.includes("mushroom") ? "IDLE" : "MISSING_MATERIAL",
+        workerId: null,
+        progressMs: 0,
+      },
+    };
   }
-  return {
-    ...state,
-    workstation: {
-      ...state.workstation,
-      status: state.stove.includes("mushroom") ? "IDLE" : "MISSING_MATERIAL",
+  // 진화하던 슬라임이 새 지시를 받으면 설정에 따라 진행도를 버린다.
+  const fires = { ...next.fires };
+  let dropped = false;
+  for (const station of Object.keys(fires) as StationId[]) {
+    const fire = fires[station]!;
+    if (!fire.workerId || !actorIds.includes(fire.workerId)) continue;
+    fires[station] = {
+      ...fire,
       workerId: null,
-      progressMs: 0,
-    },
-  };
+      extinguishMs: fireConfig.keepExtinguishProgress ? fire.extinguishMs : 0,
+    };
+    dropped = true;
+  }
+  return dropped ? { ...next, fires } : next;
+}
+
+const isBurning = (state: GameState, station: StationId) =>
+  state.fires[station]?.onFire === true;
+
+// 설비끼리의 배치 거리로만 인접을 본다. 바닥 타일은 전파 경로가 아니다.
+function isAdjacentStation(one: StationId, two: StationId) {
+  const from = displayTiles[one];
+  const to = displayTiles[two];
+  const cols = Math.abs(from.col - to.col);
+  const rows = Math.abs(from.row - to.row);
+  return fireConfig.spreadDiagonal
+    ? Math.max(cols, rows) <= fireConfig.spreadRange
+    : cols + rows <= fireConfig.spreadRange;
 }
 
 export function moveActors(
@@ -335,8 +454,13 @@ function canUseStation(
   actor: ActorState,
   station: StationId,
 ) {
+  // 불이 난 설비는 진화 외의 어떤 작업도 시작할 수 없다.
+  if (isBurning(state, station)) {
+    return actor.typeId === fireConfig.extinguishElement;
+  }
   if (actor.carrying === "mushroom") {
-    return station === "stove" || station === "trash";
+    // 제출 판정은 주문 시스템이 한다. 경로에서 미리 막지 않는다.
+    return station === "stove" || station === "trash" || station === "submission";
   }
   if (actor.carrying === "grilled-mushroom") {
     return station === "submission" || station === "trash";
@@ -436,19 +560,56 @@ function submitFood(
   state: GameState,
   actorId: ActorId,
   actor: ActorState,
+  food: ItemId,
 ) {
-  const done = (state.order.done["grilled-mushroom"] ?? 0) + 1;
-  const filled = state.filled + 1;
+  // 음식 이름이 아니라 ID로 현재 주문과 대조한다.
+  const target = activeOrders(state).find((order) => order.foodId === food);
+  const label = itemLabel(food);
+  if (!target) {
+    if (orderConfig.invalidSubmission === "reject") {
+      return refuse(
+        state,
+        actorId,
+        actor,
+        `현재 주문에 없는 ${withParticle(label)} 제출할 수 없습니다.`,
+      );
+    }
+    return event(
+      state,
+      `${actor.name}이(가) 주문에 없는 ${withParticle(label)} 처분했습니다.`,
+      {
+        actors: patchActor(state, actorId, {
+          ...actor,
+          carrying: null,
+          intent: null,
+          status: "IDLE",
+        }),
+      },
+    );
+  }
+  const orders = state.orders.map((order) =>
+    order.id === target.id
+      ? { ...order, submittedCount: order.submittedCount + 1 }
+      : order,
+  );
+  const filled = orders.filter(orderComplete).length;
+  const cleared = filled > state.filled;
+  const allDone = orders.every(orderComplete);
   const nextActor = { ...actor, carrying: null, intent: null, status: "IDLE" as const };
-  return event(state, `음식 주문 완료 — ${filled}/${state.goal} (+${GOLD_PER_ORDER}G)`, {
-    actors: patchActor(state, actorId, nextActor),
-    filled,
-    gold: state.gold + GOLD_PER_ORDER,
-    phase: filled >= state.goal ? "won" : "playing",
-    order: done >= 1
-      ? { need: { "grilled-mushroom": 1 }, done: {} }
-      : { ...state.order, done: { "grilled-mushroom": done } },
-  });
+  const submitted = orders.find((order) => order.id === target.id)!;
+  return event(
+    state,
+    cleared
+      ? `음식 주문 완료 — ${filled}/${orders.length} (+${GOLD_PER_ORDER}G)`
+      : `${label} 제출 — ${submitted.submittedCount}/${submitted.targetCount}`,
+    {
+      actors: patchActor(state, actorId, nextActor),
+      orders,
+      filled,
+      gold: cleared ? state.gold + GOLD_PER_ORDER : state.gold,
+      phase: allDone && orderConfig.endRoundWhenOrdersDone ? "won" : "playing",
+    },
+  );
 }
 
 function moveActor(state: GameState, actorId: ActorId, deltaMs: number) {
@@ -486,17 +647,22 @@ function moveActor(state: GameState, actorId: ActorId, deltaMs: number) {
         break;
       }
       if (actor.intent.leader !== actorId) {
-        const wrongElement =
-          actor.intent.station === "stove" &&
-          !actor.carrying &&
-          !next.stove.includes("grilled-mushroom") &&
-          actor.typeId !== "fire";
+        // 불난 설비에서는 진화 속성만 남고 나머지는 작업 불가다.
+        const burning = isBurning(next, actor.intent.station);
+        const wrongElement = burning
+          ? actor.typeId !== fireConfig.extinguishElement
+          : actor.intent.station === "stove" &&
+            !actor.carrying &&
+            !next.stove.includes("grilled-mushroom") &&
+            actor.typeId !== "fire";
         if (wrongElement) {
           next = refuse(
             next,
             actorId,
             actor,
-            "불 슬라임만 가열 조리를 할 수 있습니다.",
+            burning
+              ? "물 슬라임만 불을 끌 수 있습니다."
+              : "불 슬라임만 가열 조리를 할 수 있습니다.",
             "WRONG_ELEMENT",
           );
           actor = next.actors[actorId]!;
@@ -516,6 +682,57 @@ function moveActor(state: GameState, actorId: ActorId, deltaMs: number) {
         status: "WORKING",
         workLeftMs: workDurationFor(actor, workDuration.interact),
       };
+      continue;
+    }
+
+    // 진화는 조리와 같은 방식으로 진행도를 쌓는다. 작업자를 잡아 둔
+    // 뒤에만 여기로 들어오므로 접근 동작이 진행도로 새지 않는다.
+    const extinguishing =
+      actor.intent.kind === "INTERACT" &&
+      next.fires[actor.intent.station]?.workerId === actorId;
+    if (extinguishing && actor.intent.kind === "INTERACT") {
+      const station = actor.intent.station;
+      const fire = next.fires[station]!;
+      const spent = Math.min(actor.workLeftMs, remaining);
+      const extinguishMs = Math.min(
+        fireConfig.extinguishMs,
+        fire.extinguishMs + spent,
+      );
+      if (actor.workLeftMs > remaining) {
+        actor = { ...actor, workLeftMs: actor.workLeftMs - remaining };
+        next = {
+          ...next,
+          fires: { ...next.fires, [station]: { ...fire, extinguishMs } },
+        };
+        remaining = 0;
+        break;
+      }
+      remaining -= actor.workLeftMs;
+      actor = {
+        ...actor,
+        intent: null,
+        status: "IDLE",
+        workLeftMs: 0,
+        alert: null,
+        alertMs: 0,
+      };
+      next = event(
+        next,
+        `${actor.name}이(가) ${withParticle(stationLabels[station])} 진화했습니다.`,
+        {
+          actors: patchActor(next, actorId, actor),
+          fires: {
+            ...next.fires,
+            [station]: {
+              neglectMs: 0,
+              onFire: false,
+              workerId: null,
+              extinguishMs: 0,
+              spreadMs: 0,
+            },
+          },
+        },
+      );
       continue;
     }
 
@@ -572,6 +789,42 @@ function moveActor(state: GameState, actorId: ActorId, deltaMs: number) {
       continue;
     }
     const station = actor.intent.station;
+
+    // 불이 났으면 다른 작업은 시작하지 않고 진화만 건다.
+    const fire = next.fires[station];
+    if (fire?.onFire) {
+      if (actor.typeId !== fireConfig.extinguishElement) {
+        next = refuse(
+          next,
+          actorId,
+          actor,
+          "물 슬라임만 불을 끌 수 있습니다.",
+          "WRONG_ELEMENT",
+        );
+        actor = next.actors[actorId]!;
+        continue;
+      }
+      const from = fireConfig.keepExtinguishProgress ? fire.extinguishMs : 0;
+      actor = {
+        ...actor,
+        status: "WORKING",
+        workLeftMs: fireConfig.extinguishMs - from,
+        alert: null,
+        alertMs: 0,
+      };
+      next = event(
+        next,
+        `${actor.name}이(가) ${withParticle(stationLabels[station])} 진화하기 시작했습니다.`,
+        {
+          actors: patchActor(next, actorId, actor),
+          fires: {
+            ...next.fires,
+            [station]: { ...fire, workerId: actorId, extinguishMs: from },
+          },
+        },
+      );
+      continue;
+    }
 
     if (
       station === "stove" &&
@@ -708,12 +961,12 @@ function moveActor(state: GameState, actorId: ActorId, deltaMs: number) {
     }
 
     if (station === "submission") {
-      if (actor.carrying !== "grilled-mushroom") {
+      if (!actor.carrying) {
         next = refuse(next, actorId, actor, "제출할 완성 음식이 없습니다.");
         actor = next.actors[actorId]!;
         continue;
       }
-      next = submitFood(next, actorId, actor);
+      next = submitFood(next, actorId, actor, actor.carrying);
       actor = next.actors[actorId]!;
       continue;
     }
@@ -780,6 +1033,76 @@ function advanceIngredients(state: GameState, deltaMs: number) {
   });
 }
 
+function igniteStation(state: GameState, station: StationId, message: string) {
+  const fire = state.fires[station];
+  // 화재 대상이 아니거나 이미 불이 난 곳에는 중복 적용하지 않는다.
+  if (!fire || fire.onFire) return state;
+  return event(state, message, {
+    fires: {
+      ...state.fires,
+      [station]: {
+        neglectMs: 0,
+        onFire: true,
+        workerId: null,
+        extinguishMs: 0,
+        spreadMs: 0,
+      },
+    },
+  });
+}
+
+// 방치 판정: 지금 상호작용 상태를 가진 설비는 조리 도구뿐이다. 다른
+// 설비가 상태를 갖게 되면 여기에 분기를 추가한다.
+function isNeglected(state: GameState, station: StationId) {
+  return (
+    station === "stove" && state.workstation.status === fireConfig.neglectStatus
+  );
+}
+
+function advanceFires(state: GameState, deltaMs: number) {
+  let next = state;
+  for (const station of Object.keys(next.fires) as StationId[]) {
+    const fire = next.fires[station]!;
+    if (!fire.onFire) {
+      const neglectMs = isNeglected(next, station) ? fire.neglectMs + deltaMs : 0;
+      if (neglectMs < fireConfig.igniteAfterMs) {
+        next = { ...next, fires: { ...next.fires, [station]: { ...fire, neglectMs } } };
+        continue;
+      }
+      next = igniteStation(
+        next,
+        station,
+        `${withParticle(stationLabels[station])} 방치해 불이 났습니다.`,
+      );
+      continue;
+    }
+    const spreadMs = fire.spreadMs + deltaMs;
+    if (spreadMs < fireConfig.spreadIntervalMs) {
+      next = { ...next, fires: { ...next.fires, [station]: { ...fire, spreadMs } } };
+      continue;
+    }
+    next = {
+      ...next,
+      fires: { ...next.fires, [station]: { ...fire, spreadMs: 0 } },
+    };
+    // 이미 불이 났거나 화재 대상이 아닌 설비에는 옮겨붙지 않는다.
+    const victim = (Object.keys(next.fires) as StationId[]).find(
+      (id) =>
+        id !== station &&
+        !next.fires[id]!.onFire &&
+        isAdjacentStation(station, id),
+    );
+    if (victim) {
+      next = igniteStation(
+        next,
+        victim,
+        `${stationLabels[station]}의 불이 ${withParticle(stationLabels[victim], ["으로", "로"])} 옮겨붙었습니다.`,
+      );
+    }
+  }
+  return next;
+}
+
 export function tick(state: GameState, deltaMs = 1000): GameState {
   if (state.phase !== "playing" || !Number.isFinite(deltaMs) || deltaMs <= 0) {
     return state;
@@ -792,11 +1115,12 @@ export function tick(state: GameState, deltaMs = 1000): GameState {
   }
   next = decayAlerts(next, elapsed);
   next = advanceIngredients(next, elapsed);
+  next = advanceFires(next, elapsed);
   if (next.phase === "won") return next;
   const timeLeftMs = next.timeLeftMs - elapsed;
   return timeLeftMs === 0
     ? event(next, `영업 종료 — 음식 주문 ${next.filled}/${next.goal}건 완료`, {
-        phase: "lost",
+        phase: roundResult(next),
         timeLeft: 0,
         timeLeftMs: 0,
       })
