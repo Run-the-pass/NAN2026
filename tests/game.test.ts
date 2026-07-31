@@ -4,6 +4,7 @@ import { simulate } from "../game/cli.js";
 import { parseSession } from "../game/session.js";
 import { facingFromDelta, slimeSvg, type Facing } from "../app/slime-art.js";
 import { gameMusicSource } from "../app/music-source.js";
+import { gameSoundCues } from "../app/sound-events.js";
 import {
   INGREDIENT_INTERVAL_MS,
   INGREDIENT_MAX,
@@ -21,7 +22,9 @@ import {
   tick,
   tileCenter,
   activeOrders,
+  dishConfig,
   fireConfig,
+  isDish,
   orderConfig,
   roundResult,
   type GameState,
@@ -92,23 +95,72 @@ test("바닥 지시는 순간이동 없이 선택한 슬라임을 이동시킨�
 });
 
 test("남은 시간 30초부터 러쉬 음악을 사용한다", () => {
-  assert.equal(gameMusicSource(31), "/music/main.mp3");
-  assert.equal(gameMusicSource(30), "/music/rush.mp3");
+  assert.equal(gameMusicSource(31, "playing"), "/music/main.mp3");
+  assert.equal(gameMusicSource(30, "playing"), "/music/rush.mp3");
+  assert.equal(gameMusicSource(31, "won"), "/music/main.mp3");
+  assert.equal(gameMusicSource(0, "lost"), "/music/game-over.mp3");
+});
+
+test("효과음은 조리 시작·음식 제출·화재 전환을 구분한다", () => {
+  const state = initialState(1, ["water", "fire"]);
+  assert.deepEqual(gameSoundCues(null, state), ["round-start"]);
+  assert.deepEqual(
+    gameSoundCues(state, {
+      ...state,
+      workstation: { ...state.workstation, status: "WORKING" },
+    }),
+    ["grill"],
+  );
+  assert.deepEqual(
+    gameSoundCues(state, {
+      ...state,
+      washer: { ...state.washer, workerId: "water" },
+    }),
+    ["wash"],
+  );
+  assert.equal(
+    gameSoundCues(state, {
+      ...state,
+      workstation: { ...state.workstation, status: "COMPLETE" },
+    }).includes("food-submit"),
+    false,
+  );
+  const submitted = {
+    ...state,
+    filled: 1,
+    orders: state.orders.map((order, index) =>
+      index === 0 ? { ...order, submittedCount: 1 } : order,
+    ),
+  };
+  assert.ok(gameSoundCues(state, submitted).includes("food-submit"));
+  const burning = {
+    ...state,
+    fires: { ...state.fires, stove: { ...state.fires.stove!, onFire: true } },
+  };
+  assert.ok(gameSoundCues(state, burning).includes("fire-start"));
+  assert.ok(gameSoundCues(burning, state).includes("fire-extinguish"));
 });
 
 test("버섯을 불 슬라임이 조리하고 제출하면 주문 수가 오른다", () => {
   let state = initialState(1, ["lightning", "fire"]);
   state = untilIdle(interactActors(state, ["lightning"], "ingredient-box"));
-  assert.equal(state.actors.lightning!.carrying, "mushroom");
+  assert.deepEqual(state.actors.lightning!.carrying, ["mushroom"]);
   state = untilIdle(interactActors(state, ["lightning"], "stove"));
   assert.deepEqual(state.stove, ["mushroom"]);
   state = untilIdle(interactActors(state, ["fire"], "stove"));
   assert.deepEqual(state.stove, ["grilled-mushroom"]);
   assert.equal(state.workstation.status, "COMPLETE");
   state = untilIdle(interactActors(state, ["lightning"], "stove"));
+  state = untilIdle(interactActors(state, ["lightning"], "dish-rack"));
+  state = untilIdle(interactActors(state, ["lightning"], "stove"));
   state = untilIdle(interactActors(state, ["lightning"], "submission"));
   assert.equal(state.filled, 1);
-  assert.equal(state.actors.lightning!.carrying, null);
+  assert.equal(
+    state.actors.lightning!.carrying.some(
+      (carried) => isDish(carried) && carried.status === "dirty",
+    ),
+    true,
+  );
 });
 
 test("식재료가 들어오면 기다리던 불 슬라임이 자동으로 조리한다", () => {
@@ -191,6 +243,7 @@ test("CLI는 식당 상호작용을 결정론적으로 재현한다", () => {
     "lightning:ingredient-box",
     "lightning:stove",
     "fire:stove",
+    "lightning:dish-rack",
     "lightning:stove",
     "lightning:submission",
   ];
@@ -215,11 +268,78 @@ test("슬라임 아트는 네 속성색과 방향별 얼굴을 만든다", () =>
   assert.equal(facingFromDelta(9, -2, "down"), "right");
 });
 
-// 재료 상자 → 조리 도구 → 불 슬라임 조리 → 제출대 한 바퀴.
+test("그릇은 고유 ID로 생성되고 땅 슬라임만 두 개를 나른다", () => {
+  let state = initialState(1, ["earth", "water"]);
+  assert.equal(state.dishRack.length, dishConfig.initialCount);
+  assert.equal(new Set(state.dishRack.map((dish) => dish.id)).size, state.dishRack.length);
+  state = untilIdle(interactActors(state, ["earth"], "dish-rack"));
+  state = untilIdle(interactActors(state, ["earth"], "dish-rack"));
+  assert.equal(state.actors.earth!.carrying.length, dishConfig.earthDishCarry);
+
+  let ordinary = initialState(1, ["water"]);
+  ordinary = untilIdle(interactActors(ordinary, ["water"], "dish-rack"));
+  ordinary = untilIdle(interactActors(ordinary, ["water"], "dish-rack"));
+  assert.ok(ordinary.actors.water!.carrying.length <= 1);
+});
+
+test("그릇과 테이블은 조리·제출·오염·세척 동안 ID와 내용을 보존한다", () => {
+  let state = initialState(1, ["water", "fire", "lightning", "earth"]);
+  state = untilIdle(interactActors(state, ["lightning"], "dish-rack"));
+  const id = (state.actors.lightning!.carrying[0] as { id: string }).id;
+  state = untilIdle(interactActors(state, ["lightning"], "table"));
+  assert.equal((state.table[0] as { id: string }).id, id);
+  state = untilIdle(interactActors(state, ["earth"], "table"));
+  assert.equal((state.actors.earth!.carrying[0] as { id: string }).id, id);
+  state = untilIdle(interactActors(state, ["earth"], "ingredient-box"));
+  assert.equal(
+    state.actors.earth!.carrying.some(
+      (carried) => isDish(carried) && carried.content === "mushroom",
+    ),
+    true,
+  );
+  state = untilIdle(interactActors(state, ["earth"], "stove"));
+  state = untilIdle(interactActors(state, ["fire"], "stove"));
+  state = untilIdle(interactActors(state, ["earth"], "stove"));
+  state = untilIdle(interactActors(state, ["earth"], "submission"));
+  assert.equal(state.filled, 1);
+  assert.equal(
+    state.actors.earth!.carrying.some(
+      (carried) => isDish(carried) && carried.id === id && carried.status === "dirty",
+    ),
+    true,
+  );
+  state = untilIdle(interactActors(state, ["earth"], "table"));
+  state = untilIdle(interactActors(state, ["water"], "table"));
+  state = untilIdle(interactActors(state, ["water"], "washer"));
+  assert.equal(state.washer.dish?.id, id);
+  assert.equal(state.washer.dish?.status, "clean");
+  state = untilIdle(interactActors(state, ["water"], "washer"));
+  assert.equal(
+    state.actors.water!.carrying.some(
+      (carried) => isDish(carried) && carried.id === id && carried.status === "clean",
+    ),
+    true,
+  );
+});
+
+// 재료 상자 → 조리 → 그릇 제출 → 필요하면 세척 한 바퀴.
 function cookAndSubmit(start: GameState) {
-  let state = untilIdle(interactActors(start, ["lightning"], "ingredient-box"));
+  let state = start;
+  if (state.actors.lightning!.carrying.some(isDish)) {
+    state = untilIdle(interactActors(state, ["lightning"], "washer"));
+    if (state.actors.water) {
+      state = untilIdle(interactActors(state, ["water"], "washer"));
+      state = untilIdle(interactActors(state, ["water"], "washer"));
+      state = untilIdle(interactActors(state, ["water"], "table"));
+      state = untilIdle(interactActors(state, ["lightning"], "table"));
+    }
+  }
+  state = untilIdle(interactActors(state, ["lightning"], "ingredient-box"));
   state = untilIdle(interactActors(state, ["lightning"], "stove"));
   state = untilIdle(interactActors(state, ["fire"], "stove"));
+  if (!state.actors.lightning!.carrying.some(isDish)) {
+    state = untilIdle(interactActors(state, ["lightning"], "dish-rack"));
+  }
   state = untilIdle(interactActors(state, ["lightning"], "stove"));
   return untilIdle(interactActors(state, ["lightning"], "submission"));
 }
@@ -237,7 +357,7 @@ test("라운드 주문 목록을 주입하고 제출마다 진행도가 오른�
     { id: "a", foodId: "grilled-mushroom", targetCount: 2, submittedCount: 0 },
     { id: "b", foodId: "grilled-mushroom", targetCount: 1, submittedCount: 0 },
   ];
-  let state = initialState(1, ["lightning", "fire"], orders);
+  let state = initialState(1, ["water", "lightning", "fire"], orders);
   assert.equal(state.goal, 2);
   assert.deepEqual(
     activeOrders(state).map((order) => order.id),
@@ -261,9 +381,15 @@ test("라운드 주문 목록을 주입하고 제출마다 진행도가 오른�
 
 test("주문에 없는 음식은 설정대로 처리하고 진행도를 올리지 않는다", () => {
   let state = initialState(1, ["lightning", "fire"]);
+  state = untilIdle(interactActors(state, ["lightning"], "dish-rack"));
   state = untilIdle(interactActors(state, ["lightning"], "ingredient-box"));
   const rejected = untilIdle(interactActors(state, ["lightning"], "submission"));
-  assert.equal(rejected.actors.lightning!.carrying, "mushroom");
+  assert.equal(
+    rejected.actors.lightning!.carrying.some(
+      (carried) => isDish(carried) && carried.content === "mushroom",
+    ),
+    true,
+  );
   assert.equal(rejected.orders[0].submittedCount, 0);
   assert.equal(rejected.filled, 0);
 
@@ -273,7 +399,12 @@ test("주문에 없는 음식은 설정대로 처리하고 진행도를 올리�
     const discarded = untilIdle(
       interactActors(state, ["lightning"], "submission"),
     );
-    assert.equal(discarded.actors.lightning!.carrying, null);
+    assert.equal(
+      discarded.actors.lightning!.carrying.some(
+        (carried) => isDish(carried) && carried.status === "dirty",
+      ),
+      true,
+    );
     assert.equal(discarded.orders[0].submittedCount, 0);
     assert.equal(discarded.filled, 0);
   } finally {
@@ -306,7 +437,7 @@ test("조리를 끝낸 조리 도구를 방치하면 불이 나고 사용할 수
   assert.ok(state.history.some((entry) => entry.includes("불이 났습니다")));
   // 물 속성이 아닌 슬라임은 작업 불가 처리한다.
   state = untilIdle(interactActors(state, ["lightning"], "stove"));
-  assert.equal(state.actors.lightning!.carrying, null);
+  assert.deepEqual(state.actors.lightning!.carrying, []);
   assert.ok(state.history.some((entry) => entry.includes("물 슬라임만")));
   assert.equal(state.fires.stove!.onFire, true);
 });
@@ -323,9 +454,15 @@ test("물 슬라임이 5초 상호작용하면 불을 끄고 설비를 되돌린
   state = untilIdle(partial);
   assert.equal(state.fires.stove!.onFire, false);
   assert.equal(state.fires.stove!.extinguishMs, 0);
-  // 진화 뒤에는 다시 버섯 구이를 집을 수 있다.
+  // 진화 뒤에는 깨끗한 그릇에 버섯 구이를 담을 수 있다.
+  state = untilIdle(interactActors(state, ["lightning"], "dish-rack"));
   state = untilIdle(interactActors(state, ["lightning"], "stove"));
-  assert.equal(state.actors.lightning!.carrying, "grilled-mushroom");
+  assert.equal(
+    state.actors.lightning!.carrying.some(
+      (carried) => isDish(carried) && carried.content === "grilled-mushroom",
+    ),
+    true,
+  );
 });
 
 test("화재는 인접한 화재 대상 설비로만 전파된다", () => {

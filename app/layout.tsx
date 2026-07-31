@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import { GlobalSoundEffects } from "./SoundEffects";
 
 export const metadata: Metadata = {
   metadataBase: new URL("https://nan2026-slime-shift.silver-bat-5647.chatgpt.site"),
@@ -27,7 +28,10 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="ko">
-      <body>{children}</body>
+      <body>
+        <GlobalSoundEffects />
+        {children}
+      </body>
     </html>
   );
 }

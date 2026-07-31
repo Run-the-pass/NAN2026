@@ -23,7 +23,11 @@ import {
   orderComplete,
   itemLabel,
   fireConfig,
+  dishConfig,
+  carriedLabel,
+  isDish,
   type ActorId,
+  type Carried,
   type GameState,
   type ItemId,
   type SlimeTypeId,
@@ -37,6 +41,7 @@ import {
 } from "./slime-art";
 import Music, { MusicSettings } from "./Music";
 import { gameMusicSource } from "./music-source";
+import { GameSoundEffects } from "./SoundEffects";
 
 type View = {
   sync: (state: GameState) => void;
@@ -57,6 +62,9 @@ const RENDER_SCALE = 3;
 // 텍스처는 world 58x45로 그린다. 확대에 견디도록 넉넉히 구워 둔다.
 const SLIME_TEXTURE = { width: 348, height: 270 };
 const SLIME_SCALE = 58 / SLIME_TEXTURE.width;
+const FIRE_TEXTURE = { width: 348, height: 301 };
+// 같은 출력 너비에서 원본 불 슬라임 몸통과 생성형 슬라임 몸통이 맞는다.
+const FIRE_SLIME_SCALE = SLIME_SCALE;
 // 젓기만 손에 드는 것이 없어 따로 보여 줘야 한다.
 type Motion = "idle" | "walk" | "stir" | "pick";
 const itemIcons: Record<ItemId, string> = {
@@ -82,13 +90,28 @@ const stationColors: Record<StationId, number> = {
   stove: 0xc65b32,
   submission: 0x3f7f4a,
   trash: 0x585264,
+  "dish-rack": 0x6f83a7,
+  washer: 0x3e8e9e,
+  table: 0x8b5b32,
 };
 const stationIcons: Record<StationId, string> = {
   "ingredient-box": "🍄",
   stove: "🍳",
   submission: "📬",
   trash: "🗑",
+  "dish-rack": "🍽️",
+  washer: "🫧",
+  table: "🪵",
 };
+
+const carriedIcon = (carried: Carried) =>
+  isDish(carried)
+    ? carried.status === "dirty"
+      ? "🍽️💧"
+      : carried.content
+        ? `🍽️${itemIcons[carried.content]}`
+        : "🍽️"
+    : itemIcons[carried];
 
 const statRows = [
   ["🔨", "작업 속도", "workSpeed"],
@@ -234,6 +257,7 @@ export default function Game() {
             last: { x: number; y: number };
             mode: Motion;
             blinking: boolean;
+            scale: number;
             motion: Phaser.Tweens.Tween;
           }
         >
@@ -241,12 +265,12 @@ export default function Game() {
       stations!: Record<StationId, Phaser.GameObjects.Text>;
 
       // 가만히 있을 때: 원본 SVG의 숨쉬기를 tween으로 옮긴 것.
-      breathe(art: Phaser.GameObjects.Image) {
-        art.setScale(SLIME_SCALE);
+      breathe(art: Phaser.GameObjects.Image, scale = SLIME_SCALE) {
+        art.setScale(scale);
         return this.tweens.add({
           targets: art,
-          scaleX: SLIME_SCALE * 0.985,
-          scaleY: SLIME_SCALE * 1.035,
+          scaleX: scale * 0.985,
+          scaleY: scale * 1.035,
           y: -2,
           duration: 1600,
           yoyo: true,
@@ -256,12 +280,12 @@ export default function Game() {
       }
 
       // 걸을 때: 더 짧고 크게 통통 튄다.
-      walk(art: Phaser.GameObjects.Image) {
-        art.setScale(SLIME_SCALE);
+      walk(art: Phaser.GameObjects.Image, scale = SLIME_SCALE) {
+        art.setScale(scale);
         return this.tweens.add({
           targets: art,
-          scaleX: SLIME_SCALE * 1.06,
-          scaleY: SLIME_SCALE * 0.9,
+          scaleX: scale * 1.06,
+          scaleY: scale * 0.9,
           y: 3,
           duration: 240,
           yoyo: true,
@@ -271,8 +295,8 @@ export default function Game() {
       }
 
       // 젓기: 팔이 없으니 몸을 좌우로 기울여 젓는다.
-      stir(art: Phaser.GameObjects.Image) {
-        art.setScale(SLIME_SCALE).setAngle(-12);
+      stir(art: Phaser.GameObjects.Image, scale = SLIME_SCALE) {
+        art.setScale(scale).setAngle(-12);
         return this.tweens.add({
           targets: art,
           angle: 12,
@@ -284,12 +308,12 @@ export default function Game() {
       }
 
       // 집기·놓기: 푹 눌렸다 펴지는 한 동작.
-      pick(art: Phaser.GameObjects.Image) {
-        art.setScale(SLIME_SCALE);
+      pick(art: Phaser.GameObjects.Image, scale = SLIME_SCALE) {
+        art.setScale(scale);
         return this.tweens.add({
           targets: art,
-          scaleX: SLIME_SCALE * 1.12,
-          scaleY: SLIME_SCALE * 0.8,
+          scaleX: scale * 1.12,
+          scaleY: scale * 0.8,
           y: 6,
           duration: 300,
           yoyo: true,
@@ -298,23 +322,31 @@ export default function Game() {
         });
       }
 
-      startMotion(art: Phaser.GameObjects.Image, mode: Motion) {
-        if (mode === "walk") return this.walk(art);
-        if (mode === "stir") return this.stir(art);
-        if (mode === "pick") return this.pick(art);
-        return this.breathe(art);
+      startMotion(art: Phaser.GameObjects.Image, mode: Motion, scale = SLIME_SCALE) {
+        if (mode === "walk") return this.walk(art, scale);
+        if (mode === "stir") return this.stir(art, scale);
+        if (mode === "pick") return this.pick(art, scale);
+        return this.breathe(art, scale);
       }
 
       // 방향과 깜빡임 상태를 하나의 텍스처 키로 합쳐 적용한다.
       paintSlime(actorId: ActorId) {
         const sprite = this.slimes[actorId];
         if (!sprite) return;
+        if (actorId === "fire") {
+          sprite.art.setTexture("slime-fire-art").setFlipX(sprite.facing === "left");
+          return;
+        }
         const blink = sprite.blinking && sprite.facing !== "up" ? "-blink" : "";
         sprite.art.setTexture(`slime-${actorId}-${sprite.facing}${blink}`);
       }
 
       preload() {
+        if (roster.includes("fire")) {
+          this.load.svg("slime-fire-art", "/slimes/fire.svg", FIRE_TEXTURE);
+        }
         for (const actorId of roster) {
+          if (actorId === "fire") continue;
           for (const facing of facings) {
             for (const blink of [false, true]) {
               this.load.svg(
@@ -414,6 +446,32 @@ export default function Game() {
               .strokeRoundedRect(x - 27, y - 22, 54, 45, 5)
               .fillStyle(0x183b24, 1)
               .fillRect(x - 14, y - 8, 28, 4);
+          } else if (id === "dish-rack") {
+            shape
+              .fillStyle(0x4b382a, 1)
+              .fillRoundedRect(x - 27, y - 23, 54, 46, 5)
+              .lineStyle(3, stationColors[id], 0.95)
+              .strokeRoundedRect(x - 27, y - 23, 54, 46, 5)
+              .lineStyle(2, 0xd9e8ff, 0.7)
+              .strokeLineShape(new Phaser.Geom.Line(x - 20, y - 5, x + 20, y - 5))
+              .strokeLineShape(new Phaser.Geom.Line(x - 20, y + 10, x + 20, y + 10));
+          } else if (id === "washer") {
+            shape
+              .fillStyle(0x394b50, 1)
+              .fillRoundedRect(x - 27, y - 18, 54, 42, 6)
+              .fillStyle(0x77c9d8, 0.75)
+              .fillEllipse(x, y - 14, 45, 18)
+              .lineStyle(2, 0xcdf8ff, 0.8)
+              .strokeEllipse(x, y - 14, 45, 18);
+          } else if (id === "table") {
+            shape
+              .fillStyle(stationColors[id], 1)
+              .fillRoundedRect(x - 29, y - 17, 58, 34, 6)
+              .lineStyle(3, 0xc89258, 0.9)
+              .strokeRoundedRect(x - 29, y - 17, 58, 34, 6)
+              .fillStyle(0x563619, 1)
+              .fillRect(x - 22, y + 14, 7, 12)
+              .fillRect(x + 15, y + 14, 7, 12);
           } else {
             shape
               .fillStyle(stationColors[id], 1)
@@ -486,11 +544,11 @@ export default function Game() {
         for (const actorId of roster) {
           const actor = current?.actors[actorId];
           if (!actor) continue;
-          // 텍스처는 116x90으로 굽고 0.5배로 쓴다. tween이 이 값을 기준으로
-          // 늘였다 줄였다 하므로 setDisplaySize 대신 스케일로 고정한다.
+          const scale = actorId === "fire" ? FIRE_SLIME_SCALE : SLIME_SCALE;
           const art = this.add
-            .image(0, 0, `slime-${actorId}-down`)
-            .setScale(SLIME_SCALE);
+            .image(0, 0, actorId === "fire" ? "slime-fire-art" : `slime-${actorId}-down`)
+            .setScale(scale)
+            .setOrigin(0.5, actorId === "fire" ? 0.62 : 0.5);
           const container = this.add
             .container(actor.x, actor.y, [art])
             .setDepth(actor.y)
@@ -507,7 +565,16 @@ export default function Game() {
                 inputEvent: Phaser.Types.Input.EventData,
               ) => {
                 inputEvent.stopPropagation();
-                if (pointer.leftButtonDown()) setSelectedActors([actorId]);
+                if (!pointer.leftButtonDown()) return;
+                const additive =
+                  pointer.event instanceof MouseEvent && pointer.event.shiftKey;
+                setSelectedActors((selected) =>
+                  additive
+                    ? selected.includes(actorId)
+                      ? selected.filter((id) => id !== actorId)
+                      : [...selected, actorId]
+                    : [actorId],
+                );
               },
             );
           const carried = this.add
@@ -529,7 +596,8 @@ export default function Game() {
             last: { x: actor.x, y: actor.y },
             mode: "idle",
             blinking: false,
-            motion: this.breathe(art),
+            scale,
+            motion: this.breathe(art, scale),
           };
           // 걷는 중에도 눈은 계속 깜빡이도록 몸 tween과 분리해 둔다.
           this.time.addEvent({
@@ -553,9 +621,27 @@ export default function Game() {
         // 히트 테스트를 갱신한다.
         this.input.setPollAlways();
         this.input.mouse?.disableContextMenu();
+        const selectionBox = this.add
+          .rectangle(0, 0, 0, 0, 0x9fdcff, 0.16)
+          .setOrigin(0)
+          .setStrokeStyle(1, 0xd9f4ff, 0.95)
+          .setDepth(10_000)
+          .setVisible(false);
+        let dragStart: {
+          world: Phaser.Math.Vector2;
+          screenX: number;
+          screenY: number;
+          additive: boolean;
+        } | null = null;
         this.input.on("pointerdown", (pointer: Phaser.Input.Pointer) => {
           if (pointer.leftButtonDown()) {
-            setSelectedActors([]);
+            dragStart = {
+              world: this.cameras.main.getWorldPoint(pointer.x, pointer.y),
+              screenX: pointer.x,
+              screenY: pointer.y,
+              additive:
+                pointer.event instanceof MouseEvent && pointer.event.shiftKey,
+            };
             return;
           }
           if (!pointer.rightButtonDown()) return;
@@ -566,6 +652,51 @@ export default function Game() {
             value
               ? moveActors(value, selectedActorsRef.current, { x: point.x, y: point.y })
               : value,
+          );
+        });
+        this.input.on("pointermove", (pointer: Phaser.Input.Pointer) => {
+          if (!dragStart || !pointer.isDown) return;
+          if (
+            Math.hypot(pointer.x - dragStart.screenX, pointer.y - dragStart.screenY) <
+            dishConfig.dragThresholdPx
+          ) return;
+          const point = this.cameras.main.getWorldPoint(pointer.x, pointer.y);
+          const left = Math.min(dragStart.world.x, point.x);
+          const top = Math.min(dragStart.world.y, point.y);
+          selectionBox
+            .setPosition(left, top)
+            .setSize(Math.abs(point.x - dragStart.world.x), Math.abs(point.y - dragStart.world.y))
+            .setVisible(true);
+        });
+        this.input.on("pointerup", (pointer: Phaser.Input.Pointer) => {
+          if (!dragStart) return;
+          const start = dragStart;
+          dragStart = null;
+          selectionBox.setVisible(false);
+          if (
+            Math.hypot(pointer.x - start.screenX, pointer.y - start.screenY) <
+            dishConfig.dragThresholdPx
+          ) {
+            setSelectedActors([]);
+            return;
+          }
+          const point = this.cameras.main.getWorldPoint(pointer.x, pointer.y);
+          const left = Math.min(start.world.x, point.x);
+          const right = Math.max(start.world.x, point.x);
+          const top = Math.min(start.world.y, point.y);
+          const bottom = Math.max(start.world.y, point.y);
+          const inside = roster.filter((actorId) => {
+            const actor = stateRef.current?.actors[actorId];
+            return (
+              actor &&
+              actor.x >= left &&
+              actor.x <= right &&
+              actor.y >= top &&
+              actor.y <= bottom
+            );
+          });
+          setSelectedActors((selected) =>
+            start.additive ? [...new Set([...selected, ...inside])] : inside,
           );
         });
 
@@ -596,7 +727,7 @@ export default function Game() {
                 sprite.mode = mode;
                 sprite.motion.stop();
                 sprite.art.setAngle(0).setY(0);
-                sprite.motion = this.startMotion(sprite.art, mode);
+                sprite.motion = this.startMotion(sprite.art, mode, sprite.scale);
               }
               sprite.last = { x: actor.x, y: actor.y };
               sprite.body.setPosition(actor.x, actor.y).setDepth(actor.y);
@@ -606,9 +737,7 @@ export default function Game() {
                 .setVisible(selectedActorsRef.current.includes(actorId));
               const icon = actor.alert
                 ? alertIcons[actor.alert]
-                : actor.carrying
-                  ? itemIcons[actor.carrying]
-                  : "";
+                : actor.carrying.map(carriedIcon).join(" ");
               sprite.carried
                 .setText(icon ?? "")
                 .setPosition(actor.x, actor.y - 52)
@@ -625,7 +754,17 @@ export default function Game() {
                     ? current.workstation.status === "WORKING"
                       ? `${workStatusLabels.WORKING} ${Math.round((current.workstation.progressMs / current.workstation.totalMs) * 100)}%`
                       : workStatusLabels[current.workstation.status]
-                    : "";
+                    : id === "dish-rack"
+                      ? `${current.dishRack.length}/${dishConfig.rackCapacity}`
+                      : id === "washer"
+                        ? current.washer.workerId
+                          ? `세척 ${Math.round((current.washer.progressMs / current.washer.totalMs) * 100)}%`
+                          : current.washer.dish
+                            ? current.washer.dish.status === "clean" ? "세척 완료" : "세척 대기"
+                            : "비어 있음"
+                        : id === "table"
+                          ? current.table[0] ? carriedLabel(current.table[0]) : "비어 있음"
+                          : "";
               this.stations[id].setText(label);
             }
           },
@@ -676,6 +815,15 @@ export default function Game() {
       ["SELECT", "INPUT", "TEXTAREA"].includes(target.tagName);
     const down = (event: KeyboardEvent) => {
       if (isTyping(event.target) || event.repeat) return;
+      if (event.code === "Escape") {
+        event.preventDefault();
+        setSettingsOpen((open) => {
+          const next = !open;
+          setResumeCount(next ? null : 3);
+          return next;
+        });
+        return;
+      }
       const elementByKey = {
         KeyQ: "water",
         KeyW: "fire",
@@ -719,6 +867,7 @@ export default function Game() {
                 <button
                   key={typeId}
                   className="slime-select-card"
+                  data-slime-type={typeId}
                   data-active={active ? "" : undefined}
                   aria-pressed={active}
                   onClick={() => setPicked(typeId)}
@@ -727,10 +876,13 @@ export default function Game() {
                   <img
                     className="slime-portrait"
                     data-water={typeId === "water" ? "" : undefined}
+                    data-fire={typeId === "fire" ? "" : undefined}
                     src={
                       typeId === "water"
                         ? "/slimes/water.svg"
-                        : slimeDataUri(typeId, "down", { animate: true })
+                        : typeId === "fire"
+                          ? "/slimes/fire.svg"
+                          : slimeDataUri(typeId, "down", { animate: true })
                     }
                     alt=""
                   />
@@ -762,11 +914,13 @@ export default function Game() {
 
   return (
     <main className="stage">
-      <Music src={gameMusicSource(state.timeLeft)} />
+      <Music src={gameMusicSource(state.timeLeft, state.phase)} />
+      <GameSoundEffects state={state} selectedActors={selectedActors} />
       <div className="stage-frame">
         <div id="game-canvas" aria-label="탑다운 판타지 식당 게임 맵" />
         <MusicSettings
           variant="game"
+          open={settingsOpen}
           onOpenChange={(open) => {
             setSettingsOpen(open);
             setResumeCount(open ? null : 3);
@@ -819,13 +973,27 @@ export default function Game() {
             ))}
             {state.stove.length}/{STORAGE_MAX}
           </span>
+          <span className="pot-chip">
+            <b>그릇</b>
+            <span>🍽️ 생성대 {state.dishRack.length}/{dishConfig.rackCapacity}</span>
+            <span>
+              🫧 {state.washer.workerId
+                ? `세척 ${Math.round((state.washer.progressMs / state.washer.totalMs) * 100)}%`
+                : state.washer.dish?.status === "clean"
+                  ? "세척 완료"
+                  : state.washer.dish
+                    ? "세척 대기"
+                    : "세척기 비어 있음"}
+            </span>
+            <span>🪵 {state.table[0] ? carriedLabel(state.table[0]) : "테이블 비어 있음"}</span>
+          </span>
         </div>
 
         <div className="hud-bottom">
           {/* 레시피 전체 대신 지금 할 일 하나만 크게 보여 준다. */}
           <div className="step" role="status" aria-live="polite">
             <small>조작</small>
-            <strong>좌클릭 선택 · 우클릭 이동/상호작용</strong>
+            <strong>좌클릭·Shift·드래그 선택 · 우클릭 이동/상호작용</strong>
             {/* 앞에 설비가 있으면 직접 할 수 있는 일을 알려 준다. */}
             <span className="reach">Q 물 · W 불 · E 번개 · R 땅 · Space 전체</span>
           </div>
