@@ -4,31 +4,20 @@ import * as Phaser from "phaser";
 import { useEffect, useRef, useState } from "react";
 import {
   TILE_SIZE,
-  WORKSHOP_ROWS,
-  command,
+  KITCHEN_ROWS,
   displayTiles,
-  executeEnvelope,
   initialState,
+  interactActors,
   isWalkable,
-  movePlayer,
-  nextPlayerAction,
+  moveActors,
   pixelToTile,
-  playerAct,
-  playerStartTile,
-  redirectCarried,
   slimeTypes,
-  statTables,
   taskTiles,
   tick,
   tileCenter,
-  validateEnvelope,
-  voiceRadiusPx,
   STORAGE_MAX,
-  SUMMON_MAX,
-  allItems,
+  INGREDIENT_MAX,
   allStations,
-  isValidRoute,
-  itemLabel,
   stationLabels,
   type ActorId,
   type GameState,
@@ -36,45 +25,26 @@ import {
   type SlimeTypeId,
   type StationId,
 } from "../game/core";
-import { nextHint } from "../game/hint";
-import { matchCarriedPhrase, matchPhrase } from "../game/phrase";
 import {
   facingFromDelta,
   facings,
   slimeDataUri,
   type Facing,
 } from "./slime-art";
+import Music, { MusicSettings } from "./Music";
+import { gameMusicSource } from "./music-source";
 
-type View = { sync: (state: GameState) => void };
-
-// Web Speech API는 표준 d.ts에 없어 쓰는 만큼만 좁게 선언한다.
-type SpeechRecognitionLike = {
-  lang: string;
-  interimResults: boolean;
-  continuous: boolean;
-  onresult: (event: SpeechRecognitionEventLike) => void;
-  onerror: () => void;
-  onend: () => void;
-  start: () => void;
-  stop: () => void;
+type View = {
+  sync: (state: GameState) => void;
+  pause: () => void;
+  resume: () => void;
 };
-type SpeechRecognitionEventLike = {
-  resultIndex: number;
-  results: ArrayLike<{ isFinal: boolean; 0: { transcript: string } }>;
-};
-type SpeechRecognitionCtor = new () => SpeechRecognitionLike;
 
 const typeColors: Record<SlimeTypeId, number> = {
-  nerd: 0x7d8bff,
-  swift: 0x93e675,
-  keen: 0xffd46b,
-  worker: 0xe07b39,
-};
-const typeCssColors: Record<SlimeTypeId, string> = {
-  nerd: "#7d8bff",
-  swift: "#93e675",
-  keen: "#ffd46b",
-  worker: "#e07b39",
+  water: 0x189fc4,
+  fire: 0xe05a39,
+  lightning: 0xefb229,
+  earth: 0x8b6c42,
 };
 const allTypeIds = Object.keys(slimeTypes) as SlimeTypeId[];
 // 캔버스 내부 해상도 배율. 카메라 zoom도 같은 값을 써서 보이는
@@ -86,71 +56,47 @@ const SLIME_SCALE = 58 / SLIME_TEXTURE.width;
 // 젓기만 손에 드는 것이 없어 따로 보여 줘야 한다.
 type Motion = "idle" | "walk" | "stir" | "pick";
 const itemIcons: Record<ItemId, string> = {
-  "red-herb": "🍁",
-  "blue-herb": "🌿",
-  "red-potion": "🧪",
-  "blue-potion": "🫙",
-  "red-scroll": "📕",
-  "blue-scroll": "📘",
+  mushroom: "🍄",
+  "grilled-mushroom": "🍲",
 };
 const alertIcons: Record<string, string> = {
-  NOT_HEARD: "🙉",
-  TOO_COMPLEX: "🤯",
-  QUEUE_FULL: "❗",
+  WAITING: "⏳",
   SOURCE_EMPTY: "🫙",
   TARGET_FULL: "🚫",
   INVALID_ROUTE: "❓",
+  WRONG_ELEMENT: "🔥",
 };
-// 설비 타일 색. 소환진은 자원 색, 가공은 보라, 출구는 회색 계열.
+const workStatusLabels = {
+  IDLE: "대기",
+  MISSING_MATERIAL: "식재료 부족",
+  WORKING: "조리 중",
+  COMPLETE: "요리 완성",
+} as const;
+// 주방 설비 타일 색.
 const stationColors: Record<StationId, number> = {
-  "summon-red": 0xb2432f,
-  "summon-blue": 0x2f5fb2,
-  brewer: 0x6b4aa0,
-  table: 0x8a6a2f,
+  "ingredient-box": 0x9a6235,
+  stove: 0xc65b32,
   submission: 0x3f7f4a,
   trash: 0x585264,
 };
 const stationIcons: Record<StationId, string> = {
-  "summon-red": "🔴",
-  "summon-blue": "🔵",
-  brewer: "⚗️",
-  table: "📜",
+  "ingredient-box": "🍄",
+  stove: "🍳",
   submission: "📬",
   trash: "🗑",
 };
 
-// 문서의 실패 구분: 인식 실패 / 해석 실패 / (상태 불가와 접수는 최근
-// 상황·슬라임 알림으로 표시)
-type VoiceFeedback = {
-  kind: "accepted" | "uninterpreted" | "unheard";
-  transcript: string | null;
-  commands: string[];
-  detail: string;
-};
-const voiceKindLabels: Record<VoiceFeedback["kind"], string> = {
-  accepted: "음성 명령 접수",
-  uninterpreted: "문장은 들었지만 명령으로 해석하지 못함",
-  unheard: "음성을 인식하지 못함",
-};
 const statRows = [
   ["🔨", "작업 속도", "workSpeed"],
   ["👟", "이동 속도", "moveSpeed"],
-  ["👂", "청력", "hearing"],
-  ["🎯", "집중력", "focus"],
 ] as const;
 
 type Metrics = {
-  voiceCommands: number;
   buttonCommands: number;
-  voiceFailures: number;
-  confidenceSum: number;
 };
 
 const emptyMetrics = (): Metrics => ({
-  voiceCommands: 0,
   buttonCommands: 0,
-  voiceFailures: 0,
-  confidenceSum: 0,
 });
 
 function StatGauges({ levels }: { levels: Record<string, number> }) {
@@ -177,51 +123,32 @@ function StatGauges({ levels }: { levels: Record<string, number> }) {
 
 export default function Game() {
   const [squad, setSquad] = useState<SlimeTypeId[] | null>(null);
-  // 첫 직원은 1마리로 시작한다. 코어는 1~3마리를 지원하지만 선택
-  // 화면은 한 마리만 고르게 한다.
-  const [picked, setPicked] = useState<SlimeTypeId>("keen");
+  // 일반 플레이는 첫 직원 한 마리, 상호작용 검증은 네 마리로 시작한다.
+  const [picked, setPicked] = useState<SlimeTypeId>("water");
   const [state, setState] = useState<GameState | null>(null);
-  const [selectedActor, setSelectedActor] = useState<ActorId>("keen");
-  const [selectedItem, setSelectedItem] = useState<ItemId>("red-herb");
-  const [selectedTarget, setSelectedTarget] = useState<StationId>("brewer");
-  const [mic, setMic] = useState("마이크 준비");
-  const [voice, setVoice] = useState<VoiceFeedback | null>(null);
+  const [selectedActors, setSelectedActors] = useState<ActorId[]>([]);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [resumeCount, setResumeCount] = useState<number | null>(null);
+  const paused = settingsOpen || resumeCount !== null;
 
   const [saved, setSaved] = useState("");
-  const [hoveredActor, setHoveredActor] = useState<ActorId | null>(null);
   const stateRef = useRef(state);
+  const selectedActorsRef = useRef(selectedActors);
   const view = useRef<View | null>(null);
-  const recorder = useRef<MediaRecorder | null>(null);
-  const listening = useRef<SpeechRecognitionLike | null>(null);
-  const micHeld = useRef(false);
-  const recognizedText = useRef("");
-  // 발화 중 가장 컸던 목소리. 소리 원 반지름을 정하는 값이다.
-  const loudness = useRef(0);
-  const meter = useRef<{ stop: () => void } | null>(null);
-  // 지금 내는 소리 크기. Phaser가 소리 원을 그릴 때 읽는다.
-  const voiceLevel = useRef(0);
-  const chunks = useRef<Blob[]>([]);
   const metrics = useRef<Metrics>(emptyMetrics());
   const savedRef = useRef(false);
   const roundSeed = useRef(0);
-  // 청력 판정에 쓰는 플레이어 위치. Phaser가 매 프레임 갱신한다.
-  const playerPos = useRef(tileCenter(playerStartTile));
-  const phase = state?.phase;
 
   useEffect(() => {
     stateRef.current = state;
   }, [state]);
 
   useEffect(() => {
-    if (!phase || phase === "playing") return;
-    micHeld.current = false;
-    listening.current?.stop();
-    if (recorder.current?.state === "recording") recorder.current.stop();
-    meter.current?.stop();
-  }, [phase]);
+    selectedActorsRef.current = selectedActors;
+  }, [selectedActors]);
 
   useEffect(() => {
-    if (!squad) return;
+    if (!squad || paused) return;
     // 탭이 백그라운드로 가면 인터벌이 스로틀되므로 고정 50ms 대신
     // 실제 경과 시간을 델타로 넘겨 게임 시간이 벽시계와 함께 흐르게 한다.
     let last = performance.now();
@@ -232,11 +159,25 @@ export default function Game() {
       setState((current) => (current ? tick(current, delta) : current));
     }, 50);
     return () => window.clearInterval(timer);
-  }, [squad]);
+  }, [squad, paused]);
+
+  useEffect(() => {
+    if (resumeCount === null) return;
+    const timer = window.setTimeout(
+      () => setResumeCount((count) => count === null || count <= 1 ? null : count - 1),
+      1_000,
+    );
+    return () => window.clearTimeout(timer);
+  }, [resumeCount]);
+
+  useEffect(() => {
+    if (paused) view.current?.pause();
+    else view.current?.resume();
+  }, [paused]);
 
   useEffect(() => {
     if (state) view.current?.sync(state);
-  }, [state]);
+  }, [state, selectedActors]);
 
   // 한 판이 끝나면 요약 지표를 한 번만 저장한다.
   useEffect(() => {
@@ -253,12 +194,10 @@ export default function Game() {
         booksSubmitted: state.filled,
         goal: state.goal,
         elapsedMs: 180_000 - state.timeLeftMs,
-        voiceCommands: counts.voiceCommands,
+        voiceCommands: 0,
         buttonCommands: counts.buttonCommands,
-        voiceFailures: counts.voiceFailures,
-        avgConfidence: counts.voiceCommands
-          ? counts.confidenceSum / counts.voiceCommands
-          : null,
+        voiceFailures: 0,
+        avgConfidence: null,
       }),
     })
       .then(async (response) => {
@@ -278,7 +217,7 @@ export default function Game() {
   useEffect(() => {
     if (!squad) return;
     const roster = squad;
-    class Workshop extends Phaser.Scene {
+    class Restaurant extends Phaser.Scene {
       slimes!: Partial<
         Record<
           ActorId,
@@ -286,7 +225,7 @@ export default function Game() {
             body: Phaser.GameObjects.Container;
             art: Phaser.GameObjects.Image;
             carried: Phaser.GameObjects.Text;
-            range: Phaser.GameObjects.Arc;
+            selected: Phaser.GameObjects.Arc;
             facing: Facing;
             last: { x: number; y: number };
             mode: Motion;
@@ -389,10 +328,9 @@ export default function Game() {
           .setBackgroundColor("#171527")
           .setZoom(RENDER_SCALE)
           .centerOn(480, 300);
-        // 홈 화면(bg.png + #2f1500 오버레이)과 같은 나무 공방 톤.
-        // 바닥은 어두운 판자, 벽은 밝은 판자, 그 위에 마법 기운을 얹는다.
+        // 나무와 금속 중심의 판타지 식당 바닥과 벽.
         const planks = this.add.graphics().setDepth(0);
-        WORKSHOP_ROWS.forEach((row, rowIndex) => {
+        KITCHEN_ROWS.forEach((row, rowIndex) => {
           [...row].forEach((tile, colIndex) => {
             const { x, y } = tileCenter({ col: colIndex, row: rowIndex });
             const left = x - TILE_SIZE / 2;
@@ -424,39 +362,7 @@ export default function Game() {
             }
           });
         });
-        // 마법 기운: 바닥에 은은한 보라 빛과 떠다니는 불씨.
-        const glow = this.add.graphics().setDepth(0);
-        glow.fillStyle(0x8b5cf6, 0.07);
-        for (const id of ["brewer", "table"] as StationId[]) {
-          const { x, y } = tileCenter(displayTiles[id]);
-          glow.fillCircle(x, y, 110);
-        }
-        glow.fillStyle(0x7dd3fc, 0.05);
-        for (const id of ["summon-red", "summon-blue"] as StationId[]) {
-          const { x, y } = tileCenter(displayTiles[id]);
-          glow.fillCircle(x, y, 90);
-        }
-        for (let index = 0; index < 14; index += 1) {
-          const spark = this.add
-            .circle(
-              Phaser.Math.Between(80, 880),
-              Phaser.Math.Between(80, 520),
-              Phaser.Math.Between(1, 2),
-              0xd9b8ff,
-            )
-            .setDepth(0)
-            .setAlpha(0.5);
-          this.tweens.add({
-            targets: spark,
-            y: spark.y - Phaser.Math.Between(24, 54),
-            alpha: 0,
-            duration: Phaser.Math.Between(2600, 5200),
-            delay: Phaser.Math.Between(0, 2600),
-            repeat: -1,
-            ease: "Sine.easeOut",
-          });
-        }
-        // 동선은 그대로 두고, 방의 경계와 작업 구역만 더 읽기 쉽게 만든다.
+        // 식당 경계와 중앙 배식 동선을 읽기 쉽게 만든다.
         const decor = this.add.graphics().setDepth(0);
         decor.fillStyle(0x24150c, 0.85);
         decor.fillRect(60, 60, 840, 10).fillRect(60, 530, 840, 10);
@@ -472,47 +378,30 @@ export default function Game() {
           decor.fillStyle(0xf6bd5b, 0.16).fillCircle(x, 105, 54);
           decor.fillStyle(0xf6d48e, 0.95).fillCircle(x, 105, 5);
         }
-        // 설비 6종을 서로 다른 실루엣으로 그리고 재고는 sync에서 갱신한다.
+        // 네 주방 설비를 서로 다른 실루엣으로 그린다.
         this.stations = {} as Record<StationId, Phaser.GameObjects.Text>;
         for (const id of allStations) {
           const { x, y } = tileCenter(displayTiles[id]);
-          const shape = this.add.graphics().setDepth(1);
-          if (id.startsWith("summon-")) {
+          const shape = this.add.graphics().setDepth(y);
+          if (id === "ingredient-box") {
             shape
-              .fillStyle(stationColors[id], 0.3)
-              .fillCircle(x, y, 28)
-              .lineStyle(3, stationColors[id], 0.95)
-              .strokeCircle(x, y, 25)
-              .lineStyle(1, 0xffe8cb, 0.8)
-              .strokeCircle(x, y, 16);
-            for (let angle = 0; angle < 360; angle += 60) {
-              const rad = Phaser.Math.DegToRad(angle);
-              shape.fillStyle(0xffe8cb, 0.85).fillCircle(
-                x + Math.cos(rad) * 21,
-                y + Math.sin(rad) * 21,
-                2,
-              );
-            }
-          } else if (id === "brewer") {
+              .fillStyle(0x6d3f20, 1)
+              .fillRoundedRect(x - 28, y - 22, 56, 44, 5)
+              .lineStyle(3, 0xc88a4c, 0.9)
+              .strokeRoundedRect(x - 28, y - 22, 56, 44, 5)
+              .lineStyle(2, 0x3d2415, 0.8)
+              .strokeLineShape(new Phaser.Geom.Line(x, y - 20, x, y + 20));
+          } else if (id === "stove") {
             shape
-              .fillStyle(0x241a2b, 1)
+              .fillStyle(0x28272b, 1)
               .fillRoundedRect(x - 25, y - 15, 50, 40, 12)
               .fillStyle(stationColors[id], 0.9)
               .fillEllipse(x, y - 13, 50, 15)
-              .lineStyle(2, 0xdac7ff, 0.75)
+              .lineStyle(2, 0xe9d3b1, 0.75)
               .strokeEllipse(x, y - 13, 52, 17)
-              .fillStyle(0xb58cff, 0.8)
+              .fillStyle(0xffb347, 0.8)
               .fillCircle(x - 9, y - 20, 3)
               .fillCircle(x + 7, y - 25, 4);
-          } else if (id === "table") {
-            shape
-              .fillStyle(0x3d2517, 1)
-              .fillRect(x - 25, y - 15, 6, 42)
-              .fillRect(x + 19, y - 15, 6, 42)
-              .fillStyle(stationColors[id], 1)
-              .fillRoundedRect(x - 29, y - 20, 58, 18, 4)
-              .lineStyle(2, 0xf1cf87, 0.8)
-              .strokeRoundedRect(x - 29, y - 20, 58, 18, 4);
           } else if (id === "submission") {
             shape
               .fillStyle(stationColors[id], 1)
@@ -538,11 +427,11 @@ export default function Game() {
             .setDepth(1);
           this.add
             .text(x, y - 10, stationIcons[id], {
-              fontSize: id.startsWith("summon-") ? "18px" : "20px",
+              fontSize: "20px",
               resolution: RENDER_SCALE,
             })
             .setOrigin(0.5)
-            .setDepth(2);
+            .setDepth(y + 1);
           this.add
             .text(x, y + 22, stationLabels[id], {
               color: "#f8efff",
@@ -552,8 +441,8 @@ export default function Game() {
               resolution: RENDER_SCALE,
             })
             .setOrigin(0.5)
-            .setDepth(2);
-          // 재고 표시. 소환진은 약초 수, 가공 설비는 채운 칸.
+            .setDepth(y + 1);
+          // 재료 수와 조리 상태 표시.
           this.stations[id] = this.add
             .text(x, y - 30, "", {
               color: "#ffe9b8",
@@ -563,7 +452,29 @@ export default function Game() {
               resolution: RENDER_SCALE,
             })
             .setOrigin(0.5)
-            .setDepth(3);
+            .setDepth(y + 2);
+          this.add
+            .zone(x, y, TILE_SIZE, TILE_SIZE)
+            .setDepth(4)
+            .setInteractive()
+            .on(
+              "pointerdown",
+              (
+                pointer: Phaser.Input.Pointer,
+                _localX: number,
+                _localY: number,
+                inputEvent: Phaser.Types.Input.EventData,
+              ) => {
+                inputEvent.stopPropagation();
+                if (!pointer.rightButtonDown()) return;
+                metrics.current.buttonCommands += 1;
+                setState((value) =>
+                  value
+                    ? interactActors(value, selectedActorsRef.current, id)
+                    : value,
+                );
+              },
+            );
         }
 
         this.slimes = {};
@@ -576,45 +487,40 @@ export default function Game() {
           const art = this.add
             .image(0, 0, `slime-${actorId}-down`)
             .setScale(SLIME_SCALE);
-          const name = this.add
-            .text(0, -34, actor.name, {
-              color: "#f8efff",
-              fontFamily: "Jua, sans-serif",
-              fontSize: "12px",
-              fontStyle: "bold",
-              resolution: RENDER_SCALE,
-            })
-            .setOrigin(0.5);
           const container = this.add
-            .container(actor.x, actor.y, [art, name])
-            .setDepth(5)
+            .container(actor.x, actor.y, [art])
+            .setDepth(actor.y)
             .setInteractive(
               new Phaser.Geom.Rectangle(-29, -23, 58, 45),
               Phaser.Geom.Rectangle.Contains,
             )
-            .on("pointerover", () => setHoveredActor(actorId))
-            .on("pointerout", () =>
-              setHoveredActor((prev) => (prev === actorId ? null : prev)),
+            .on(
+              "pointerdown",
+              (
+                pointer: Phaser.Input.Pointer,
+                _localX: number,
+                _localY: number,
+                inputEvent: Phaser.Types.Input.EventData,
+              ) => {
+                inputEvent.stopPropagation();
+                if (pointer.leftButtonDown()) setSelectedActors([actorId]);
+              },
             );
           const carried = this.add
             .text(actor.x, actor.y - 52, "", { fontSize: "24px", resolution: RENDER_SCALE })
             .setOrigin(0.5)
-            .setDepth(8);
-          // 청력 범위. 이 원 밖에서 부른 명령은 NOT_HEARD가 된다.
-          const range = this.add
-            .circle(
-              actor.x,
-              actor.y,
-              statTables.hearingRangeTiles[actor.statLevels.hearing] *
-                TILE_SIZE,
-            )
-            .setStrokeStyle(1.5, typeColors[actorId], 0.28)
-            .setDepth(1);
+            .setDepth(actor.y + 2);
+          const selected = this.add
+            .circle(actor.x, actor.y + 14, 30)
+            .setStrokeStyle(3, typeColors[actorId], 0.95)
+            .setFillStyle(typeColors[actorId], 0.12)
+            .setDepth(actor.y - 1)
+            .setVisible(false);
           this.slimes[actorId] = {
             body: container,
             art,
             carried,
-            range,
+            selected,
             facing: "down",
             last: { x: actor.x, y: actor.y },
             mode: "idle",
@@ -642,72 +548,21 @@ export default function Game() {
         // 슬라임이 움직여 커서 밑에서 벗어나도 pointerout이 뜨도록 매 프레임
         // 히트 테스트를 갱신한다.
         this.input.setPollAlways();
-
-        // 참고 이미지의 중앙 붉은 타원 = 플레이어.
-        const start = tileCenter(playerStartTile);
-        const playerBody = this.add
-          .ellipse(0, 0, 42, 52, 0xd7263d)
-          .setStrokeStyle(3, 0xffffff);
-        const playerLabel = this.add
-          .text(0, -38, "플레이어", {
-            color: "#ffd7dd",
-            fontFamily: "Jua, sans-serif",
-            fontSize: "11px",
-            fontStyle: "bold",
-            resolution: RENDER_SCALE,
-          })
-          .setOrigin(0.5);
-        const player = this.add
-          .container(start.x, start.y, [playerBody, playerLabel])
-          .setDepth(6);
-        playerPos.current = { x: start.x, y: start.y };
-        // 목소리가 닿는 범위. 슬라임의 청력 원과 겹치면 명령이 들린다.
-        const playerCarry = this.add
-          .text(start.x, start.y - 52, "", {
-            fontSize: "24px",
-            resolution: RENDER_SCALE,
-          })
-          .setOrigin(0.5)
-          .setDepth(8);
-        const voiceRing = this.add
-          .circle(start.x, start.y, 1)
-          .setStrokeStyle(2, 0xffd46b, 0.5)
-          .setDepth(1)
-          .setVisible(false);
-        const keys = this.input.keyboard?.addKeys(
-          "W,A,S,D,UP,DOWN,LEFT,RIGHT",
-        ) as Record<string, Phaser.Input.Keyboard.Key>;
-        const canStand = (x: number, y: number) =>
-          [-16, 16].every((offsetX) =>
-            [-16, 16].every((offsetY) =>
-              isWalkable(pixelToTile(x + offsetX, y + offsetY)),
-            ),
+        this.input.mouse?.disableContextMenu();
+        this.input.on("pointerdown", (pointer: Phaser.Input.Pointer) => {
+          if (pointer.leftButtonDown()) {
+            setSelectedActors([]);
+            return;
+          }
+          if (!pointer.rightButtonDown()) return;
+          const point = this.cameras.main.getWorldPoint(pointer.x, pointer.y);
+          if (!isWalkable(pixelToTile(point.x, point.y))) return;
+          metrics.current.buttonCommands += 1;
+          setState((value) =>
+            value
+              ? moveActors(value, selectedActorsRef.current, { x: point.x, y: point.y })
+              : value,
           );
-        this.events.on("update", (_time: number, delta: number) => {
-          let dx =
-            Number(keys.D.isDown || keys.RIGHT.isDown) -
-            Number(keys.A.isDown || keys.LEFT.isDown);
-          let dy =
-            Number(keys.S.isDown || keys.DOWN.isDown) -
-            Number(keys.W.isDown || keys.UP.isDown);
-          if (dx && dy) {
-            dx /= Math.SQRT2;
-            dy /= Math.SQRT2;
-          }
-          const distance = (180 * Math.min(delta, 32)) / 1000;
-          if (canStand(player.x + dx * distance, player.y)) {
-            player.x += dx * distance;
-          }
-          if (canStand(player.x, player.y + dy * distance)) {
-            player.y += dy * distance;
-          }
-          playerPos.current = { x: player.x, y: player.y };
-          playerCarry.setPosition(player.x, player.y - 52);
-          const level = voiceLevel.current;
-          voiceRing.setPosition(player.x, player.y).setVisible(level > 0.01);
-          if (level > 0.01) {
-            voiceRing.setRadius(voiceRadiusPx(level));
-          }
         });
 
         view.current = {
@@ -729,9 +584,7 @@ export default function Game() {
                 actor.status === "MOVING"
                   ? "walk"
                   : actor.status === "WORKING"
-                    ? actor.leg === "DELIVER" &&
-                      (actor.current?.target === "brewer" ||
-                        actor.current?.target === "table")
+                    ? current.workstation.workerId === actorId
                       ? "stir"
                       : "pick"
                     : "idle";
@@ -742,8 +595,11 @@ export default function Game() {
                 sprite.motion = this.startMotion(sprite.art, mode);
               }
               sprite.last = { x: actor.x, y: actor.y };
-              sprite.body.setPosition(actor.x, actor.y);
-              sprite.range.setPosition(actor.x, actor.y);
+              sprite.body.setPosition(actor.x, actor.y).setDepth(actor.y);
+              sprite.selected
+                .setPosition(actor.x, actor.y + 14)
+                .setDepth(actor.y - 1)
+                .setVisible(selectedActorsRef.current.includes(actorId));
               const icon = actor.alert
                 ? alertIcons[actor.alert]
                 : actor.carrying
@@ -751,25 +607,23 @@ export default function Game() {
                   : "";
               sprite.carried
                 .setText(icon ?? "")
-                .setPosition(actor.x, actor.y - 52);
+                .setPosition(actor.x, actor.y - 52)
+                .setDepth(actor.y + 2);
             }
-            playerCarry.setText(
-              current.player.carrying ? itemIcons[current.player.carrying] : "",
-            );
             for (const id of allStations) {
               const label =
-                id === "summon-red"
-                  ? `${current.summons.red.stock}/${SUMMON_MAX}`
-                  : id === "summon-blue"
-                    ? `${current.summons.blue.stock}/${SUMMON_MAX}`
-                    : id === "brewer"
-                      ? `${current.brewer.length}/${STORAGE_MAX}`
-                      : id === "table"
-                        ? `${current.table.length}/${STORAGE_MAX}`
-                        : "";
+                id === "ingredient-box"
+                  ? `${current.ingredients.stock}/${INGREDIENT_MAX}`
+                  : id === "stove"
+                    ? current.workstation.status === "WORKING"
+                      ? `${workStatusLabels.WORKING} ${Math.round((current.workstation.progressMs / current.workstation.totalMs) * 100)}%`
+                      : workStatusLabels[current.workstation.status]
+                    : "";
               this.stations[id].setText(label);
             }
           },
+          pause: () => this.scene.pause(),
+          resume: () => this.scene.resume(),
         };
         if (stateRef.current) view.current.sync(stateRef.current);
       }
@@ -784,7 +638,7 @@ export default function Game() {
       width: 960 * RENDER_SCALE,
       height: 600 * RENDER_SCALE,
       backgroundColor: "#171527",
-      scene: Workshop,
+      scene: Restaurant,
       render: { antialias: true },
       scale: { mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.CENTER_BOTH },
     });
@@ -800,37 +654,14 @@ export default function Game() {
     savedRef.current = false;
     roundSeed.current = next.seed;
     setSaved("");
-    setMic("마이크 준비");
-    setVoice(null);
-    setSelectedActor(list[0]);
-    setSelectedItem("red-herb");
-    setSelectedTarget("brewer");
-    setHoveredActor(null);
+    setSelectedActors([]);
+    setSettingsOpen(false);
+    setResumeCount(null);
     setState(next);
     setSquad(list);
   }
 
-  function run(item: ItemId, target: StationId) {
-    const envelope = command(selectedActor, item, target);
-    const checked = validateEnvelope(envelope);
-    if (!checked.ok) {
-      setState((current) =>
-        current ? { ...current, lastEvent: checked.reason } : current,
-      );
-      return;
-    }
-    metrics.current.buttonCommands += 1;
-    setState((current) =>
-      current
-        ? executeEnvelope(
-            movePlayer(current, playerPos.current.x, playerPos.current.y),
-            checked.value,
-          )
-        : current,
-    );
-  }
-
-  // E는 직접 조작, 스페이스는 누르는 동안만 음성을 받는다.
+  // 속성 키와 전체 선택 키.
   useEffect(() => {
     if (!squad) return;
     const isTyping = (target: EventTarget | null) =>
@@ -838,351 +669,40 @@ export default function Game() {
       ["SELECT", "INPUT", "TEXTAREA"].includes(target.tagName);
     const down = (event: KeyboardEvent) => {
       if (isTyping(event.target) || event.repeat) return;
-      if (event.code === "KeyE") {
-        event.preventDefault();
-        setState((current) =>
-          current
-            ? playerAct(
-                movePlayer(current, playerPos.current.x, playerPos.current.y),
-              )
-            : current,
+      const elementByKey = {
+        KeyQ: "water",
+        KeyW: "fire",
+        KeyE: "lightning",
+        KeyR: "earth",
+      } as const;
+      const element = elementByKey[event.code as keyof typeof elementByKey];
+      if (element) {
+        setSelectedActors(
+          squad.filter((actorId) => slimeTypes[actorId].element === element),
         );
         return;
       }
-      if (event.code === "Space") {
-        event.preventDefault();
-        startMic();
-      }
-    };
-    const up = (event: KeyboardEvent) => {
-      if (isTyping(event.target) || event.code !== "Space") return;
+      if (event.code !== "Space") return;
       event.preventDefault();
-      stopMic();
+      setSelectedActors([...squad]);
     };
     window.addEventListener("keydown", down);
-    window.addEventListener("keyup", up);
     return () => {
       window.removeEventListener("keydown", down);
-      window.removeEventListener("keyup", up);
-      stopMic();
     };
     // 핸들러는 ref만 보므로 squad가 바뀔 때만 다시 건다.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [squad]);
-
-  // 마이크 입력의 RMS로 목소리 크기를 잰다. Web Speech와는 별도
-  // 스트림을 열어 소리 원 크기만 계산한다.
-  async function startMeter() {
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      if (!micHeld.current) {
-        stream.getTracks().forEach((track) => track.stop());
-        return;
-      }
-      const context = new AudioContext();
-      const analyser = context.createAnalyser();
-      analyser.fftSize = 1024;
-      context.createMediaStreamSource(stream).connect(analyser);
-      const buffer = new Float32Array(analyser.fftSize);
-      let live = true;
-      const sample = () => {
-        if (!live) return;
-        analyser.getFloatTimeDomainData(buffer);
-        let sum = 0;
-        for (const value of buffer) sum += value * value;
-        const rms = Math.sqrt(sum / buffer.length);
-        // 말소리 RMS는 대체로 0.02~0.25 범위라 그 구간을 0~1로 편다.
-        const level = Math.min(1, Math.max(0, (rms - 0.02) / 0.2));
-        loudness.current = Math.max(loudness.current, level);
-        voiceLevel.current = level;
-        requestAnimationFrame(sample);
-      };
-      sample();
-      meter.current = {
-        stop: () => {
-          live = false;
-          stream.getTracks().forEach((track) => track.stop());
-          void context.close();
-          meter.current = null;
-          voiceLevel.current = 0;
-        },
-      };
-    } catch {
-      // 볼륨을 못 재면 기본 크기로 말한 것으로 본다.
-      loudness.current = 0.5;
-    }
-  }
-
-  // 브라우저 내장 STT. 누르는 동안에는 결과만 모으고, 키를 뗀 뒤에만
-  // 명령으로 바꾼다. 지원하지 않는 브라우저에서는 false를 돌려 오디오
-  // 경로로 넘어간다.
-  function startListening() {
-    const Recognition =
-      (window as unknown as { SpeechRecognition?: SpeechRecognitionCtor })
-        .SpeechRecognition ??
-      (window as unknown as { webkitSpeechRecognition?: SpeechRecognitionCtor })
-        .webkitSpeechRecognition;
-    if (!Recognition) return false;
-    const recognition = new Recognition();
-    recognition.lang = "ko-KR";
-    recognition.interimResults = true;
-    recognition.continuous = false;
-    let canRestart = true;
-    recognition.onresult = (event: SpeechRecognitionEventLike) => {
-      let interim = "";
-      for (let index = event.resultIndex; index < event.results.length; index += 1) {
-        const result = event.results[index];
-        if (result.isFinal) recognizedText.current += result[0].transcript;
-        else interim += result[0].transcript;
-      }
-      setMic(`${recognizedText.current}${interim}` || "듣는 중…");
-    };
-    recognition.onerror = () => {
-      canRestart = false;
-      setMic("음성을 인식하지 못했습니다.");
-    };
-    recognition.onend = () => {
-      listening.current = null;
-      if (micHeld.current && canRestart) {
-        startListening();
-        return;
-      }
-      meter.current?.stop();
-      if (micHeld.current) return;
-      const text = recognizedText.current.trim();
-      if (text) void runPhrase(text);
-      else {
-        metrics.current.voiceFailures += 1;
-        setMic("음성을 인식하지 못했습니다.");
-        setVoice({
-          kind: "unheard",
-          transcript: null,
-          commands: [],
-          detail: "다시 눌러 말해 보세요.",
-        });
-      }
-    };
-    listening.current = recognition;
-    recognition.start();
-    setMic("듣는 중…");
-    return true;
-  }
-
-  // 브라우저 STT 문장은 로컬 사전까지만 사용한다. Gemini는 Web Speech를
-  // 쓸 수 없을 때 녹음한 원본 오디오만 해석한다.
-  function runPhrase(text: string) {
-    const list = squad ?? [];
-    // 물품을 명시한 문장은 짧은 "그거" 계열 오인식보다 우선한다.
-    const local = matchPhrase(text, list);
-    if (local) {
-      metrics.current.voiceCommands += 1;
-      metrics.current.confidenceSum += 1;
-      setVoice({
-        kind: "accepted",
-        transcript: text,
-        commands: local.map(
-          (entry) =>
-            `${slimeTypes[entry.actorId].name} · ${itemLabel(entry.item)} → ${stationLabels[entry.target]}`,
-        ),
-        detail: "즉시 인식",
-      });
-      setMic("즉시 인식");
-      setState((current) =>
-        current
-          ? executeEnvelope(
-              movePlayer(current, playerPos.current.x, playerPos.current.y),
-              { status: "OK", confidence: 1, commands: local, reason: null },
-              loudness.current,
-            )
-          : current,
-      );
-      return;
-    }
-    const carried = matchCarriedPhrase(text, list);
-    if (carried) {
-      metrics.current.voiceCommands += 1;
-      metrics.current.confidenceSum += 1;
-      setVoice({
-        kind: "accepted",
-        transcript: text,
-        commands: [
-          `${slimeTypes[carried.actorId].name} · 현재 든 물품 → ${stationLabels[carried.target]}`,
-        ],
-        detail: "즉시 인식",
-      });
-      setMic("즉시 인식");
-      setState((current) =>
-        current
-          ? redirectCarried(
-              movePlayer(current, playerPos.current.x, playerPos.current.y),
-              carried.actorId,
-              carried.target,
-              loudness.current,
-            )
-          : current,
-      );
-      return;
-    }
-    const reason = "로컬 사전에 없는 문장입니다.";
-    metrics.current.voiceFailures += 1;
-    setMic(reason);
-    setVoice({
-      kind: "uninterpreted",
-      transcript: text,
-      commands: [],
-      detail: reason,
-    });
-    setState((current) =>
-      current ? { ...current, lastEvent: reason } : current,
-    );
-  }
-
-  function startMic() {
-    if (micHeld.current) return;
-    micHeld.current = true;
-    recognizedText.current = "";
-    loudness.current = 0;
-    void startMeter();
-    if (startListening()) return;
-    void startRecording();
-  }
-
-  function stopMic() {
-    if (!micHeld.current) return;
-    micHeld.current = false;
-    if (listening.current) {
-      listening.current.stop();
-      return;
-    }
-    if (recorder.current?.state === "recording") recorder.current.stop();
-    else setMic("마이크 준비");
-  }
-
-  async function startRecording() {
-    if (recorder.current?.state === "recording") {
-      return;
-    }
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      if (!micHeld.current) {
-        stream.getTracks().forEach((track) => track.stop());
-        return;
-      }
-      chunks.current = [];
-      const next = new MediaRecorder(stream);
-      recorder.current = next;
-      next.ondataavailable = (event) => chunks.current.push(event.data);
-      next.onstop = async () => {
-        stream.getTracks().forEach((track) => track.stop());
-        setMic("Gemini 해석 중…");
-        const form = new FormData();
-        form.append(
-          "audio",
-          new Blob(chunks.current, { type: next.mimeType }),
-          "command.webm",
-        );
-        form.append("actors", (squad ?? []).join(","));
-        await sendCommand(form);
-      };
-      next.start();
-      setMic("듣는 중… 스페이스를 떼면 전송");
-    } catch {
-      setMic("마이크 권한이 필요합니다.");
-    }
-  }
-
-  async function sendCommand(form: FormData) {
-    {
-        try {
-          const response = await fetch("/api/command", {
-            method: "POST",
-            body: form,
-          });
-          const payload = (await response.json()) as {
-            reason?: string;
-            transcript?: string | null;
-          };
-          const transcript =
-            typeof payload.transcript === "string" ? payload.transcript : null;
-          if (!response.ok) {
-            const reason = payload.reason || "명령 해석 실패";
-            metrics.current.voiceFailures += 1;
-            setMic(reason);
-            setVoice({
-              // 문장이 있으면 해석 실패, 없으면 인식 실패로 구분한다.
-              kind: transcript ? "uninterpreted" : "unheard",
-              transcript,
-              commands: [],
-              detail: reason,
-            });
-            setState((current) =>
-              current ? { ...current, lastEvent: reason } : current,
-            );
-            return;
-          }
-          const checked = validateEnvelope(payload);
-          if (!checked.ok) {
-            metrics.current.voiceFailures += 1;
-            setMic(checked.reason);
-            setVoice({
-              kind: "uninterpreted",
-              transcript,
-              commands: [],
-              detail: checked.reason,
-            });
-            setState((current) =>
-              current ? { ...current, lastEvent: checked.reason } : current,
-            );
-            return;
-          }
-          metrics.current.voiceCommands += 1;
-          metrics.current.confidenceSum += checked.value.confidence;
-          setVoice({
-            kind: "accepted",
-            transcript,
-            commands: checked.value.commands.map(
-              (entry) =>
-                `${slimeTypes[entry.actorId].name} · ${itemLabel(entry.item)} → ${stationLabels[entry.target]}`,
-            ),
-            detail: `신뢰도 ${Math.round(checked.value.confidence * 100)}% · 실행 가능 여부는 최근 상황에서 확인`,
-          });
-          setState((current) =>
-            current
-              ? executeEnvelope(
-                  movePlayer(
-                    current,
-                    playerPos.current.x,
-                    playerPos.current.y,
-                  ),
-                  checked.value,
-                  loudness.current,
-                )
-              : current,
-          );
-          setMic(
-            `인식 완료 · 신뢰도 ${Math.round(checked.value.confidence * 100)}%`,
-          );
-        } catch {
-          const reason = "음성 서버에 연결하지 못했습니다.";
-          metrics.current.voiceFailures += 1;
-          setMic(reason);
-          setVoice({ kind: "unheard", transcript: null, commands: [], detail: reason });
-          setState((current) =>
-            current ? { ...current, lastEvent: reason } : current,
-          );
-        }
-    }
-  }
 
   // 슬라임 선택 화면
   if (!squad || !state) {
     return (
       <main className="select-shell">
+        <Music src="/music/main.mp3" />
         <section className="select-screen" aria-label="슬라임 선택">
           <p className="select-guide">
-            공방의 첫 직원 슬라임을 1마리 고르세요. 음성으로 이름을 불러
-            지휘하고, 청력이 낮은 슬라임에게는 가까이 가서 말해야 합니다.
-            목표는 3분 안에 주문 5건 완료입니다.
+            식당의 첫 직원 슬라임을 1마리 고르세요. 게임에서
+            슬라임을 좌클릭하고, 바닥이나 설비를 우클릭해 지시합니다.
+            목표는 3분 안에 버섯 구이 주문 5건 완료입니다.
           </p>
           <div className="select-grid">
             {allTypeIds.map((typeId) => {
@@ -1196,14 +716,18 @@ export default function Game() {
                   aria-pressed={active}
                   onClick={() => setPicked(typeId)}
                 >
-                  {/* data URI라 요청이 없다. next/image가 최적화할 것이 없다. */}
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
                     className="slime-portrait"
-                    src={slimeDataUri(typeId, "down", { animate: true })}
+                    data-water={typeId === "water" ? "" : undefined}
+                    src={
+                      typeId === "water"
+                        ? "/slimes/water.svg"
+                        : slimeDataUri(typeId, "down", { animate: true })
+                    }
                     alt=""
                   />
-                  <strong>{kind.name} 슬라임</strong>
+                  <strong>{kind.name} 슬라임 · {kind.elementLabel}</strong>
                   <small>{kind.trait}</small>
                   <StatGauges levels={kind.statLevels} />
                 </button>
@@ -1213,7 +737,10 @@ export default function Game() {
           <footer className="select-footer">
             <span>첫 직원: {slimeTypes[picked].name} 슬라임</span>
             <button className="select-start" onClick={() => startRound([picked])}>
-              공방 가동 시작
+              식당 영업 시작
+            </button>
+            <button className="select-start" onClick={() => startRound(allTypeIds)}>
+              4마리 상호작용 테스트
             </button>
           </footer>
         </section>
@@ -1221,18 +748,28 @@ export default function Game() {
     );
   }
 
-  const hovered = hoveredActor ? state.actors[hoveredActor] : null;
-  const hint = nextHint(state, squad[0]);
-  const reach = nextPlayerAction(state);
   const result =
     state.phase === "won"
       ? "성공! 주문 5건을 완료했습니다."
-      : "시간 종료. 다시 공방을 가동해 보세요.";
+      : "영업 종료. 다시 식당을 열어 보세요.";
 
   return (
     <main className="stage">
+      <Music src={gameMusicSource(state.timeLeft)} />
       <div className="stage-frame">
-        <div id="game-canvas" aria-label="탑다운 마법 공방 게임 맵" />
+        <div id="game-canvas" aria-label="탑다운 판타지 식당 게임 맵" />
+        <MusicSettings
+          variant="game"
+          onOpenChange={(open) => {
+            setSettingsOpen(open);
+            setResumeCount(open ? null : 3);
+          }}
+        />
+        {resumeCount !== null && (
+          <div className="resume-countdown" role="status" aria-live="assertive">
+            <strong key={resumeCount}>{resumeCount}</strong>
+          </div>
+        )}
 
         <div className="hud-top">
           <span className="hud-chip" data-warn={state.timeLeft <= 30 ? "" : undefined}>
@@ -1245,9 +782,8 @@ export default function Game() {
         </div>
 
         <div className="hud-pots" aria-label="주문과 재고">
-          {/* 주문은 색과 형태만 보여 준다. 효과명은 쓰지 않는다. */}
           <span className="pot-chip" data-status="ORDER">
-            <b>주문</b>
+            <b>음식 주문</b>
             {(Object.entries(state.order.need) as [ItemId, number][]).map(
               ([item, count]) => (
                 <span key={item}>
@@ -1257,174 +793,40 @@ export default function Game() {
             )}
           </span>
           <span className="pot-chip">
-            <b>소환진</b>
-            🔴 {state.summons.red.stock}/{SUMMON_MAX} 🔵{" "}
-            {state.summons.blue.stock}/{SUMMON_MAX}
+            <b>재료 상자</b>
+            🍄 {state.ingredients.stock}/{INGREDIENT_MAX}
           </span>
-          <span className="pot-chip" data-status={state.brewer.length >= STORAGE_MAX ? "FULL" : undefined}>
-            <b>양조기</b>
-            {state.brewer.map((item, index) => (
+          <span className="pot-chip" data-status={state.stove.length >= STORAGE_MAX ? "FULL" : undefined}>
+            <b>조리 도구</b>
+            <span>
+              {workStatusLabels[state.workstation.status]}
+              {state.workstation.status === "WORKING"
+                ? ` ${Math.round((state.workstation.progressMs / state.workstation.totalMs) * 100)}%`
+                : ""}
+            </span>
+            {state.stove.map((item, index) => (
               <span key={`${item}-${index}`}>{itemIcons[item]}</span>
             ))}
-            {state.brewer.length}/{STORAGE_MAX}
-          </span>
-          <span className="pot-chip" data-status={state.table.length >= STORAGE_MAX ? "FULL" : undefined}>
-            <b>테이블</b>
-            {state.table.map((item, index) => (
-              <span key={`${item}-${index}`}>{itemIcons[item]}</span>
-            ))}
-            {state.table.length}/{STORAGE_MAX}
+            {state.stove.length}/{STORAGE_MAX}
           </span>
         </div>
-
-        <div className="hud-crew" aria-label="슬라임 상태">
-          {squad.map((actorId) => {
-            const actor = state.actors[actorId];
-            if (!actor) return null;
-            return (
-              <span key={actorId} className="crew-chip">
-                <b style={{ color: typeCssColors[actorId] }}>{actor.name}</b>
-                {actor.carrying ? itemIcons[actor.carrying] : "—"}
-                <i>
-                  {actor.queue.length}/
-                  {statTables.focusCapacity[actor.statLevels.focus]}
-                </i>
-                {actor.alert ? alertIcons[actor.alert] : ""}
-              </span>
-            );
-          })}
-        </div>
-
-        {hovered && (
-          <aside
-            className="slime-card"
-            data-below={hovered.y < 300 ? "" : undefined}
-            style={{
-              left: `${Math.min(84, Math.max(16, (hovered.x / 960) * 100))}%`,
-              top: `${(hovered.y / 600) * 100}%`,
-            }}
-          >
-            <header>
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                className="slime-portrait"
-                src={slimeDataUri(hovered.typeId, "down", { animate: true })}
-                alt=""
-              />
-              <div>
-                <strong>{hovered.name}</strong>
-                <small>{slimeTypes[hovered.typeId].trait}</small>
-              </div>
-            </header>
-            <StatGauges levels={hovered.statLevels} />
-            <footer>
-              <small>받은 버프</small>
-              {hovered.buffs.length ? (
-                <div className="slime-buffs">
-                  {hovered.buffs.map((buff) => (
-                    <span key={buff}>{buff}</span>
-                  ))}
-                </div>
-              ) : (
-                <span className="slime-buffs-empty">없음</span>
-              )}
-            </footer>
-          </aside>
-        )}
 
         <div className="hud-bottom">
           {/* 레시피 전체 대신 지금 할 일 하나만 크게 보여 준다. */}
           <div className="step" role="status" aria-live="polite">
-            <small>지금 할 일</small>
-            <strong>{hint.title}</strong>
-            {hint.say && <q>{hint.say}</q>}
+            <small>조작</small>
+            <strong>좌클릭 선택 · 우클릭 이동/상호작용</strong>
             {/* 앞에 설비가 있으면 직접 할 수 있는 일을 알려 준다. */}
-            {reach && (
-              <span className="reach">
-                <b>E</b> {reach.label}
-              </span>
-            )}
+            <span className="reach">Q 물 · W 불 · E 번개 · R 땅 · Space 전체</span>
           </div>
 
           <div className="hud-right">
             <div className="feed">
               <span className="feed-event">{state.lastEvent}</span>
-              {voice && (
-                <span className="feed-voice" data-kind={voice.kind}>
-                  {voice.transcript ? `“${voice.transcript}”` : voiceKindLabels[voice.kind]}
-                  {voice.commands.length ? ` → ${voice.commands.join(", ")}` : ""}
-                </span>
-              )}
-              <span className="feed-mic">{mic}</span>
-            </div>
-            <div
-              className="mic"
-              data-recording={micHeld.current ? "" : undefined}
-              role="status"
-            >
-              🎙
-              <span>
-                {micHeld.current ? "말하는 중" : "스페이스를 누르고 말하기"}
-              </span>
             </div>
           </div>
         </div>
 
-        <details className="debug-wrap">
-          <summary>🛠</summary>
-          <div className="debug">
-            <label>
-              지시할 슬라임
-              <select
-                value={selectedActor}
-                onChange={(event) =>
-                  setSelectedActor(event.target.value as ActorId)
-                }
-              >
-                {squad.map((actorId) => (
-                  <option key={actorId} value={actorId}>
-                    {slimeTypes[actorId].name}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label>
-              물품
-              <select
-                value={selectedItem}
-                onChange={(event) =>
-                  setSelectedItem(event.target.value as ItemId)
-                }
-              >
-                {allItems.map((item) => (
-                  <option key={item} value={item}>
-                    {itemLabel(item)}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label>
-              목적지
-              <select
-                value={selectedTarget}
-                onChange={(event) =>
-                  setSelectedTarget(event.target.value as StationId)
-                }
-              >
-                {allStations
-                  .filter((id) => isValidRoute(selectedItem, id))
-                  .map((id) => (
-                    <option key={id} value={id}>
-                      {stationLabels[id]}
-                    </option>
-                  ))}
-              </select>
-            </label>
-            <button onClick={() => run(selectedItem, selectedTarget)}>
-              보내기
-            </button>
-          </div>
-        </details>
       </div>
 
       {state.phase !== "playing" && (

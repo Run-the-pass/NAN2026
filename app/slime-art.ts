@@ -2,13 +2,12 @@ import type { SlimeTypeId } from "../game/core.js";
 
 export type Facing = "down" | "up" | "left" | "right";
 
-// public/home/green-slime.svg의 형태를 종류별 색으로 바꿔 쓴다.
-// outer는 반투명 막, inner는 속살.
+// 방향별 게임 텍스처가 없는 속성은 같은 형태에 속성색을 적용한다.
 const palettes: Record<SlimeTypeId, { outer: string; inner: string }> = {
-  nerd: { outer: "#b7c0ff", inner: "#6675e0" },
-  swift: { outer: "#a8dda0", inner: "#58bd49" },
-  keen: { outer: "#ffe3a3", inner: "#efb229" },
-  worker: { outer: "#ffc59a", inner: "#e07b39" },
+  water: { outer: "#73d6e5", inner: "#189fc4" },
+  fire: { outer: "#ffc59a", inner: "#e05a39" },
+  lightning: { outer: "#fff0a3", inner: "#efb229" },
+  earth: { outer: "#c6aa80", inner: "#8b6c42" },
 };
 
 // 바라보는 방향에 따라 얼굴만 옮긴다. 위를 보면 등만 보인다.

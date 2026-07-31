@@ -13,7 +13,7 @@ export type PlaytestSession = {
 };
 
 const ROUND_LIMIT_MS = 180_000;
-const ROUND_GOAL = 8;
+const ROUND_GOAL = 5;
 
 function isCount(value: unknown, min = 0): value is number {
   return typeof value === "number" && Number.isSafeInteger(value) && value >= min;

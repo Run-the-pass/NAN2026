@@ -3,18 +3,16 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   metadataBase: new URL("https://nan2026-slime-shift.silver-bat-5647.chatgpt.site"),
-  title: "터진다! 슬라임 공방",
-  description: "NAN 2026 음성 명령 마법 공방 게임",
+  title: "슬라임 레스토랑",
+  description: "NAN 2026 판타지 슬라임 레스토랑 운영 게임",
   openGraph: {
-    title: "터진다! 슬라임 공방",
-    description: "목소리로 슬라임을 지휘해 3분 안에 마도서 8권을 완성하세요.",
-    images: ["/og.png"],
+    title: "슬라임 레스토랑",
+    description: "슬라임을 지휘해 3분 안에 주문 5건을 완료하세요.",
   },
   twitter: {
-    card: "summary_large_image",
-    title: "터진다! 슬라임 공방",
-    description: "목소리로 슬라임을 지휘해 3분 안에 마도서 8권을 완성하세요.",
-    images: ["/og.png"],
+    card: "summary",
+    title: "슬라임 레스토랑",
+    description: "슬라임을 지휘해 3분 안에 주문 5건을 완료하세요.",
   },
   icons: {
     icon: "/favicon.svg",

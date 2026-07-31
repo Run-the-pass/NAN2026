@@ -1,69 +1,28 @@
 /* eslint-disable @next/next/no-img-element */
 import Link from "next/link";
+import Music, { MusicSettings } from "./Music";
 
 export default function Home() {
   return (
     <main className="home-screen">
-      <h1 className="sr-only">터진다! 슬라임 공방</h1>
+      <Music src="/music/home.mp3" />
+      <h1 className="sr-only">슬라임 레스토랑</h1>
+      <MusicSettings variant="home" />
 
       <div className="home-stage">
-        <img
-          className="home-logo"
-          src="/home/logo.svg"
-          width={782}
-          height={402}
-          alt="터진다! 슬라임 공방"
-        />
+        <img className="home-logo" src="/home/logo.svg" width={1594} height={986} alt="슬라임 레스토랑" />
 
         <nav className="home-menu" aria-label="메인 메뉴">
           <Link className="home-menu-button home-start" href="/game">
             <img src="/home/start.svg" width={1555} height={523} alt="시작하기" />
           </Link>
-          <details className="home-settings">
-            <summary className="home-menu-button">
-              <img src="/home/setting.svg" width={964} height={574} alt="설정" />
-            </summary>
-            <p>
-              스페이스바를 누르는 동안만 마이크가 켜집니다.
-              <br />
-              음량은 브라우저나 기기 설정에서 조절해 주세요.
-            </p>
-          </details>
-          <Link className="home-lab-link" href="/voice-lab">
-            🎙 음성 인식 실험실
-          </Link>
         </nav>
-
-        <img
-          className="home-desk"
-          src="/home/potion-desk.svg"
-          width={852}
-          height={754}
-          alt=""
-        />
-        <img
-          className="home-cauldron"
-          src="/home/cauldron.svg"
-          width={856}
-          height={678}
-          alt=""
-        />
-        {[1, 2, 3].map((bubble) => (
-          <img
-            key={bubble}
-            className={`home-cauldron-bubble cauldron-bubble-${bubble}`}
-            src="/home/cauldron-bubble.svg"
-            width={48}
-            height={48}
-            alt=""
-          />
-        ))}
-        {/* SVG 내부 벡터 그룹이 서로 다른 박자로 눌리고 늘어난다. */}
-        <img
-          className="home-slime"
-          src="/home/green-slime.svg"
-          alt="쫀득하게 숨 쉬는 초록 슬라임"
-        />
+        <img className="home-desk" src="/home/potion-desk.svg" alt="" />
+        <img className="home-cauldron-bubble cauldron-bubble-1" src="/home/cauldron-bubble.svg" alt="" />
+        <img className="home-cauldron-bubble cauldron-bubble-2" src="/home/cauldron-bubble.svg" alt="" />
+        <img className="home-cauldron-bubble cauldron-bubble-3" src="/home/cauldron-bubble.svg" alt="" />
+        <img className="home-cauldron" src="/home/cauldron.svg" alt="" />
+        <img className="home-slime" src="/home/green-slime.svg" alt="통통 튀는 초록 슬라임" />
       </div>
     </main>
   );
