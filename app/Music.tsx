@@ -52,8 +52,26 @@ export default function Music({ src }: { src: string }) {
   return <audio ref={audioRef} src={src} loop preload="auto" hidden />;
 }
 
-export function MusicSettings({ variant }: { variant: "home" | "game" }) {
+export function MusicSettings({
+  variant,
+  onOpenChange,
+}: {
+  variant: "home" | "game";
+  onOpenChange?: (open: boolean) => void;
+}) {
   const [open, setOpen] = useState(false);
+  const changeOpen = (next: boolean) => {
+    setOpen(next);
+    onOpenChange?.(next);
+  };
+  useEffect(() => {
+    if (!open) return;
+    const close = (event: KeyboardEvent) => {
+      if (event.key === "Escape") changeOpen(false);
+    };
+    window.addEventListener("keydown", close);
+    return () => window.removeEventListener("keydown", close);
+  });
   const stored = useSyncExternalStore(
     (notify) => {
       window.addEventListener(changeEvent, notify);
@@ -76,7 +94,7 @@ export function MusicSettings({ variant }: { variant: "home" | "game" }) {
         type="button"
         aria-expanded={open}
         aria-controls={`${variant}-music-settings`}
-        onClick={() => setOpen((value) => !value)}
+        onClick={() => changeOpen(!open)}
       >
         {variant === "home" ? (
           // eslint-disable-next-line @next/next/no-img-element
@@ -85,37 +103,47 @@ export function MusicSettings({ variant }: { variant: "home" | "game" }) {
           <><span aria-hidden>⚙️</span> 설정</>
         )}
       </button>
-      <section
-        id={`${variant}-music-settings`}
-        className="settings-drawer"
+      <div
+        className="settings-overlay"
         data-open={open ? "" : undefined}
         aria-hidden={!open}
         inert={!open}
+        onMouseDown={(event) => {
+          if (event.target === event.currentTarget) changeOpen(false);
+        }}
       >
-        <header>
-          <strong>음악 설정</strong>
-          <button type="button" onClick={() => setOpen(false)} aria-label="설정 닫기">×</button>
-        </header>
-        <button
-          className="music-toggle"
-          type="button"
-          aria-pressed={settings.enabled}
-          onClick={() => saveSettings({ ...settings, enabled: !settings.enabled })}
+        <section
+          id={`${variant}-music-settings`}
+          className="settings-drawer"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby={`${variant}-music-settings-title`}
         >
-          음악 {settings.enabled ? "켜짐" : "꺼짐"}
-        </button>
-        <label>
-          <span>음량 {Math.round(settings.volume * 100)}%</span>
-          <input
-            type="range"
-            min="0"
-            max="1"
-            step="0.05"
-            value={settings.volume}
-            onChange={(event) => saveSettings({ ...settings, volume: Number(event.target.value) })}
-          />
-        </label>
-      </section>
+          <header>
+            <strong id={`${variant}-music-settings-title`}>음악 설정</strong>
+            <button type="button" onClick={() => changeOpen(false)} aria-label="설정 닫기">×</button>
+          </header>
+          <button
+            className="music-toggle"
+            type="button"
+            aria-pressed={settings.enabled}
+            onClick={() => saveSettings({ ...settings, enabled: !settings.enabled })}
+          >
+            음악 {settings.enabled ? "켜짐" : "꺼짐"}
+          </button>
+          <label>
+            <span>음량 {Math.round(settings.volume * 100)}%</span>
+            <input
+              type="range"
+              min="0"
+              max="1"
+              step="0.05"
+              value={settings.volume}
+              onChange={(event) => saveSettings({ ...settings, volume: Number(event.target.value) })}
+            />
+          </label>
+        </section>
+      </div>
     </div>
   );
 }

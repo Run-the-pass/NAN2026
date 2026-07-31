@@ -136,8 +136,8 @@ export type FireState = {
 };
 
 export type ActorIntent =
-  | { kind: "MOVE"; destination: Position }
-  | { kind: "INTERACT"; station: StationId; leader: ActorId | null };
+  | { kind: "MOVE"; destination: Position; route: Position[] }
+  | { kind: "INTERACT"; station: StationId; leader: ActorId | null; route: Position[] };
 
 export type ActorState = {
   typeId: SlimeTypeId;
@@ -225,6 +225,91 @@ export const tileCenter = ({ col, row }: TilePosition) => ({
   x: col * TILE_SIZE + TILE_SIZE / 2,
   y: row * TILE_SIZE + TILE_SIZE / 2,
 });
+
+const hitboxHalfSize = { x: 46, y: 42 };
+export const stationHitboxes = allStations.map((id) => {
+  const center = tileCenter(displayTiles[id]);
+  return {
+    centerX: center.x,
+    centerY: center.y,
+    halfWidth: hitboxHalfSize.x,
+    halfHeight: hitboxHalfSize.y,
+  };
+});
+
+function segmentCrossesHitbox(from: Position, to: Position) {
+  return stationHitboxes.some((box) => {
+    const dx = to.x - from.x;
+    const dy = to.y - from.y;
+    let near = 0;
+    let far = 1;
+    for (const [direction, distance] of [
+      [-dx, from.x - (box.centerX - box.halfWidth)],
+      [dx, box.centerX + box.halfWidth - from.x],
+      [-dy, from.y - (box.centerY - box.halfHeight)],
+      [dy, box.centerY + box.halfHeight - from.y],
+    ]) {
+      if (direction === 0) {
+        if (distance < 0) return false;
+        continue;
+      }
+      const ratio = distance / direction;
+      if (direction < 0) near = Math.max(near, ratio);
+      else far = Math.min(far, ratio);
+      if (near > far) return false;
+    }
+    return near < 1 && far > 0;
+  });
+}
+
+function routeBetween(from: Position, to: Position) {
+  const nodes = [
+    from,
+    to,
+    ...stationHitboxes.flatMap((box) => [
+      { x: box.centerX - box.halfWidth - 2, y: box.centerY - box.halfHeight - 2 },
+      { x: box.centerX + box.halfWidth + 2, y: box.centerY - box.halfHeight - 2 },
+      { x: box.centerX - box.halfWidth - 2, y: box.centerY + box.halfHeight + 2 },
+      { x: box.centerX + box.halfWidth + 2, y: box.centerY + box.halfHeight + 2 },
+    ]),
+  ];
+  const costs = nodes.map(() => Infinity);
+  const previous = nodes.map(() => -1);
+  const visited = nodes.map(() => false);
+  costs[0] = 0;
+  for (let count = 0; count < nodes.length; count += 1) {
+    let current = -1;
+    for (let index = 0; index < nodes.length; index += 1) {
+      if (!visited[index] && (current < 0 || costs[index] < costs[current])) current = index;
+    }
+    if (current < 0 || !Number.isFinite(costs[current]) || current === 1) break;
+    visited[current] = true;
+    for (let index = 1; index < nodes.length; index += 1) {
+      if (visited[index] || segmentCrossesHitbox(nodes[current], nodes[index])) continue;
+      const cost = costs[current] + Math.hypot(
+        nodes[index].x - nodes[current].x,
+        nodes[index].y - nodes[current].y,
+      );
+      if (cost < costs[index]) {
+        costs[index] = cost;
+        previous[index] = current;
+      }
+    }
+  }
+  if (!Number.isFinite(costs[1])) return [];
+  const route: Position[] = [];
+  for (let index = 1; index > 0; index = previous[index]) route.unshift(nodes[index]);
+  return route;
+}
+
+function routeLength(from: Position, route: Position[]) {
+  let total = 0;
+  for (const point of route) {
+    total += Math.hypot(point.x - from.x, point.y - from.y);
+    from = point;
+  }
+  return total;
+}
 
 export const pixelToTile = (x: number, y: number): TilePosition => ({
   col: Math.floor(x / TILE_SIZE),
@@ -434,9 +519,11 @@ export function moveActors(
   for (const actorId of ids) {
     const actor = actors[actorId];
     if (!actor) continue;
+    const route = routeBetween(actor, destination);
+    if (!route.length) continue;
     actors = patchActor({ ...base, actors }, actorId, {
       ...actor,
-      intent: { kind: "MOVE", destination },
+      intent: { kind: "MOVE", destination, route },
       status: "MOVING",
       workLeftMs: 0,
       alert: null,
@@ -495,17 +582,17 @@ export function interactActors(
       .sort((a, b) => {
         const destination = tileCenter(taskTiles[station]);
         return (
-          Math.hypot(destination.x - a.actor.x, destination.y - a.actor.y) /
-            a.actor.moveSpeed -
-          Math.hypot(destination.x - b.actor.x, destination.y - b.actor.y) /
-            b.actor.moveSpeed
+          routeLength(a.actor, routeBetween(a.actor, destination)) / a.actor.moveSpeed -
+          routeLength(b.actor, routeBetween(b.actor, destination)) / b.actor.moveSpeed
         );
       })[0]?.actorId ?? null;
   let actors = base.actors;
   for (const { actorId, actor } of orders) {
+    const route = routeBetween(actor, tileCenter(taskTiles[station]));
+    if (!route.length) continue;
     actors = patchActor({ ...base, actors }, actorId, {
       ...actor,
-      intent: { kind: "INTERACT", station, leader },
+      intent: { kind: "INTERACT", station, leader, route },
       status: "MOVING",
       workLeftMs: 0,
       alert: null,
@@ -618,27 +705,30 @@ function moveActor(state: GameState, actorId: ActorId, deltaMs: number) {
   let actor = next.actors[actorId]!;
   while (remaining > 0 && next.phase === "playing" && actor.intent) {
     if (actor.status === "MOVING") {
-      const destination =
-        actor.intent.kind === "MOVE"
-          ? actor.intent.destination
-          : tileCenter(taskTiles[actor.intent.station]);
-      const dx = destination.x - actor.x;
-      const dy = destination.y - actor.y;
-      const distance = Math.hypot(dx, dy);
-      if (distance > 0.001) {
-        const travelMs = (distance / actor.moveSpeed) * 1000;
-        if (travelMs > remaining) {
-          const ratio = remaining / travelMs;
-          actor = {
-            ...actor,
-            x: actor.x + dx * ratio,
-            y: actor.y + dy * ratio,
-          };
-          remaining = 0;
-          break;
+      const destination = actor.intent.route[0];
+      if (destination) {
+        const dx = destination.x - actor.x;
+        const dy = destination.y - actor.y;
+        const distance = Math.hypot(dx, dy);
+        if (distance > 0.001) {
+          const travelMs = (distance / actor.moveSpeed) * 1000;
+          if (travelMs > remaining) {
+            const ratio = remaining / travelMs;
+            actor = {
+              ...actor,
+              x: actor.x + dx * ratio,
+              y: actor.y + dy * ratio,
+            };
+            remaining = 0;
+            break;
+          }
+          actor = { ...actor, x: destination.x, y: destination.y };
+          remaining -= travelMs;
         }
-        actor = { ...actor, x: destination.x, y: destination.y };
-        remaining -= travelMs;
+        actor = {
+          ...actor,
+          intent: { ...actor.intent, route: actor.intent.route.slice(1) },
+        };
         continue;
       }
 

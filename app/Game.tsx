@@ -38,7 +38,11 @@ import {
 import Music, { MusicSettings } from "./Music";
 import { gameMusicSource } from "./music-source";
 
-type View = { sync: (state: GameState) => void };
+type View = {
+  sync: (state: GameState) => void;
+  pause: () => void;
+  resume: () => void;
+};
 
 const typeColors: Record<SlimeTypeId, number> = {
   water: 0x189fc4,
@@ -127,6 +131,9 @@ export default function Game() {
   const [picked, setPicked] = useState<SlimeTypeId>("water");
   const [state, setState] = useState<GameState | null>(null);
   const [selectedActors, setSelectedActors] = useState<ActorId[]>([]);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [resumeCount, setResumeCount] = useState<number | null>(null);
+  const paused = settingsOpen || resumeCount !== null;
 
   const [saved, setSaved] = useState("");
   const stateRef = useRef(state);
@@ -145,7 +152,7 @@ export default function Game() {
   }, [selectedActors]);
 
   useEffect(() => {
-    if (!squad) return;
+    if (!squad || paused) return;
     // 탭이 백그라운드로 가면 인터벌이 스로틀되므로 고정 50ms 대신
     // 실제 경과 시간을 델타로 넘겨 게임 시간이 벽시계와 함께 흐르게 한다.
     let last = performance.now();
@@ -156,7 +163,21 @@ export default function Game() {
       setState((current) => (current ? tick(current, delta) : current));
     }, 50);
     return () => window.clearInterval(timer);
-  }, [squad]);
+  }, [squad, paused]);
+
+  useEffect(() => {
+    if (resumeCount === null) return;
+    const timer = window.setTimeout(
+      () => setResumeCount((count) => count === null || count <= 1 ? null : count - 1),
+      1_000,
+    );
+    return () => window.clearTimeout(timer);
+  }, [resumeCount]);
+
+  useEffect(() => {
+    if (paused) view.current?.pause();
+    else view.current?.resume();
+  }, [paused]);
 
   useEffect(() => {
     if (state) view.current?.sync(state);
@@ -365,7 +386,7 @@ export default function Game() {
         this.stations = {} as Record<StationId, Phaser.GameObjects.Text>;
         for (const id of allStations) {
           const { x, y } = tileCenter(displayTiles[id]);
-          const shape = this.add.graphics().setDepth(1);
+          const shape = this.add.graphics().setDepth(y);
           if (id === "ingredient-box") {
             shape
               .fillStyle(0x6d3f20, 1)
@@ -414,7 +435,7 @@ export default function Game() {
               resolution: RENDER_SCALE,
             })
             .setOrigin(0.5)
-            .setDepth(2);
+            .setDepth(y + 1);
           this.add
             .text(x, y + 22, stationLabels[id], {
               color: "#f8efff",
@@ -424,7 +445,7 @@ export default function Game() {
               resolution: RENDER_SCALE,
             })
             .setOrigin(0.5)
-            .setDepth(2);
+            .setDepth(y + 1);
           // 재료 수와 조리 상태 표시.
           this.stations[id] = this.add
             .text(x, y - 30, "", {
@@ -435,7 +456,7 @@ export default function Game() {
               resolution: RENDER_SCALE,
             })
             .setOrigin(0.5)
-            .setDepth(3);
+            .setDepth(y + 2);
           this.add
             .zone(x, y, TILE_SIZE, TILE_SIZE)
             .setDepth(4)
@@ -472,7 +493,7 @@ export default function Game() {
             .setScale(SLIME_SCALE);
           const container = this.add
             .container(actor.x, actor.y, [art])
-            .setDepth(5)
+            .setDepth(actor.y)
             .setInteractive(
               new Phaser.Geom.Rectangle(-29, -23, 58, 45),
               Phaser.Geom.Rectangle.Contains,
@@ -492,12 +513,12 @@ export default function Game() {
           const carried = this.add
             .text(actor.x, actor.y - 52, "", { fontSize: "24px", resolution: RENDER_SCALE })
             .setOrigin(0.5)
-            .setDepth(8);
+            .setDepth(actor.y + 2);
           const selected = this.add
             .circle(actor.x, actor.y + 14, 30)
             .setStrokeStyle(3, typeColors[actorId], 0.95)
             .setFillStyle(typeColors[actorId], 0.12)
-            .setDepth(4)
+            .setDepth(actor.y - 1)
             .setVisible(false);
           this.slimes[actorId] = {
             body: container,
@@ -578,9 +599,10 @@ export default function Game() {
                 sprite.motion = this.startMotion(sprite.art, mode);
               }
               sprite.last = { x: actor.x, y: actor.y };
-              sprite.body.setPosition(actor.x, actor.y);
+              sprite.body.setPosition(actor.x, actor.y).setDepth(actor.y);
               sprite.selected
                 .setPosition(actor.x, actor.y + 14)
+                .setDepth(actor.y - 1)
                 .setVisible(selectedActorsRef.current.includes(actorId));
               const icon = actor.alert
                 ? alertIcons[actor.alert]
@@ -589,7 +611,8 @@ export default function Game() {
                   : "";
               sprite.carried
                 .setText(icon ?? "")
-                .setPosition(actor.x, actor.y - 52);
+                .setPosition(actor.x, actor.y - 52)
+                .setDepth(actor.y + 2);
             }
             for (const id of allStations) {
               const fire = current.fires[id];
@@ -606,6 +629,8 @@ export default function Game() {
               this.stations[id].setText(label);
             }
           },
+          pause: () => this.scene.pause(),
+          resume: () => this.scene.resume(),
         };
         if (stateRef.current) view.current.sync(stateRef.current);
       }
@@ -637,6 +662,8 @@ export default function Game() {
     roundSeed.current = next.seed;
     setSaved("");
     setSelectedActors([]);
+    setSettingsOpen(false);
+    setResumeCount(null);
     setState(next);
     setSquad(list);
   }
@@ -738,7 +765,18 @@ export default function Game() {
       <Music src={gameMusicSource(state.timeLeft)} />
       <div className="stage-frame">
         <div id="game-canvas" aria-label="탑다운 판타지 식당 게임 맵" />
-        <MusicSettings variant="game" />
+        <MusicSettings
+          variant="game"
+          onOpenChange={(open) => {
+            setSettingsOpen(open);
+            setResumeCount(open ? null : 3);
+          }}
+        />
+        {resumeCount !== null && (
+          <div className="resume-countdown" role="status" aria-live="assertive">
+            <strong key={resumeCount}>{resumeCount}</strong>
+          </div>
+        )}
 
         <div className="hud-top">
           <span className="hud-chip" data-warn={state.timeLeft <= 30 ? "" : undefined}>

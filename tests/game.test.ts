@@ -16,6 +16,7 @@ import {
   isWalkable,
   moveActors,
   slimeTypes,
+  stationHitboxes,
   taskTiles,
   tick,
   tileCenter,
@@ -76,7 +77,14 @@ test("바닥 지시는 순간이동 없이 선택한 슬라임을 이동시킨�
   assert.notDeepEqual({ x: during.x, y: during.y }, destination);
   assert.notEqual(during.x, before.x);
   assert.notEqual(during.y, before.y);
-  state = untilIdle(state);
+  for (let count = 0; count < 20_000 && state.actors.lightning!.intent; count += 1) {
+    state = tick(state, 50);
+    const actor = state.actors.lightning!;
+    assert.ok(stationHitboxes.every((box) =>
+      Math.abs(actor.x - box.centerX) >= box.halfWidth ||
+      Math.abs(actor.y - box.centerY) >= box.halfHeight,
+    ));
+  }
   assert.deepEqual(
     { x: state.actors.lightning!.x, y: state.actors.lightning!.y },
     destination,
