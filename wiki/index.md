@@ -34,6 +34,7 @@ sources:
 - [상호작용 코어 완성 계획](plan-interaction-core.md) — 복수 상호작용과 불 속성 조리, 버섯 구이 제작·제출 흐름의 범위와 완료 조건.
 - [식당 테마 전환 계획](plan-restaurant-theme.md) — 속성 슬라임·주방 설비·음악·물 슬라임 아트로 교체하는 범위와 완료 조건.
 - [홈·물 슬라임·이동·음악 설정 보정 계획](plan-controls-audio-home-polish.md) — 홈 복원, 음악 설정, 물 슬라임 보정과 직선 이동의 범위와 완료 조건.
+- [충돌·깊이·설정 일시정지 보정 계획](plan-collision-depth-pause-settings.md) — 설비 히트박스 우회, y좌표 깊이 정렬, 중앙 설정과 재개 카운트다운의 범위와 완료 조건.
 - [작업 로그](log.md) — ingest, 계획, 구현, 검증의 시간순 기록.
 
 원문: [프로젝트 브리프](../raw/project-brief.md), [홈 화면 v2 참고 이미지](../raw/home%20v2/home_reference.png), [홈 화면 v2 에셋](../raw/home%20v2/), [성장 선택 카드 참고 이미지](../raw/references/upgrade-choice-cards.png), [슬라임 스탯·가격·패널티](../raw/slime-stats-pricing-and-penalties.md), [펀테스트 변경 사항](../raw/fun-test-design-changes.md), [음성인식 시스템 논의](../raw/voice-command-discussion-summary-revised.md), [자원·제작 시스템 기획](../raw/slime-workshop-resource-production-design.md)
