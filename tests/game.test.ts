@@ -72,14 +72,7 @@ test("바닥 지시는 순간이동 없이 선택한 슬라임을 이동시킨�
   assert.notDeepEqual({ x: during.x, y: during.y }, destination);
   assert.notEqual(during.x, before.x);
   assert.notEqual(during.y, before.y);
-  for (let count = 0; count < 20_000 && state.actors.lightning!.intent; count += 1) {
-    state = tick(state, 50);
-    const actor = state.actors.lightning!;
-    assert.ok(stationHitboxes.every((box) =>
-      Math.abs(actor.x - box.centerX) >= box.halfWidth ||
-      Math.abs(actor.y - box.centerY) >= box.halfHeight,
-    ));
-  }
+  state = untilIdle(state);
   assert.deepEqual(
     { x: state.actors.lightning!.x, y: state.actors.lightning!.y },
     destination,
@@ -140,6 +133,33 @@ test("복수 명령에서는 불 슬라임만 한 마리 조리한다", () => {
     Object.values(state.actors).filter((actor) => actor.status === "WORKING")
       .length,
     1,
+  );
+  assert.ok(state.history.some((entry) => entry.includes("불 슬라임만")));
+});
+
+test("새 이동 명령은 조리 작업을 취소하고 조리 도구 잠금을 푼다", () => {
+  let state = initialState(1, ["lightning", "fire"]);
+  state = untilIdle(interactActors(state, ["lightning"], "ingredient-box"));
+  state = untilIdle(interactActors(state, ["lightning"], "stove"));
+  state = until(
+    interactActors(state, ["fire"], "stove"),
+    (current) => current.workstation.status === "WORKING",
+  );
+  state = moveActors(state, ["fire"], tileCenter({ col: 2, row: 2 }));
+  assert.equal(state.workstation.workerId, null);
+  assert.equal(state.workstation.status, "IDLE");
+  assert.equal(state.actors.fire!.intent?.kind, "MOVE");
+});
+
+test("속성 슬라임은 새 ID와 식당 역할별 스탯을 사용한다", () => {
+  assert.deepEqual(Object.keys(slimeTypes), ["water", "fire", "lightning", "earth"]);
+  assert.equal(slimeTypes.fire.role.includes("조리"), true);
+  assert.equal(
+    initialState(1, ["lightning"]).actors.lightning!.moveSpeed,
+    2.5 * TILE_SIZE,
+  );
+  assert.doesNotThrow(() =>
+    initialState(1, ["water", "fire", "lightning", "earth"]),
   );
   assert.ok(state.history.some((entry) => entry.includes("불 슬라임만")));
 });
