@@ -1,6 +1,9 @@
 export type SlimeElement = "water" | "fire" | "lightning" | "earth";
 export type SlimeTypeId = SlimeElement;
-export type ActorId = SlimeTypeId;
+// 슬라임 한 마리의 인스턴스 ID(`water-1`, `water-2`). 같은 속성을 여러
+// 마리 데려올 수 있으므로 속성 자체를 키로 쓰지 않는다. 속성은
+// ActorState.typeId에서 읽는다.
+export type ActorId = string;
 export type ItemId = "mushroom" | "grilled-mushroom";
 export type DishStatus = "clean" | "filled" | "dirty";
 export type Dish = { id: string; status: DishStatus; content: ItemId | null };
@@ -160,6 +163,15 @@ export type Order = {
   submittedCount: number;
 };
 
+// 스테이지 한 판. 스테이지를 늘릴 때 코드가 아니라 이 목록만 바꾼다.
+// TIP과 나올 수 있는 음식 목록은 소개 화면을 만들 때 함께 추가한다.
+export type Stage = {
+  id: string;
+  name: string;
+  orders: Order[];
+  timeLimitMs: number;
+};
+
 export type FireState = {
   neglectMs: number;
   onFire: boolean;
@@ -215,6 +227,12 @@ export type GameState = {
   };
   orders: Order[];
   fires: Partial<Record<StationId, FireState>>;
+  // 이번 판의 스테이지 목록과 지금 진행 중인 위치.
+  stages: Stage[];
+  stageIndex: number;
+  squad: SlimeTypeId[];
+  // 주문에 없는 음식을 제출한 횟수. 표시용이며 골드에는 영향이 없다.
+  misses: number;
   lastEvent: string;
   history: string[];
 };
@@ -367,11 +385,25 @@ export function isWalkable({ col, row }: TilePosition) {
   return KITCHEN_ROWS[row]?.[col] === ".";
 }
 
-function makeActor(typeId: SlimeTypeId, spawn: TilePosition): ActorState {
+// 스쿼드 순서대로 인스턴스 ID를 만든다. 같은 속성은 1호부터 번호가
+// 붙으므로 중복 영입해도 키가 겹치지 않는다.
+export function squadActorIds(squad: SlimeTypeId[]): ActorId[] {
+  const seen: Partial<Record<SlimeTypeId, number>> = {};
+  return squad.map((typeId) => {
+    const ordinal = (seen[typeId] = (seen[typeId] ?? 0) + 1);
+    return `${typeId}-${ordinal}`;
+  });
+}
+
+function makeActor(
+  typeId: SlimeTypeId,
+  spawn: TilePosition,
+  name: string,
+): ActorState {
   const kind = slimeTypes[typeId];
   return {
     typeId,
-    name: `${kind.name} 슬라임`,
+    name,
     ...tileCenter(spawn),
     moveSpeed:
       statTables.moveTilesPerSecond[kind.statLevels.moveSpeed] * TILE_SIZE,
@@ -385,14 +417,6 @@ function makeActor(typeId: SlimeTypeId, spawn: TilePosition): ActorState {
     alertMs: 0,
   };
 }
-
-export const defaultOrders = (): Order[] =>
-  Array.from({ length: 5 }, (_, index) => ({
-    id: `order-${index + 1}`,
-    foodId: "grilled-mushroom" as ItemId,
-    targetCount: 1,
-    submittedCount: 0,
-  }));
 
 // 주문 목록은 외부에서 들어올 수 있으므로 코어에 들이기 전에 검증한다.
 function checkOrders(orders: Order[]): Order[] {
@@ -434,29 +458,89 @@ const newFires = (): Partial<Record<StationId, FireState>> =>
     ]),
   );
 
+// 기본 스테이지 목록. 이름과 주문 수는 임시값이며 기획이 정해지면
+// 이 배열만 바꾸면 된다.
+export const defaultStages = (): Stage[] => [
+  { id: "1-1", name: "첫 영업", orders: mushroomOrders(3), timeLimitMs: 180_000 },
+  { id: "1-2", name: "점심 러시", orders: mushroomOrders(5), timeLimitMs: 180_000 },
+  { id: "1-3", name: "저녁 마감", orders: mushroomOrders(7), timeLimitMs: 180_000 },
+];
+
+function mushroomOrders(count: number): Order[] {
+  return Array.from({ length: count }, (_, index) => ({
+    id: `order-${index + 1}`,
+    foodId: "grilled-mushroom" as ItemId,
+    targetCount: 1,
+    submittedCount: 0,
+  }));
+}
+
+// 스테이지 목록도 외부에서 들어올 수 있으므로 코어에 들이기 전에 검증한다.
+function checkStages(stages: Stage[], stageIndex: number): Stage[] {
+  if (
+    stages.length < 1 ||
+    new Set(stages.map((stage) => stage.id)).size !== stages.length ||
+    stages.some(
+      (stage) =>
+        !stage.id ||
+        !stage.name ||
+        !Number.isSafeInteger(stage.timeLimitMs) ||
+        stage.timeLimitMs < 1_000,
+    ) ||
+    !Number.isSafeInteger(stageIndex) ||
+    stageIndex < 0 ||
+    stageIndex >= stages.length
+  ) {
+    throw new Error("스테이지 목록이 올바르지 않습니다.");
+  }
+  return stages.map((stage) => ({
+    ...stage,
+    orders: checkOrders(stage.orders),
+  }));
+}
+
+export const isLastStage = (state: GameState) =>
+  state.stageIndex >= state.stages.length - 1;
+
+export const currentStage = (state: GameState) => state.stages[state.stageIndex];
+
 export function initialState(
   seed = 2026,
   squad: SlimeTypeId[] = ["water"],
-  orders: Order[] = defaultOrders(),
+  stages: Stage[] = defaultStages(),
+  stageIndex = 0,
 ): GameState {
+  // 같은 속성을 여러 마리 데려올 수 있다. 스폰 자리 수만 제한한다.
   if (
     squad.length < 1 ||
     squad.length > spawnTiles.length ||
-    new Set(squad).size !== squad.length ||
     squad.some((typeId) => !(typeId in slimeTypes))
   ) {
-    throw new Error("스쿼드는 서로 다른 속성 슬라임 1~4마리여야 합니다.");
+    throw new Error(`스쿼드는 속성 슬라임 1~${spawnTiles.length}마리여야 합니다.`);
   }
-  const roundOrders = checkOrders(orders);
+  const roundStages = checkStages(stages, stageIndex);
+  const stage = roundStages[stageIndex];
+  const roundOrders = stage.orders.map((order) => ({ ...order }));
+  const ids = squadActorIds(squad);
+  // 같은 속성이 둘 이상이면 로그와 UI에서 구분되도록 번호를 붙인다.
+  const total = squad.reduce<Partial<Record<SlimeTypeId, number>>>(
+    (acc, typeId) => ({ ...acc, [typeId]: (acc[typeId] ?? 0) + 1 }),
+    {},
+  );
   const actors: Partial<Record<ActorId, ActorState>> = {};
   squad.forEach((typeId, index) => {
-    actors[typeId] = makeActor(typeId, spawnTiles[index]);
+    const label = `${slimeTypes[typeId].name} 슬라임`;
+    actors[ids[index]] = makeActor(
+      typeId,
+      spawnTiles[index],
+      total[typeId]! > 1 ? `${label} ${ids[index].split("-")[1]}호` : label,
+    );
   });
   return {
     seed: seed >>> 0,
     phase: "playing",
-    timeLeft: 180,
-    timeLeftMs: 180_000,
+    timeLeft: Math.ceil(stage.timeLimitMs / 1000),
+    timeLeftMs: stage.timeLimitMs,
     filled: 0,
     goal: roundOrders.length,
     gold: 0,
@@ -486,8 +570,22 @@ export function initialState(
     },
     orders: roundOrders,
     fires: newFires(),
-    lastEvent: `3분 동안 음식 주문 ${roundOrders.length}건을 완료하세요.`,
-    history: ["식당 영업 시작"],
+    stages: roundStages,
+    stageIndex,
+    squad: [...squad],
+    misses: 0,
+    lastEvent: `${stage.id} ${stage.name} — 음식 주문 ${roundOrders.length}건을 완료하세요.`,
+    history: [`${stage.id} 영업 시작`],
+  };
+}
+
+// 스테이지를 깬 뒤 다음 스테이지 상태를 만든다. 골드와 스쿼드는 잇고
+// 설비·소지품·화재는 새로 시작한다.
+export function nextStage(state: GameState): GameState {
+  if (state.phase !== "won" || isLastStage(state)) return state;
+  return {
+    ...initialState(state.seed, state.squad, state.stages, state.stageIndex + 1),
+    gold: state.gold,
   };
 }
 
@@ -764,19 +862,21 @@ function submitFood(
   const target = activeOrders(state).find((order) => order.foodId === food);
   const label = itemLabel(food);
   if (!target) {
+    // 실수는 횟수만 센다. 골드는 깎지 않는다.
+    const missed = { ...state, misses: state.misses + 1 };
     if (orderConfig.invalidSubmission === "reject") {
       return refuse(
-        state,
+        missed,
         actorId,
         actor,
         `현재 주문에 없는 ${withParticle(label)} 제출할 수 없습니다.`,
       );
     }
     return event(
-      state,
+      missed,
       `${actor.name}이(가) 주문에 없는 ${withParticle(label)} 처분했습니다.`,
       {
-        actors: patchActor(state, actorId, {
+        actors: patchActor(missed, actorId, {
           ...actor,
           carrying: actor.carrying.map((carried, index) =>
             index === carriedIndex && isDish(carried)
@@ -828,8 +928,10 @@ function moveActor(state: GameState, actorId: ActorId, deltaMs: number) {
   let remaining = deltaMs;
   let actor = next.actors[actorId]!;
   while (remaining > 0 && next.phase === "playing" && actor.intent) {
+    // actor를 재할당하면 intent 좁히기가 풀리므로 먼저 붙잡아 둔다.
+    const intent = actor.intent;
     if (actor.status === "MOVING") {
-      const destination = actor.intent.route[0];
+      const destination = intent.route[0];
       if (destination) {
         const dx = destination.x - actor.x;
         const dy = destination.y - actor.y;
@@ -851,7 +953,7 @@ function moveActor(state: GameState, actorId: ActorId, deltaMs: number) {
         }
         actor = {
           ...actor,
-          intent: { ...actor.intent, route: actor.intent.route.slice(1) },
+          intent: { ...intent, route: intent.route.slice(1) },
         };
         continue;
       }
@@ -1558,7 +1660,7 @@ export function tick(state: GameState, deltaMs = 1000): GameState {
   if (next.phase === "won") return next;
   const timeLeftMs = next.timeLeftMs - elapsed;
   return timeLeftMs === 0
-    ? event(next, `영업 종료 — 음식 주문 ${next.filled}/${next.goal}건 완료`, {
+    ? event(next, `${currentStage(next).id} 영업 종료 — 주문 ${next.filled}/${next.goal}건 완료`, {
         phase: roundResult(next),
         timeLeft: 0,
         timeLeftMs: 0,
