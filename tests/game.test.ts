@@ -24,8 +24,13 @@ import {
   fireConfig,
   orderConfig,
   roundResult,
+  currentStage,
+  defaultStages,
+  isLastStage,
+  nextStage,
   type GameState,
   type Order,
+  type Stage,
 } from "../game/core.js";
 
 function until(state: GameState, done: (state: GameState) => boolean) {
@@ -268,12 +273,16 @@ function burnStove(start: GameState) {
   return until(state, (current) => current.fires.stove?.onFire === true);
 }
 
+const oneStage = (orders: Order[], timeLimitMs = 180_000): Stage[] => [
+  { id: "1-1", name: "테스트", orders, timeLimitMs },
+];
+
 test("라운드 주문 목록을 주입하고 제출마다 진행도가 오른다", () => {
   const orders: Order[] = [
     { id: "a", foodId: "grilled-mushroom", targetCount: 2, submittedCount: 0 },
     { id: "b", foodId: "grilled-mushroom", targetCount: 1, submittedCount: 0 },
   ];
-  let state = initialState(1, ["lightning", "fire"], orders);
+  let state = initialState(1, ["lightning", "fire"], oneStage(orders));
   assert.equal(state.goal, 2);
   assert.deepEqual(
     activeOrders(state).map((order) => order.id),
@@ -330,10 +339,63 @@ test("라운드는 주문을 다 채우면 성공, 남으면 실패로 판정한
   );
   assert.throws(() => initialState(1, ["water"], []));
   assert.throws(() =>
-    initialState(1, ["water"], [
-      { id: "a", foodId: "grilled-mushroom", targetCount: 0, submittedCount: 0 },
-    ]),
+    initialState(
+      1,
+      ["water"],
+      oneStage([
+        { id: "a", foodId: "grilled-mushroom", targetCount: 0, submittedCount: 0 },
+      ]),
+    ),
   );
+  // 스테이지 자체의 신뢰 경계도 막는다.
+  assert.throws(() => initialState(1, ["water"], oneStage([], 180_000)));
+  assert.throws(() => initialState(1, ["water"], defaultStages(), 99));
+});
+
+test("스테이지를 깨면 골드와 스쿼드를 이어 다음 스테이지로 넘어간다", () => {
+  const stages: Stage[] = [
+    { id: "1-1", name: "첫 판", orders: [{ id: "a", foodId: "grilled-mushroom", targetCount: 1, submittedCount: 0 }], timeLimitMs: 180_000 },
+    { id: "1-2", name: "둘째 판", orders: [{ id: "b", foodId: "grilled-mushroom", targetCount: 1, submittedCount: 0 }], timeLimitMs: 120_000 },
+  ];
+  let state = initialState(1, ["lightning", "fire"], stages);
+  assert.equal(currentStage(state).id, "1-1");
+  assert.equal(isLastStage(state), false);
+
+  state = cookAndSubmit(state);
+  assert.equal(state.phase, "won");
+  assert.equal(state.gold, 100);
+
+  const second = nextStage(state);
+  assert.equal(currentStage(second).id, "1-2");
+  assert.equal(second.phase, "playing");
+  assert.equal(isLastStage(second), true);
+  // 골드와 스쿼드는 잇고 주문·시간·설비는 새로 시작한다.
+  assert.equal(second.gold, 100);
+  assert.deepEqual(second.squad, ["lightning", "fire"]);
+  assert.deepEqual(Object.keys(second.actors), ["lightning-1", "fire-1"]);
+  assert.equal(second.filled, 0);
+  assert.equal(second.timeLeftMs, 120_000);
+  assert.deepEqual(second.stove, []);
+
+  const cleared = cookAndSubmit(second);
+  assert.equal(cleared.phase, "won");
+  assert.equal(cleared.gold, 200);
+  // 마지막 스테이지에서는 더 넘어가지 않는다.
+  assert.equal(nextStage(cleared), cleared);
+});
+
+test("주문에 없는 음식 제출은 실수로 세고 골드는 깎지 않는다", () => {
+  let state = initialState(1, ["lightning", "fire"]);
+  assert.equal(state.misses, 0);
+  state = untilIdle(interactActors(state, ["lightning-1"], "ingredient-box"));
+  state = untilIdle(interactActors(state, ["lightning-1"], "submission"));
+  assert.equal(state.misses, 1);
+  assert.equal(state.gold, 0);
+  assert.equal(state.filled, 0);
+  // 정상 제출은 실수로 세지 않는다.
+  const ok = cookAndSubmit(state);
+  assert.equal(ok.misses, 1);
+  assert.equal(ok.gold, 100);
 });
 
 test("조리를 끝낸 조리 도구를 방치하면 불이 나고 사용할 수 없다", () => {
@@ -406,4 +468,19 @@ test("플레이테스트 세션은 위조된 요약을 저장 전에 거부한�
   };
   assert.equal(parseSession(valid).ok, true);
   assert.equal(parseSession({ ...valid, booksSubmitted: 99 }).ok, false);
+  // 스테이지마다 주문 수와 제한 시간이 다르므로 5건·180초를 강요하지 않는다.
+  assert.equal(
+    parseSession({ ...valid, goal: 3, booksSubmitted: 3, result: "won", elapsedMs: 41_000 }).ok,
+    true,
+  );
+  assert.equal(
+    parseSession({ ...valid, goal: 7, booksSubmitted: 2, elapsedMs: 120_000 }).ok,
+    true,
+  );
+  // 승패와 납품 수가 어긋나면 여전히 막는다.
+  assert.equal(parseSession({ ...valid, goal: 7, booksSubmitted: 7 }).ok, false);
+  assert.equal(
+    parseSession({ ...valid, result: "won", goal: 7, booksSubmitted: 3 }).ok,
+    false,
+  );
 });

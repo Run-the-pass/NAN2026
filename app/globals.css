@@ -538,6 +538,23 @@ button, select { font: inherit; }
 .result-overlay h2 { margin: 8px 0 28px; font-size: clamp(1.6rem, 5vw, 2.8rem); }
 .result-overlay button { border-color: #fff0b0; background: var(--gold); color: #21192c; }
 
+/* 정산 표: 항목 · 계산식 · 소계 3열. */
+.settle { margin: 0 0 24px; }
+.settle > div {
+  display: grid;
+  grid-template-columns: 1fr auto minmax(88px, auto);
+  gap: 12px;
+  align-items: baseline;
+  padding: 10px 4px;
+}
+.settle > div + div { border-top: 1px solid #ffffff1f; }
+.settle dt { text-align: left; }
+.settle dd { margin: 0; text-align: right; color: #d9d2ea; }
+.settle dd:last-child { color: #fff0b0; font-weight: 700; }
+.settle-total { margin-top: 6px; border-top: 2px solid var(--accent) !important; }
+.settle-total dt { font-weight: 700; }
+.settle-total dd:last-child { font-size: 1.5rem; }
+
 .voice-lab {
   min-height: 100svh;
   padding: 32px clamp(18px, 5vw, 72px) 72px;

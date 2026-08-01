@@ -24,6 +24,10 @@ import {
   itemLabel,
   fireConfig,
   squadActorIds,
+  currentStage,
+  isLastStage,
+  nextStage,
+  GOLD_PER_ORDER,
   type ActorId,
   type GameState,
   type ItemId,
@@ -198,7 +202,7 @@ export default function Game() {
         result: state.phase,
         booksSubmitted: state.filled,
         goal: state.goal,
-        elapsedMs: 180_000 - state.timeLeftMs,
+        elapsedMs: currentStage(state).timeLimitMs - state.timeLeftMs,
         voiceCommands: 0,
         buttonCommands: counts.buttonCommands,
         voiceFailures: 0,
@@ -719,7 +723,7 @@ export default function Game() {
           <p className="select-guide">
             식당의 첫 직원 슬라임을 1마리 고르세요. 게임에서
             슬라임을 좌클릭하고, 바닥이나 설비를 우클릭해 지시합니다.
-            목표는 3분 안에 버섯 구이 주문 5건 완료입니다.
+            스테이지마다 주문을 다 채우면 다음 스테이지로 넘어갑니다.
           </p>
           <div className="select-grid">
             {allTypeIds.map((typeId) => {
@@ -766,9 +770,11 @@ export default function Game() {
   }
 
   const result =
-    state.phase === "won"
-      ? `성공! 주문 ${state.goal}건을 완료했습니다.`
-      : "영업 종료. 다시 식당을 열어 보세요.";
+    state.phase === "lost"
+      ? "영업 종료. 주문을 다 채우지 못했습니다."
+      : isLastStage(state)
+        ? "모든 스테이지를 클리어했습니다!"
+        : `${currentStage(state).id} 클리어!`;
 
   return (
     <main className="stage">
@@ -789,6 +795,9 @@ export default function Game() {
         )}
 
         <div className="hud-top">
+          <span className="hud-chip">
+            🍽 {currentStage(state).id} {currentStage(state).name}
+          </span>
           <span className="hud-chip" data-warn={state.timeLeft <= 30 ? "" : undefined}>
             ⏱ {state.timeLeft}
           </span>
@@ -857,23 +866,60 @@ export default function Game() {
           aria-labelledby="result-title"
         >
           <div>
-            <p className="eyebrow">{state.phase === "won" ? "SUCCESS" : "TIME UP"}</p>
-            <h2 id="result-title">{result}</h2>
-            <p className="mic-state">
-              💰 {state.gold}G · 📦 {state.filled}/{state.goal}
+            <p className="eyebrow">
+              {state.phase === "lost"
+                ? "GAME OVER"
+                : isLastStage(state)
+                  ? "ALL CLEAR"
+                  : "STAGE CLEAR"}
             </p>
+            <h2 id="result-title">{result}</h2>
+            {/* 정산: 주문 성공은 골드로, 실수는 횟수만 보여 준다. */}
+            <dl className="settle">
+              <div>
+                <dt>주문 성공 횟수</dt>
+                <dd>
+                  {state.filled}번 × {GOLD_PER_ORDER}G
+                </dd>
+                <dd>{state.filled * GOLD_PER_ORDER}G</dd>
+              </div>
+              <div>
+                <dt>주문 실수 횟수</dt>
+                <dd>{state.misses}번</dd>
+                <dd aria-hidden>—</dd>
+              </div>
+              <div className="settle-total">
+                <dt>합계</dt>
+                <dd />
+                <dd>{state.gold}G</dd>
+              </div>
+            </dl>
             <p className="mic-state">{saved}</p>
             <div className="result-actions">
-              <button autoFocus onClick={() => startRound(squad)}>
-                같은 스쿼드로 다시
-              </button>
+              {state.phase === "won" && !isLastStage(state) ? (
+                <button
+                  autoFocus
+                  onClick={() => {
+                    savedRef.current = false;
+                    setSaved("");
+                    setSelectedActors([]);
+                    setState((current) => (current ? nextStage(current) : current));
+                  }}
+                >
+                  다음 스테이지
+                </button>
+              ) : (
+                <button autoFocus onClick={() => startRound(squad)}>
+                  1-1부터
+                </button>
+              )}
               <button
                 onClick={() => {
                   setSquad(null);
                   setState(null);
                 }}
               >
-                슬라임 다시 선택
+                타이틀로
               </button>
             </div>
           </div>

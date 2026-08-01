@@ -12,8 +12,11 @@ export type PlaytestSession = {
   avgConfidence: number | null;
 };
 
-const ROUND_LIMIT_MS = 180_000;
-const ROUND_GOAL = 5;
+// 스테이지마다 주문 수와 제한 시간이 다르므로 목표를 고정값으로 막지
+// 않는다. 여기 남은 것은 위조를 거르는 상한일 뿐 규칙이 아니다.
+// ponytail: 고정 상한. 스테이지 제한 시간을 함께 저장하게 되면 그 값으로
+// 검증한다.
+const ROUND_LIMIT_MAX_MS = 600_000;
 
 function isCount(value: unknown, min = 0): value is number {
   return typeof value === "number" && Number.isSafeInteger(value) && value >= min;
@@ -43,18 +46,16 @@ export function parseSession(
   if (body.booksSubmitted > body.goal) {
     return { ok: false, reason: "납품 수가 목표를 초과했습니다." };
   }
-  if (body.goal !== ROUND_GOAL) {
-    return { ok: false, reason: `목표는 ${ROUND_GOAL}권이어야 합니다.` };
-  }
-  if (body.elapsedMs > ROUND_LIMIT_MS) {
+  if (body.elapsedMs > ROUND_LIMIT_MAX_MS) {
     return { ok: false, reason: "경과 시간이 라운드 제한을 넘었습니다." };
   }
+  // 이긴 판은 목표를 정확히 채웠어야 하고, 진 판은 못 채웠어야 한다.
+  // 스테이지마다 제한 시간이 다르므로 경과 시간은 대조하지 않는다.
   if (
     (body.result === "won" && body.booksSubmitted !== body.goal) ||
-    (body.result === "lost" &&
-      (body.booksSubmitted >= body.goal || body.elapsedMs !== ROUND_LIMIT_MS))
+    (body.result === "lost" && body.booksSubmitted >= body.goal)
   ) {
-    return { ok: false, reason: "승패와 납품 수·경과 시간이 일치하지 않습니다." };
+    return { ok: false, reason: "승패와 납품 수가 일치하지 않습니다." };
   }
   let avgConfidence: number | null = null;
   if (body.avgConfidence !== null && body.avgConfidence !== undefined) {
