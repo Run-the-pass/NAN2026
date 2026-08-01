@@ -264,13 +264,21 @@ button, select { font: inherit; }
     repeating-linear-gradient(90deg, #a9713a 0 58px, #7d4f26 59px 62px);
 }
 
-#game-canvas, #game-canvas canvas {
+#game-canvas {
   display: block;
   width: 100% !important;
   height: 100% !important;
 }
 
-#game-canvas canvas { object-fit: cover; object-position: center bottom; }
+#game-canvas canvas {
+  position: absolute;
+  bottom: 0;
+  left: 50%;
+  display: block;
+  width: max(100vw, calc(100svh * 1.6)) !important;
+  height: max(100svh, calc(100vw / 1.6)) !important;
+  transform: translateX(-50%);
+}
 
 /* HUD 칩: 화면 위에 떠 있는 게임 정보 */
 .hud-top, .hud-pots {
@@ -716,7 +724,12 @@ button, select { font: inherit; }
 }
 
 @media (max-aspect-ratio: 4 / 3) {
-  #game-canvas canvas { object-fit: contain; object-position: center; }
+  #game-canvas canvas {
+    bottom: 50%;
+    width: min(100vw, calc(100svh * 1.6)) !important;
+    height: min(100svh, calc(100vw / 1.6)) !important;
+    transform: translate(-50%, 50%);
+  }
 }
 
 @media (orientation: landscape) and (max-height: 520px) {

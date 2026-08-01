@@ -1,7 +1,7 @@
 ---
 type: project
 status: current
-updated: 2026-08-01
+updated: 2026-08-02
 sources:
   - raw/project-brief.md
   - raw/home/home_reference.png
@@ -45,6 +45,8 @@ sources:
 - [효과음·불 슬라임·미사용 client 에셋 정리 계획](plan-sfx-fire-slime-cleanup.md) — 구현 이벤트 효과음, 불 슬라임 몸통 크기·애니메이션, 미사용 public 에셋 삭제 범위.
 - [그릇·테이블·편의 선택·인게임 불 슬라임 계획](plan-dishes-table-selection-fire-game.md) — 그릇 순환, 한 칸 테이블, Shift·드래그 선택, 실제 게임 불 슬라임와 배포 완료 조건.
 - [전체 화면 레이아웃 보정 계획](plan-full-viewport-layout.md) — 홈·게임의 뷰포트 채움, 긴 화면 배경, 설정 안 홈 이동과 낮은 가로 화면 HUD 완료 조건.
+- [스테이지 루프 계획](plan-stage-loop.md) — 추가본의 여러 스테이지·정산·게임 오버 흐름 중 실제 라운드 루프 구현 범위.
+- [불 슬라임·설비 타일·병합 검수 계획](plan-fire-slime-station-hitbox-merge-review.md) — 불 방향·깜빡임, 정사각형 설비 판정과 Claude 병합 회귀 검수 범위.
 - [작업 로그](log.md) — ingest, 계획, 구현, 검증의 시간순 기록.
 
 원문: [추가본 정리](../raw/%EC%B6%94%EA%B0%80%EB%B3%B8_%EC%A0%95%EB%A6%AC/) (덱 `raw/추가본.pptx`의 화면별 기획과 2026-08-02 확정·미정), [클로드 담당 작업: 주문과 화재](../raw/%ED%81%B4%EB%A1%9C%EB%93%9C_%EB%8B%B4%EB%8B%B9_%EC%9E%91%EC%97%85_%EC%A3%BC%EB%AC%B8%EA%B3%BC_%ED%99%94%EC%9E%AC.md), [프로젝트 브리프](../raw/project-brief.md), [홈 화면 v2 참고 이미지](../raw/home%20v2/home_reference.png), [홈 화면 v2 에셋](../raw/home%20v2/), [성장 선택 카드 참고 이미지](../raw/references/upgrade-choice-cards.png), [슬라임 스탯·가격·패널티](../raw/slime-stats-pricing-and-penalties.md), [펀테스트 변경 사항](../raw/fun-test-design-changes.md), [음성인식 시스템 논의](../raw/voice-command-discussion-summary-revised.md), [자원·제작 시스템 기획](../raw/slime-workshop-resource-production-design.md)

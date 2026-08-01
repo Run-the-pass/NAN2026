@@ -41,6 +41,7 @@ import {
 import {
   facingFromDelta,
   facings,
+  fireFaceLayout,
   slimeDataUri,
   type Facing,
 } from "./slime-art";
@@ -68,8 +69,8 @@ const RENDER_SCALE = 3;
 const SLIME_TEXTURE = { width: 348, height: 270 };
 const SLIME_SCALE = 58 / SLIME_TEXTURE.width;
 const FIRE_TEXTURE = { width: 348, height: 301 };
-// 같은 출력 너비에서 원본 불 슬라임 몸통과 생성형 슬라임 몸통이 맞는다.
-const FIRE_SLIME_SCALE = SLIME_SCALE;
+// 불꽃 여백을 뺀 원본 몸통 폭이 생성형 슬라임의 58px 몸통과 맞는다.
+const FIRE_SLIME_SCALE = SLIME_SCALE * 1.12;
 // 젓기만 손에 드는 것이 없어 따로 보여 줘야 한다.
 type Motion = "idle" | "walk" | "stir" | "pick";
 const itemIcons: Record<ItemId, string> = {
@@ -258,7 +259,9 @@ export default function Game() {
           {
             typeId: SlimeTypeId;
             body: Phaser.GameObjects.Container;
+            visual: Phaser.GameObjects.Container;
             art: Phaser.GameObjects.Image;
+            fireFace?: Phaser.GameObjects.Graphics;
             carried: Phaser.GameObjects.Text;
             selected: Phaser.GameObjects.Arc;
             facing: Facing;
@@ -273,10 +276,10 @@ export default function Game() {
       stations!: Record<StationId, Phaser.GameObjects.Text>;
 
       // 가만히 있을 때: 원본 SVG의 숨쉬기를 tween으로 옮긴 것.
-      breathe(art: Phaser.GameObjects.Image, scale = SLIME_SCALE) {
-        art.setScale(scale);
+      breathe(visual: Phaser.GameObjects.Container, scale = SLIME_SCALE) {
+        visual.setScale(scale);
         return this.tweens.add({
-          targets: art,
+          targets: visual,
           scaleX: scale * 0.985,
           scaleY: scale * 1.035,
           y: -2,
@@ -288,10 +291,10 @@ export default function Game() {
       }
 
       // 걸을 때: 더 짧고 크게 통통 튄다.
-      walk(art: Phaser.GameObjects.Image, scale = SLIME_SCALE) {
-        art.setScale(scale);
+      walk(visual: Phaser.GameObjects.Container, scale = SLIME_SCALE) {
+        visual.setScale(scale);
         return this.tweens.add({
-          targets: art,
+          targets: visual,
           scaleX: scale * 1.06,
           scaleY: scale * 0.9,
           y: 3,
@@ -303,10 +306,10 @@ export default function Game() {
       }
 
       // 젓기: 팔이 없으니 몸을 좌우로 기울여 젓는다.
-      stir(art: Phaser.GameObjects.Image, scale = SLIME_SCALE) {
-        art.setScale(scale).setAngle(-12);
+      stir(visual: Phaser.GameObjects.Container, scale = SLIME_SCALE) {
+        visual.setScale(scale).setAngle(-12);
         return this.tweens.add({
-          targets: art,
+          targets: visual,
           angle: 12,
           duration: 260,
           yoyo: true,
@@ -316,10 +319,10 @@ export default function Game() {
       }
 
       // 집기·놓기: 푹 눌렸다 펴지는 한 동작.
-      pick(art: Phaser.GameObjects.Image, scale = SLIME_SCALE) {
-        art.setScale(scale);
+      pick(visual: Phaser.GameObjects.Container, scale = SLIME_SCALE) {
+        visual.setScale(scale);
         return this.tweens.add({
-          targets: art,
+          targets: visual,
           scaleX: scale * 1.12,
           scaleY: scale * 0.8,
           y: 6,
@@ -330,19 +333,38 @@ export default function Game() {
         });
       }
 
-      startMotion(art: Phaser.GameObjects.Image, mode: Motion, scale = SLIME_SCALE) {
-        if (mode === "walk") return this.walk(art, scale);
-        if (mode === "stir") return this.stir(art, scale);
-        if (mode === "pick") return this.pick(art, scale);
-        return this.breathe(art, scale);
+      startMotion(visual: Phaser.GameObjects.Container, mode: Motion, scale = SLIME_SCALE) {
+        if (mode === "walk") return this.walk(visual, scale);
+        if (mode === "stir") return this.stir(visual, scale);
+        if (mode === "pick") return this.pick(visual, scale);
+        return this.breathe(visual, scale);
       }
 
       // 방향과 깜빡임 상태를 하나의 텍스처 키로 합쳐 적용한다.
       paintSlime(actorId: ActorId) {
         const sprite = this.slimes[actorId];
         if (!sprite) return;
-        if (actorId === "fire") {
+        if (sprite.typeId === "fire" && sprite.fireFace) {
           sprite.art.setTexture("slime-fire-art").setFlipX(sprite.facing === "left");
+          const face = fireFaceLayout(sprite.facing, sprite.blinking);
+          sprite.fireFace
+            .clear()
+            // 원본에 박힌 정면 얼굴만 같은 몸통색으로 덮는다.
+            .fillStyle(0xfc7d01, 1)
+            .fillEllipse(-5, 30, 168, 90);
+          if (face) {
+            sprite.fireFace.fillStyle(0x020100, 1);
+            if (face.blink) {
+              sprite.fireFace
+                .fillRoundedRect(face.x - 50, 8, 28, 6, 3)
+                .fillRoundedRect(face.x + 22, 8, 28, 6, 3);
+            } else {
+              sprite.fireFace
+                .fillCircle(face.x - 36, 10, 14)
+                .fillCircle(face.x + 36, 10, 14);
+            }
+            sprite.fireFace.fillEllipse(face.x, 48, 38, 24);
+          }
           return;
         }
         const blink = sprite.blinking && sprite.facing !== "up" ? "-blink" : "";
@@ -350,7 +372,11 @@ export default function Game() {
       }
 
       preload() {
+        if (kinds.includes("fire")) {
+          this.load.svg("slime-fire-art", "/slimes/fire.svg", FIRE_TEXTURE);
+        }
         for (const typeId of kinds) {
+          if (typeId === "fire") continue;
           for (const facing of facings) {
             for (const blink of [false, true]) {
               this.load.svg(
@@ -426,22 +452,24 @@ export default function Game() {
           if (id === "ingredient-box") {
             shape
               .fillStyle(0x6d3f20, 1)
-              .fillRoundedRect(x - 28, y - 22, 56, 44, 5)
+              .fillRect(x - 28, y - 28, 56, 56)
               .lineStyle(3, 0xc88a4c, 0.9)
-              .strokeRoundedRect(x - 28, y - 22, 56, 44, 5)
+              .strokeRect(x - 28, y - 28, 56, 56)
               .lineStyle(2, 0x3d2415, 0.8)
-              .strokeLineShape(new Phaser.Geom.Line(x, y - 20, x, y + 20));
+              .strokeLineShape(new Phaser.Geom.Line(x, y - 26, x, y + 26));
           } else if (id === "stove") {
             shape
               .fillStyle(0x28272b, 1)
-              .fillRoundedRect(x - 25, y - 15, 50, 40, 12)
+              .fillRect(x - 28, y - 28, 56, 56)
+              .lineStyle(3, 0x807f86, 0.9)
+              .strokeRect(x - 28, y - 28, 56, 56)
               .fillStyle(stationColors[id], 0.9)
-              .fillEllipse(x, y - 13, 50, 15)
+              .fillEllipse(x, y - 10, 48, 22)
               .lineStyle(2, 0xe9d3b1, 0.75)
-              .strokeEllipse(x, y - 13, 52, 17)
+              .strokeEllipse(x, y - 10, 48, 22)
               .fillStyle(0xffb347, 0.8)
-              .fillCircle(x - 9, y - 20, 3)
-              .fillCircle(x + 7, y - 25, 4);
+              .fillCircle(x - 9, y - 11, 3)
+              .fillCircle(x + 7, y - 14, 4);
           } else if (id === "submission") {
             shape
               .fillStyle(stationColors[id], 1)
@@ -479,9 +507,11 @@ export default function Game() {
           } else {
             shape
               .fillStyle(stationColors[id], 1)
-              .fillRoundedRect(x - 20, y - 20, 40, 43, 8)
+              .fillRect(x - 28, y - 28, 56, 56)
+              .lineStyle(3, 0xbdb6c9, 0.65)
+              .strokeRect(x - 28, y - 28, 56, 56)
               .fillStyle(0x2b2731, 1)
-              .fillEllipse(x, y - 19, 46, 10)
+              .fillRect(x - 19, y - 18, 38, 9)
               .lineStyle(2, 0xbdb6c9, 0.55)
               .strokeLineShape(new Phaser.Geom.Line(x - 13, y - 8, x - 13, y + 16))
               .strokeLineShape(new Phaser.Geom.Line(x + 13, y - 8, x + 13, y + 16));
@@ -548,12 +578,15 @@ export default function Game() {
         for (const actorId of roster) {
           const actor = current?.actors[actorId];
           if (!actor) continue;
-          const scale = actorId === "fire" ? FIRE_SLIME_SCALE : SLIME_SCALE;
+          const fire = actor.typeId === "fire";
+          const scale = fire ? FIRE_SLIME_SCALE : SLIME_SCALE;
           const art = this.add
-            .image(0, 0, `slime-${actor.typeId}-down`)
-            .setScale(SLIME_SCALE);
+            .image(0, 0, fire ? "slime-fire-art" : `slime-${actor.typeId}-down`)
+            .setOrigin(0.5, fire ? 0.62 : 0.5);
+          const fireFace = fire ? this.add.graphics() : undefined;
+          const visual = this.add.container(0, 0, fireFace ? [art, fireFace] : [art]);
           const container = this.add
-            .container(actor.x, actor.y, [art])
+            .container(actor.x, actor.y, [visual])
             .setDepth(actor.y)
             .setInteractive(
               new Phaser.Geom.Rectangle(-29, -23, 58, 45),
@@ -593,7 +626,9 @@ export default function Game() {
           this.slimes[actorId] = {
             typeId: actor.typeId,
             body: container,
+            visual,
             art,
+            fireFace,
             carried,
             selected,
             facing: "down",
@@ -601,8 +636,9 @@ export default function Game() {
             mode: "idle",
             blinking: false,
             scale,
-            motion: this.breathe(art, scale),
+            motion: this.breathe(visual, scale),
           };
+          this.paintSlime(actorId);
           // 걷는 중에도 눈은 계속 깜빡이도록 몸 tween과 분리해 둔다.
           this.time.addEvent({
             delay: Phaser.Math.Between(3200, 5200),
@@ -730,8 +766,8 @@ export default function Game() {
               if (mode !== sprite.mode) {
                 sprite.mode = mode;
                 sprite.motion.stop();
-                sprite.art.setAngle(0).setY(0);
-                sprite.motion = this.startMotion(sprite.art, mode, sprite.scale);
+                sprite.visual.setAngle(0).setY(0);
+                sprite.motion = this.startMotion(sprite.visual, mode, sprite.scale);
               }
               sprite.last = { x: actor.x, y: actor.y };
               sprite.body.setPosition(actor.x, actor.y).setDepth(actor.y);
@@ -1076,14 +1112,7 @@ export default function Game() {
                   1-1부터
                 </button>
               )}
-              <button
-                onClick={() => {
-                  setSquad(null);
-                  setState(null);
-                }}
-              >
-                타이틀로
-              </button>
+              <button onClick={() => window.location.assign("/")}>타이틀로</button>
             </div>
           </div>
         </section>

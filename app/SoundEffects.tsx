@@ -115,11 +115,12 @@ export function GameSoundEffects({
 
   useEffect(() => {
     const signature = selectedActors.join(",");
-    if (signature && signature !== previousSelection.current) {
-      play(choose(slimeSounds[selectedActors[0]]), 0.65);
+    const typeId = state.actors[selectedActors[0]]?.typeId;
+    if (signature && typeId && signature !== previousSelection.current) {
+      play(choose(slimeSounds[typeId]), 0.65);
     }
     previousSelection.current = signature;
-  }, [selectedActors]);
+  }, [selectedActors, state.actors]);
 
   useEffect(() => {
     if (!isBurning) {

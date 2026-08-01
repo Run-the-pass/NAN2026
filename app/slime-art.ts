@@ -87,6 +87,15 @@ export function slimeDataUri(
 
 export const facings: Facing[] = ["down", "up", "left", "right"];
 
+// 원본 불 슬라임 몸통 위에 그릴 얼굴 위치. 위를 볼 때는 얼굴을 숨긴다.
+export function fireFaceLayout(facing: Facing, blink = false) {
+  if (facing === "up") return null;
+  return {
+    x: facing === "left" ? -34 : facing === "right" ? 24 : -5,
+    blink,
+  };
+}
+
 // 이동 델타로 방향을 정한다. 큰 축이 이기고, 멈춰 있으면 이전 방향을 쓴다.
 export function facingFromDelta(dx: number, dy: number, previous: Facing) {
   if (Math.abs(dx) < 0.5 && Math.abs(dy) < 0.5) return previous;
