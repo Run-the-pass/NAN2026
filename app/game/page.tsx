@@ -1,7 +1,6 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import Link from "next/link";
 
 const Game = dynamic(() => import("../Game"), {
   ssr: false,
@@ -9,12 +8,5 @@ const Game = dynamic(() => import("../Game"), {
 });
 
 export default function GamePage() {
-  return (
-    <>
-      <Link className="game-home-link" href="/">
-        ← 홈
-      </Link>
-      <Game />
-    </>
-  );
+  return <Game />;
 }
