@@ -23,6 +23,7 @@ import {
   orderComplete,
   itemLabel,
   fireConfig,
+  squadActorIds,
   type ActorId,
   type GameState,
   type ItemId,
@@ -220,12 +221,15 @@ export default function Game() {
 
   useEffect(() => {
     if (!squad) return;
-    const roster = squad;
+    // 스프라이트는 마리 수만큼, 텍스처는 속성 수만큼 만든다.
+    const roster = squadActorIds(squad);
+    const kinds = [...new Set(squad)];
     class Restaurant extends Phaser.Scene {
       slimes!: Partial<
         Record<
           ActorId,
           {
+            typeId: SlimeTypeId;
             body: Phaser.GameObjects.Container;
             art: Phaser.GameObjects.Image;
             carried: Phaser.GameObjects.Text;
@@ -310,16 +314,16 @@ export default function Game() {
         const sprite = this.slimes[actorId];
         if (!sprite) return;
         const blink = sprite.blinking && sprite.facing !== "up" ? "-blink" : "";
-        sprite.art.setTexture(`slime-${actorId}-${sprite.facing}${blink}`);
+        sprite.art.setTexture(`slime-${sprite.typeId}-${sprite.facing}${blink}`);
       }
 
       preload() {
-        for (const actorId of roster) {
+        for (const typeId of kinds) {
           for (const facing of facings) {
             for (const blink of [false, true]) {
               this.load.svg(
-                `slime-${actorId}-${facing}${blink ? "-blink" : ""}`,
-                slimeDataUri(actorId, facing, { blink }),
+                `slime-${typeId}-${facing}${blink ? "-blink" : ""}`,
+                slimeDataUri(typeId, facing, { blink }),
                 SLIME_TEXTURE,
               );
             }
@@ -489,7 +493,7 @@ export default function Game() {
           // 텍스처는 116x90으로 굽고 0.5배로 쓴다. tween이 이 값을 기준으로
           // 늘였다 줄였다 하므로 setDisplaySize 대신 스케일로 고정한다.
           const art = this.add
-            .image(0, 0, `slime-${actorId}-down`)
+            .image(0, 0, `slime-${actor.typeId}-down`)
             .setScale(SLIME_SCALE);
           const container = this.add
             .container(actor.x, actor.y, [art])
@@ -516,11 +520,12 @@ export default function Game() {
             .setDepth(actor.y + 2);
           const selected = this.add
             .circle(actor.x, actor.y + 14, 30)
-            .setStrokeStyle(3, typeColors[actorId], 0.95)
-            .setFillStyle(typeColors[actorId], 0.12)
+            .setStrokeStyle(3, typeColors[actor.typeId], 0.95)
+            .setFillStyle(typeColors[actor.typeId], 0.12)
             .setDepth(actor.y - 1)
             .setVisible(false);
           this.slimes[actorId] = {
+            typeId: actor.typeId,
             body: container,
             art,
             carried,
@@ -682,16 +687,21 @@ export default function Game() {
         KeyE: "lightning",
         KeyR: "earth",
       } as const;
+      const roster = squadActorIds(squad);
       const element = elementByKey[event.code as keyof typeof elementByKey];
       if (element) {
+        // 속성 키 하나가 그 속성의 모든 마리를 고른다.
         setSelectedActors(
-          squad.filter((actorId) => slimeTypes[actorId].element === element),
+          roster.filter(
+            (actorId) =>
+              stateRef.current?.actors[actorId]?.typeId === element,
+          ),
         );
         return;
       }
       if (event.code !== "Space") return;
       event.preventDefault();
-      setSelectedActors([...squad]);
+      setSelectedActors(roster);
     };
     window.addEventListener("keydown", down);
     return () => {

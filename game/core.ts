@@ -1,6 +1,9 @@
 export type SlimeElement = "water" | "fire" | "lightning" | "earth";
 export type SlimeTypeId = SlimeElement;
-export type ActorId = SlimeTypeId;
+// 슬라임 한 마리의 인스턴스 ID(`water-1`, `water-2`). 같은 속성을 여러
+// 마리 데려올 수 있으므로 속성 자체를 키로 쓰지 않는다. 속성은
+// ActorState.typeId에서 읽는다.
+export type ActorId = string;
 export type ItemId = "mushroom" | "grilled-mushroom";
 export type StationId =
   | "ingredient-box"
@@ -320,11 +323,25 @@ export function isWalkable({ col, row }: TilePosition) {
   return KITCHEN_ROWS[row]?.[col] === ".";
 }
 
-function makeActor(typeId: SlimeTypeId, spawn: TilePosition): ActorState {
+// 스쿼드 순서대로 인스턴스 ID를 만든다. 같은 속성은 1호부터 번호가
+// 붙으므로 중복 영입해도 키가 겹치지 않는다.
+export function squadActorIds(squad: SlimeTypeId[]): ActorId[] {
+  const seen: Partial<Record<SlimeTypeId, number>> = {};
+  return squad.map((typeId) => {
+    const ordinal = (seen[typeId] = (seen[typeId] ?? 0) + 1);
+    return `${typeId}-${ordinal}`;
+  });
+}
+
+function makeActor(
+  typeId: SlimeTypeId,
+  spawn: TilePosition,
+  name: string,
+): ActorState {
   const kind = slimeTypes[typeId];
   return {
     typeId,
-    name: `${kind.name} 슬라임`,
+    name,
     ...tileCenter(spawn),
     moveSpeed:
       statTables.moveTilesPerSecond[kind.statLevels.moveSpeed] * TILE_SIZE,
@@ -392,18 +409,29 @@ export function initialState(
   squad: SlimeTypeId[] = ["water"],
   orders: Order[] = defaultOrders(),
 ): GameState {
+  // 같은 속성을 여러 마리 데려올 수 있다. 스폰 자리 수만 제한한다.
   if (
     squad.length < 1 ||
     squad.length > spawnTiles.length ||
-    new Set(squad).size !== squad.length ||
     squad.some((typeId) => !(typeId in slimeTypes))
   ) {
-    throw new Error("스쿼드는 서로 다른 속성 슬라임 1~4마리여야 합니다.");
+    throw new Error(`스쿼드는 속성 슬라임 1~${spawnTiles.length}마리여야 합니다.`);
   }
   const roundOrders = checkOrders(orders);
+  const ids = squadActorIds(squad);
+  // 같은 속성이 둘 이상이면 로그와 UI에서 구분되도록 번호를 붙인다.
+  const total = squad.reduce<Partial<Record<SlimeTypeId, number>>>(
+    (acc, typeId) => ({ ...acc, [typeId]: (acc[typeId] ?? 0) + 1 }),
+    {},
+  );
   const actors: Partial<Record<ActorId, ActorState>> = {};
   squad.forEach((typeId, index) => {
-    actors[typeId] = makeActor(typeId, spawnTiles[index]);
+    const label = `${slimeTypes[typeId].name} 슬라임`;
+    actors[ids[index]] = makeActor(
+      typeId,
+      spawnTiles[index],
+      total[typeId]! > 1 ? `${label} ${ids[index].split("-")[1]}호` : label,
+    );
   });
   return {
     seed: seed >>> 0,
@@ -704,8 +732,10 @@ function moveActor(state: GameState, actorId: ActorId, deltaMs: number) {
   let remaining = deltaMs;
   let actor = next.actors[actorId]!;
   while (remaining > 0 && next.phase === "playing" && actor.intent) {
+    // actor를 재할당하면 intent 좁히기가 풀리므로 먼저 붙잡아 둔다.
+    const intent = actor.intent;
     if (actor.status === "MOVING") {
-      const destination = actor.intent.route[0];
+      const destination = intent.route[0];
       if (destination) {
         const dx = destination.x - actor.x;
         const dy = destination.y - actor.y;
@@ -727,7 +757,7 @@ function moveActor(state: GameState, actorId: ActorId, deltaMs: number) {
         }
         actor = {
           ...actor,
-          intent: { ...actor.intent, route: actor.intent.route.slice(1) },
+          intent: { ...intent, route: intent.route.slice(1) },
         };
         continue;
       }

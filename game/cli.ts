@@ -5,6 +5,7 @@ import {
   initialState,
   interactActors,
   slimeTypes,
+  squadActorIds,
   tick,
   type ActorId,
   type GameState,
@@ -53,18 +54,23 @@ export function simulate(args: string[]) {
       operations.push({ token, waitMs });
       continue;
     }
-    const [actorId, station, extra] = token.split(":");
+    const [actor, station, extra] = token.split(":");
+    // 액터는 인스턴스 ID(`water-2`)나 속성명으로 지목한다. 속성명은
+    // 그 속성의 첫 마리를 뜻한다.
+    const ids = squadActorIds(squad);
+    const actorId = ids.includes(actor)
+      ? actor
+      : ids.find((id) => id.startsWith(`${actor}-`));
     if (
       extra !== undefined ||
-      !(actorId in slimeTypes) ||
-      !allStations.includes(station as StationId) ||
-      !squad.includes(actorId as SlimeTypeId)
+      !actorId ||
+      !allStations.includes(station as StationId)
     ) {
       throw new Error(`허용되지 않은 상호작용: ${token}`);
     }
     operations.push({
       token,
-      actorId: actorId as ActorId,
+      actorId,
       station: station as StationId,
     });
   }
