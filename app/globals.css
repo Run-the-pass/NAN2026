@@ -233,37 +233,6 @@ button, select { font: inherit; }
   to { opacity: .85; transform: scale(.8); }
 }
 
-.settings-drawer {
-  position: fixed;
-  z-index: 200;
-  top: 0;
-  left: 50%;
-  display: grid;
-  width: min(420px, calc(100vw - 24px));
-  gap: 14px;
-  border: 2px solid #fff8;
-  border-top: 0;
-  border-radius: 0 0 18px 18px;
-  padding: 18px;
-  background: #21172df2;
-  box-shadow: 0 18px 50px #000a;
-  transform: translate(-50%, calc(-100% - 16px));
-  transition: transform 180ms ease;
-  pointer-events: none;
-}
-
-.settings-drawer[data-open] { transform: translate(-50%, 0); pointer-events: auto; }
-.settings-drawer header { display: flex; align-items: center; justify-content: space-between; }
-.settings-drawer header strong { font-size: 20px; }
-.settings-drawer button { border: 1px solid #75678f; border-radius: 9px; padding: 8px 12px; background: #43395b; color: #fff; cursor: pointer; }
-.settings-drawer header button { border: 0; padding: 0 7px; background: transparent; font-size: 28px; }
-.settings-drawer label { display: grid; gap: 8px; }
-.settings-drawer input { width: 100%; accent-color: var(--gold); }
-.music-toggle[aria-pressed="true"] { border-color: var(--gold); color: var(--gold); }
-
-.music-settings-game { position: absolute; z-index: 12; top: 12px; right: 12px; }
-.game-settings-trigger { display: flex; align-items: center; gap: 5px; }
-
 .game-home-link {
   position: fixed;
   z-index: 100;
@@ -467,12 +436,20 @@ button, select { font: inherit; }
 
 .slime-portrait { display: block; flex: none; width: 72px; height: 64px; object-fit: contain; }
 .slime-select-card .slime-portrait { margin-top: 4px; }
-.slime-portrait[data-water] {
+.slime-portrait[data-water],
+.slime-portrait[data-fire] {
   transform-origin: 50% 88%;
-  animation: water-slime-stretch 2.8s ease-in-out infinite;
+  animation: slime-card-stretch 2.8s ease-in-out infinite;
+}
+.slime-portrait[data-fire] {
+  width: 84px;
+  height: 76px;
+  margin-top: -8px;
+  margin-bottom: -4px;
+  object-position: center bottom;
 }
 
-@keyframes water-slime-stretch {
+@keyframes slime-card-stretch {
   0%, 72%, 100% { transform: scale(1); }
   82% { transform: translateY(-5px) scale(.94, 1.12); }
   90% { transform: translateY(2px) scale(1.05, .96); }
@@ -748,5 +725,5 @@ button, select { font: inherit; }
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; transition: none !important; }
-  .home-cauldron, .home-cauldron-bubble, .slime-portrait[data-water] { animation: none; }
+  .home-cauldron, .home-cauldron-bubble, .slime-portrait[data-water], .slime-portrait[data-fire] { animation: none; }
 }

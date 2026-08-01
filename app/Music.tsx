@@ -54,24 +54,30 @@ export default function Music({ src }: { src: string }) {
 
 export function MusicSettings({
   variant,
+  open: controlledOpen,
   onOpenChange,
 }: {
   variant: "home" | "game";
+  open?: boolean;
   onOpenChange?: (open: boolean) => void;
 }) {
-  const [open, setOpen] = useState(false);
+  const [internalOpen, setInternalOpen] = useState(false);
+  const open = controlledOpen ?? internalOpen;
   const changeOpen = (next: boolean) => {
-    setOpen(next);
+    if (controlledOpen === undefined) setInternalOpen(next);
     onOpenChange?.(next);
   };
   useEffect(() => {
-    if (!open) return;
+    if (!open || controlledOpen !== undefined) return;
     const close = (event: KeyboardEvent) => {
-      if (event.key === "Escape") changeOpen(false);
+      if (event.key === "Escape") {
+        setInternalOpen(false);
+        onOpenChange?.(false);
+      }
     };
     window.addEventListener("keydown", close);
     return () => window.removeEventListener("keydown", close);
-  });
+  }, [open, controlledOpen, onOpenChange]);
   const stored = useSyncExternalStore(
     (notify) => {
       window.addEventListener(changeEvent, notify);
