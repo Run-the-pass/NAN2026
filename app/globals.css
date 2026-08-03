@@ -523,6 +523,207 @@ button, select { font: inherit; }
 .result-overlay h2 { margin: 8px 0 28px; font-size: clamp(1.6rem, 5vw, 2.8rem); }
 .result-overlay button { border-color: #fff0b0; background: var(--gold); color: #21192c; }
 
+/* 스테이지 시작 전 정보 화면: 제목 / 맵+TIP / 음식 / 다음 순서를 유지한다. */
+.stage-info-screen {
+  position: absolute;
+  z-index: 40;
+  inset: 0;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  gap: clamp(10px, 1.8vh, 18px);
+  overflow: auto;
+  padding: clamp(18px, 3.5vw, 44px);
+  background:
+    radial-gradient(circle at 50% -20%, #624587 0, transparent 46%),
+    #12101e;
+}
+
+.stage-info-header {
+  display: flex;
+  align-items: center;
+  min-height: clamp(64px, 13vh, 96px);
+  border: 2px solid var(--line);
+  border-radius: 16px;
+  padding: 12px clamp(18px, 3vw, 36px);
+  background: #29243df2;
+  box-shadow: 0 10px 30px #0005;
+}
+
+.stage-info-header h1 {
+  overflow: hidden;
+  margin: 0;
+  font-size: clamp(26px, 3.2vw, 46px);
+  line-height: 1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.stage-info-body {
+  display: grid;
+  grid-template-columns: minmax(0, 3fr) minmax(320px, 1.75fr);
+  gap: clamp(16px, 3vw, 34px);
+  min-height: 0;
+}
+
+.stage-map-column {
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) auto;
+  gap: 12px;
+  min-width: 0;
+  min-height: 0;
+}
+
+.stage-map-card,
+.available-food-panel {
+  min-height: 0;
+  border: 2px solid var(--line);
+  border-radius: 18px;
+  background: #211b32ed;
+  box-shadow: 0 12px 32px #0005;
+}
+
+.stage-map-card {
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  padding: 14px;
+}
+.stage-map-error { margin: auto; color: #ffb6c8; }
+
+.stage-map-preview {
+  display: grid;
+  grid-template-columns: repeat(16, 1fr);
+  width: min(100%, calc((100vh - 290px) * 1.6));
+  aspect-ratio: 16 / 10;
+  overflow: hidden;
+  border: 3px solid #f7e3b0;
+  border-radius: 10px;
+  background: #3e2414;
+}
+
+.stage-map-preview > span {
+  display: grid;
+  place-items: center;
+  min-width: 0;
+  border: 1px solid #2a160b4d;
+  background: #4b2c19;
+  font-size: clamp(10px, 1.5vw, 22px);
+  line-height: 1;
+}
+
+.stage-map-preview > span[data-tile="wall"] {
+  background: #a66f38;
+  box-shadow: inset 0 0 0 2px #d5a46755;
+}
+
+.stage-map-preview > span[data-tile="station"] {
+  background: #76503a;
+  box-shadow: inset 0 0 0 2px #fff3;
+}
+
+.stage-tip-list {
+  display: grid;
+  gap: 6px;
+  min-height: 58px;
+  margin: 0;
+  padding: 0 8px;
+  list-style: none;
+  color: #eee5ff;
+  font-size: clamp(13px, 1.35vw, 18px);
+  line-height: 1.25;
+}
+
+.stage-tip-list b { color: var(--gold); }
+
+.available-food-panel {
+  display: grid;
+  grid-template-rows: auto auto minmax(92px, 1fr);
+  align-content: start;
+  gap: 14px;
+  padding: clamp(14px, 2vw, 24px);
+}
+
+.available-food-panel h2 {
+  margin: 0;
+  font-size: clamp(18px, 2.1vw, 28px);
+  line-height: 1;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.food-slot-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: clamp(7px, 1vw, 12px);
+}
+
+.stage-frame .food-slot {
+  display: grid;
+  place-items: center;
+  aspect-ratio: 1;
+  border: 2px solid #6d6384;
+  border-radius: 50%;
+  padding: 0;
+  background: #352d4c;
+  color: #fff;
+  font-size: clamp(24px, 4vw, 52px);
+  transform: none;
+}
+
+.stage-frame button.food-slot:hover,
+.stage-frame button.food-slot[data-open] {
+  border-color: #fff;
+  background: #4a3e68;
+  box-shadow: 0 0 18px #d6a7ff66;
+  transform: none;
+}
+
+.stage-frame button.food-slot:focus-visible {
+  border-color: var(--gold);
+  outline: 3px solid #fff;
+  outline-offset: 2px;
+}
+
+.food-slot-empty { opacity: .32; }
+
+.food-info-empty {
+  align-self: center;
+  margin: 0;
+  color: #aa9fbe;
+  text-align: center;
+  font-size: 13px;
+}
+
+.food-hover-info {
+  align-self: stretch;
+  display: grid;
+  align-content: center;
+  gap: 10px;
+  min-height: 92px;
+  border-top: 1px solid #ffffff24;
+  padding-top: 12px;
+}
+
+.food-hover-info > strong { color: #fff0b0; font-size: clamp(16px, 1.7vw, 22px); }
+.food-flow { display: flex; align-items: center; justify-content: center; gap: 3px; }
+.food-flow-part { display: contents; }
+.food-flow-part > i { color: #9b8eb4; font-style: normal; }
+.food-flow-part > span { display: grid; justify-items: center; gap: 2px; min-width: 0; }
+.food-flow-part b { font-size: clamp(18px, 2.2vw, 28px); line-height: 1; }
+.food-flow-part small { color: #d9d0e7; font-size: clamp(8px, .85vw, 11px); white-space: nowrap; }
+
+.stage-info-footer { display: flex; justify-content: center; }
+.stage-frame .stage-info-next {
+  min-width: 180px;
+  border: 2px solid #fff0b0;
+  padding: 12px 28px;
+  background: var(--gold);
+  color: #21192c;
+  font-size: 18px;
+}
+
+.stage-info-error { place-items: center; color: #ffc0ce; font-size: 22px; }
+
 /* 정산 표: 항목 · 계산식 · 소계 3열. */
 .settle { margin: 0 0 24px; }
 .settle > div {
@@ -730,6 +931,13 @@ button, select { font: inherit; }
     height: min(100svh, calc(100vw / 1.6)) !important;
     transform: translate(-50%, 50%);
   }
+  .stage-info-screen { display: block; }
+  .stage-info-header { margin-bottom: 16px; }
+  .stage-info-body { grid-template-columns: 1fr; }
+  .stage-map-card { min-height: 0; }
+  .stage-map-preview { width: 100%; }
+  .available-food-panel { margin-top: 16px; }
+  .stage-info-footer { margin-top: 16px; }
 }
 
 @media (orientation: landscape) and (max-height: 520px) {
@@ -743,6 +951,28 @@ button, select { font: inherit; }
   .step .reach, .feed { font-size: 9px; }
   .music-settings-game { top: 7px; right: 7px; }
   .game-settings-trigger { padding: 6px 8px !important; font-size: 11px; }
+
+  .stage-info-screen { display: grid; gap: 6px; padding: 7px; }
+  .stage-info-header { min-height: 38px; margin: 0; padding: 6px 12px; border-radius: 9px; }
+  .stage-info-header h1 { font-size: 20px; }
+  .stage-info-body { grid-template-columns: minmax(0, 3fr) minmax(260px, 1.75fr); gap: 7px; }
+  .stage-map-column { gap: 4px; }
+  .stage-map-card, .available-food-panel { border-radius: 9px; }
+  .stage-map-card { min-height: 0; padding: 5px; }
+  .stage-map-preview { width: min(100%, calc((100vh - 145px) * 1.6)); border-width: 2px; border-radius: 5px; }
+  .stage-map-preview > span { font-size: 11px; }
+  .stage-tip-list { gap: 1px; min-height: 30px; padding: 0 3px; font-size: 9px; }
+  .available-food-panel { grid-template-rows: auto auto minmax(44px, 1fr); gap: 4px; margin: 0; padding: 6px; }
+  .available-food-panel h2 { font-size: 15px; }
+  .food-slot-grid { gap: 4px; }
+  .stage-frame .food-slot { font-size: 25px; }
+  .food-hover-info { gap: 3px; min-height: 44px; padding-top: 4px; }
+  .food-hover-info > strong { font-size: 12px; }
+  .food-flow-part b { font-size: 16px; }
+  .food-flow-part small { font-size: 7px; }
+  .food-info-empty { font-size: 8px; }
+  .stage-info-footer { margin: 0; }
+  .stage-frame .stage-info-next { min-width: 120px; padding: 5px 16px; font-size: 12px; }
 
   .select-shell { overflow-y: auto; padding: 8px; }
   .select-screen { gap: 7px; margin-top: 0; }

@@ -6,6 +6,12 @@ import { facingFromDelta, fireFaceLayout, slimeSvg, type Facing } from "../app/s
 import { gameMusicSource } from "../app/music-source.js";
 import { gameSoundCues } from "../app/sound-events.js";
 import {
+  availableStageFoods,
+  stageInfoUiConfig,
+  validateStageInfoUiConfig,
+  type StageInfoUiConfig,
+} from "../app/stage-info.js";
+import {
   INGREDIENT_INTERVAL_MS,
   INGREDIENT_MAX,
   KITCHEN_ROWS,
@@ -26,6 +32,7 @@ import {
   fireConfig,
   isDish,
   orderConfig,
+  recipes,
   roundResult,
   currentStage,
   defaultStages,
@@ -35,6 +42,50 @@ import {
   type Order,
   type Stage,
 } from "../game/core.js";
+
+test("스테이지 정보는 실제 맵·레시피와 검증된 설정만 사용한다", () => {
+  assert.deepEqual(validateStageInfoUiConfig(stageInfoUiConfig), []);
+  assert.deepEqual(availableStageFoods(stageInfoUiConfig["1-1"]!), [
+    "grilled-mushroom",
+  ]);
+  assert.deepEqual(recipes["grilled-mushroom"], {
+    foodId: "grilled-mushroom",
+    ingredient: { itemId: "mushroom", count: 1 },
+    station: "stove",
+    requiredElement: "fire",
+    requiresCleanDish: true,
+    submissionStation: "submission",
+  });
+});
+
+test("스테이지 정보의 TIP·음식·맵 제한을 한 번에 검증한다", () => {
+  const invalid: StageInfoUiConfig = {
+    mapPreviewKey: "missing-map",
+    tipLines: ["가".repeat(31), "둘", "셋"],
+    availableFoodIds: [
+      "grilled-mushroom",
+      "grilled-mushroom",
+      "missing-food",
+      "four",
+      "five",
+      "six",
+      "seven",
+    ],
+    nextStep: "PLAY",
+  };
+  const errors = validateStageInfoUiConfig({ broken: invalid });
+  assert.equal(errors.length, 6);
+  assert.deepEqual(availableStageFoods(invalid), [
+    "grilled-mushroom",
+    "grilled-mushroom",
+  ]);
+});
+
+test("스테이지 제목은 정보 카드 한 줄 한도인 30자를 넘길 수 없다", () => {
+  const stages = defaultStages();
+  stages[0] = { ...stages[0]!, name: "가".repeat(31) };
+  assert.throws(() => initialState(1, ["water"], stages));
+});
 
 function until(state: GameState, done: (state: GameState) => boolean) {
   let next = state;

@@ -34,7 +34,6 @@ import {
   type ActorId,
   type Carried,
   type GameState,
-  type ItemId,
   type SlimeTypeId,
   type StationId,
 } from "../game/core";
@@ -48,6 +47,8 @@ import {
 import Music, { MusicSettings } from "./Music";
 import { gameMusicSource } from "./music-source";
 import { GameSoundEffects } from "./SoundEffects";
+import StageInfoScreen from "./StageInfoScreen";
+import { itemIcons, stationIcons } from "./stage-info";
 
 type View = {
   sync: (state: GameState) => void;
@@ -73,10 +74,6 @@ const FIRE_TEXTURE = { width: 348, height: 301 };
 const FIRE_SLIME_SCALE = SLIME_SCALE * 1.12;
 // 젓기만 손에 드는 것이 없어 따로 보여 줘야 한다.
 type Motion = "idle" | "walk" | "stir" | "pick";
-const itemIcons: Record<ItemId, string> = {
-  mushroom: "🍄",
-  "grilled-mushroom": "🍲",
-};
 const alertIcons: Record<string, string> = {
   WAITING: "⏳",
   SOURCE_EMPTY: "🫙",
@@ -100,16 +97,6 @@ const stationColors: Record<StationId, number> = {
   washer: 0x3e8e9e,
   table: 0x8b5b32,
 };
-const stationIcons: Record<StationId, string> = {
-  "ingredient-box": "🍄",
-  stove: "🍳",
-  submission: "📬",
-  trash: "🗑",
-  "dish-rack": "🍽️",
-  washer: "🫧",
-  table: "🪵",
-};
-
 const carriedIcon = (carried: Carried) =>
   isDish(carried)
     ? carried.status === "dirty"
@@ -160,9 +147,10 @@ export default function Game() {
   const [picked, setPicked] = useState<SlimeTypeId>("water");
   const [state, setState] = useState<GameState | null>(null);
   const [selectedActors, setSelectedActors] = useState<ActorId[]>([]);
+  const [stageInfoOpen, setStageInfoOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [resumeCount, setResumeCount] = useState<number | null>(null);
-  const paused = settingsOpen || resumeCount !== null;
+  const paused = stageInfoOpen || settingsOpen || resumeCount !== null;
 
   const [saved, setSaved] = useState("");
   const stateRef = useRef(state);
@@ -841,6 +829,7 @@ export default function Game() {
     roundSeed.current = next.seed;
     setSaved("");
     setSelectedActors([]);
+    setStageInfoOpen(true);
     setSettingsOpen(false);
     setResumeCount(null);
     setState(next);
@@ -859,11 +848,12 @@ export default function Game() {
         event.preventDefault();
         setSettingsOpen((open) => {
           const next = !open;
-          setResumeCount(next ? null : 3);
+          setResumeCount(next || stageInfoOpen ? null : 3);
           return next;
         });
         return;
       }
+      if (stageInfoOpen || settingsOpen) return;
       const elementByKey = {
         KeyQ: "water",
         KeyW: "fire",
@@ -891,7 +881,7 @@ export default function Game() {
       window.removeEventListener("keydown", down);
     };
     // 핸들러는 ref만 보므로 squad가 바뀔 때만 다시 건다.
-  }, [squad]);
+  }, [squad, settingsOpen, stageInfoOpen]);
 
   // 슬라임 선택 화면
   if (!squad || !state) {
@@ -962,7 +952,9 @@ export default function Game() {
   return (
     <main className="stage">
       <Music src={gameMusicSource(state.timeLeft, state.phase)} />
-      <GameSoundEffects state={state} selectedActors={selectedActors} />
+      {!stageInfoOpen && (
+        <GameSoundEffects state={state} selectedActors={selectedActors} />
+      )}
       <div className="stage-frame">
         <div id="game-canvas" aria-label="탑다운 판타지 식당 게임 맵" />
         <MusicSettings
@@ -970,7 +962,7 @@ export default function Game() {
           open={settingsOpen}
           onOpenChange={(open) => {
             setSettingsOpen(open);
-            setResumeCount(open ? null : 3);
+            setResumeCount(open || stageInfoOpen ? null : 3);
           }}
         />
         {resumeCount !== null && (
@@ -1055,6 +1047,16 @@ export default function Game() {
           </div>
         </div>
 
+        {stageInfoOpen && (
+          <StageInfoScreen
+            key={currentStage(state).id}
+            stage={currentStage(state)}
+            onNext={(step) => {
+              if (step === "PLAY") setStageInfoOpen(false);
+            }}
+          />
+        )}
+
       </div>
 
       {state.phase !== "playing" && (
@@ -1102,7 +1104,8 @@ export default function Game() {
                     savedRef.current = false;
                     setSaved("");
                     setSelectedActors([]);
-                    setState((current) => (current ? nextStage(current) : current));
+                    setState(nextStage(state));
+                    setStageInfoOpen(true);
                   }}
                 >
                   다음 스테이지

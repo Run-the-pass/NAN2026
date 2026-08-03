@@ -25,8 +25,12 @@ export type WorkstationStatus =
 export type TilePosition = { col: number; row: number };
 export type Position = { x: number; y: number };
 
-export const itemLabel = (item: ItemId) =>
-  item === "mushroom" ? "버섯" : "버섯 구이";
+export const itemLabels: Record<ItemId, string> = {
+  mushroom: "버섯",
+  "grilled-mushroom": "버섯 구이",
+};
+
+export const itemLabel = (item: ItemId) => itemLabels[item];
 
 export const isDish = (carried: Carried): carried is Dish =>
   typeof carried !== "string";
@@ -65,6 +69,29 @@ export const allStations: StationId[] = [
   "washer",
   "table",
 ];
+
+export type Recipe = {
+  foodId: ItemId;
+  ingredient: { itemId: ItemId; count: number };
+  station: StationId;
+  requiredElement: SlimeElement;
+  requiresCleanDish: boolean;
+  submissionStation: StationId;
+};
+
+// 실제 조리 규칙과 스테이지 정보 화면이 함께 읽는 레시피 원본.
+export const recipes = {
+  "grilled-mushroom": {
+    foodId: "grilled-mushroom",
+    ingredient: { itemId: "mushroom", count: 1 },
+    station: "stove",
+    requiredElement: "fire",
+    requiresCleanDish: true,
+    submissionStation: "submission",
+  },
+} satisfies Partial<Record<ItemId, Recipe>>;
+
+const grilledMushroomRecipe = recipes["grilled-mushroom"];
 
 export type StatLevels = { workSpeed: number; moveSpeed: number };
 
@@ -469,7 +496,7 @@ export const defaultStages = (): Stage[] => [
 function mushroomOrders(count: number): Order[] {
   return Array.from({ length: count }, (_, index) => ({
     id: `order-${index + 1}`,
-    foodId: "grilled-mushroom" as ItemId,
+    foodId: grilledMushroomRecipe.foodId,
     targetCount: 1,
     submittedCount: 0,
   }));
@@ -484,6 +511,7 @@ function checkStages(stages: Stage[], stageIndex: number): Stage[] {
       (stage) =>
         !stage.id ||
         !stage.name ||
+        stage.name.length > 30 ||
         !Number.isSafeInteger(stage.timeLimitMs) ||
         stage.timeLimitMs < 1_000,
     ) ||
@@ -644,7 +672,9 @@ function releaseWork(state: GameState, actorIds: ActorId[]): GameState {
       ...next,
       workstation: {
         ...next.workstation,
-        status: next.stove.includes("mushroom") ? "IDLE" : "MISSING_MATERIAL",
+        status: next.stove.includes(grilledMushroomRecipe.ingredient.itemId)
+          ? "IDLE"
+          : "MISSING_MATERIAL",
         workerId: null,
         progressMs: 0,
       },
@@ -755,16 +785,19 @@ function canUseStation(
   }
   if (station === "ingredient-box") {
     const clean = dishIndex(actor, (dish) => dish.status === "clean") >= 0;
-    return clean || canCarry(actor, "mushroom");
+    return clean || canCarry(actor, grilledMushroomRecipe.ingredient.itemId);
   }
   if (station === "stove") {
     return (
-      actor.carrying.includes("mushroom") ||
-      dishIndex(actor, (dish) => dish.content === "mushroom") >= 0 ||
-      (state.stove.includes("grilled-mushroom") &&
+      actor.carrying.includes(grilledMushroomRecipe.ingredient.itemId) ||
+      dishIndex(
+        actor,
+        (dish) => dish.content === grilledMushroomRecipe.ingredient.itemId,
+      ) >= 0 ||
+      (state.stove.includes(grilledMushroomRecipe.foodId) &&
         dishIndex(actor, (dish) => dish.status === "clean") >= 0) ||
-      state.stove.includes("grilled-mushroom") ||
-      actor.typeId === "fire"
+      state.stove.includes(grilledMushroomRecipe.foodId) ||
+      actor.typeId === grilledMushroomRecipe.requiredElement
     );
   }
   return false;
@@ -969,8 +1002,8 @@ function moveActor(state: GameState, actorId: ActorId, deltaMs: number) {
           ? actor.typeId !== fireConfig.extinguishElement
           : actor.intent.station === "stove" &&
             actor.carrying.length === 0 &&
-            !next.stove.includes("grilled-mushroom") &&
-            actor.typeId !== "fire";
+            !next.stove.includes(grilledMushroomRecipe.foodId) &&
+            actor.typeId !== grilledMushroomRecipe.requiredElement;
         if (wrongElement) {
           next = refuse(
             next,
@@ -1125,16 +1158,20 @@ function moveActor(state: GameState, actorId: ActorId, deltaMs: number) {
         alert: null,
         alertMs: 0,
       };
-      next = event(next, `${actor.name}이(가) 버섯 구이를 완성했습니다.`, {
-        actors: patchActor(next, actorId, actor),
-        stove: ["grilled-mushroom"],
-        workstation: {
-          ...next.workstation,
-          status: "COMPLETE",
-          workerId: null,
-          progressMs: next.workstation.totalMs,
+      next = event(
+        next,
+        `${actor.name}이(가) ${itemLabel(grilledMushroomRecipe.foodId)}를 완성했습니다.`,
+        {
+          actors: patchActor(next, actorId, actor),
+          stove: [grilledMushroomRecipe.foodId],
+          workstation: {
+            ...next.workstation,
+            status: "COMPLETE",
+            workerId: null,
+            progressMs: next.workstation.totalMs,
+          },
         },
-      });
+      );
       continue;
     }
 
@@ -1329,7 +1366,11 @@ function moveActor(state: GameState, actorId: ActorId, deltaMs: number) {
       if (clean >= 0) {
         const carrying = actor.carrying.map((carried, index) =>
           index === clean && isDish(carried)
-            ? { ...carried, status: "filled" as const, content: "mushroom" as const }
+            ? {
+                ...carried,
+                status: "filled" as const,
+                content: grilledMushroomRecipe.ingredient.itemId,
+              }
             : carried,
         );
         actor = {
@@ -1346,14 +1387,14 @@ function moveActor(state: GameState, actorId: ActorId, deltaMs: number) {
         });
         continue;
       }
-      if (!canCarry(actor, "mushroom")) {
+      if (!canCarry(actor, grilledMushroomRecipe.ingredient.itemId)) {
         next = refuse(next, actorId, actor, "이미 음식이나 그릇을 들고 있습니다.");
         actor = next.actors[actorId]!;
         continue;
       }
       actor = {
         ...actor,
-        carrying: [...actor.carrying, "mushroom"],
+        carrying: [...actor.carrying, grilledMushroomRecipe.ingredient.itemId],
         intent: null,
         status: "IDLE",
         alert: null,
@@ -1370,8 +1411,13 @@ function moveActor(state: GameState, actorId: ActorId, deltaMs: number) {
     }
 
     if (station === "stove") {
-      const looseMushroom = actor.carrying.indexOf("mushroom");
-      const mushroomDish = dishIndex(actor, (dish) => dish.content === "mushroom");
+      const looseMushroom = actor.carrying.indexOf(
+        grilledMushroomRecipe.ingredient.itemId,
+      );
+      const mushroomDish = dishIndex(
+        actor,
+        (dish) => dish.content === grilledMushroomRecipe.ingredient.itemId,
+      );
       if (looseMushroom >= 0 || mushroomDish >= 0) {
         if (next.stove.length >= STORAGE_MAX) {
           next = refuse(next, actorId, actor, "조리 도구가 사용 중입니다.", "TARGET_FULL");
@@ -1394,7 +1440,7 @@ function moveActor(state: GameState, actorId: ActorId, deltaMs: number) {
         };
         next = event(next, `${actor.name}이(가) 조리 도구에 버섯을 넣었습니다.`, {
           actors: patchActor(next, actorId, actor),
-          stove: ["mushroom"],
+          stove: [grilledMushroomRecipe.ingredient.itemId],
           workstation: {
             ...next.workstation,
             status: "IDLE",
@@ -1404,7 +1450,7 @@ function moveActor(state: GameState, actorId: ActorId, deltaMs: number) {
         });
         continue;
       }
-      if (next.stove.includes("grilled-mushroom")) {
+      if (next.stove.includes(grilledMushroomRecipe.foodId)) {
         const clean = dishIndex(actor, (dish) => dish.status === "clean");
         if (clean < 0) {
           next = refuse(next, actorId, actor, "완성 음식을 담을 깨끗한 그릇이 필요합니다.");
@@ -1418,7 +1464,7 @@ function moveActor(state: GameState, actorId: ActorId, deltaMs: number) {
               ? {
                   ...carried,
                   status: "filled" as const,
-                  content: "grilled-mushroom" as const,
+                  content: grilledMushroomRecipe.foodId,
                 }
               : carried,
           ),
@@ -1442,7 +1488,7 @@ function moveActor(state: GameState, actorId: ActorId, deltaMs: number) {
         actor = next.actors[actorId]!;
         continue;
       }
-      if (actor.typeId !== "fire") {
+      if (actor.typeId !== grilledMushroomRecipe.requiredElement) {
         next = refuse(
           next,
           actorId,
@@ -1453,7 +1499,7 @@ function moveActor(state: GameState, actorId: ActorId, deltaMs: number) {
         actor = next.actors[actorId]!;
         continue;
       }
-      if (!next.stove.includes("mushroom")) {
+      if (!next.stove.includes(grilledMushroomRecipe.ingredient.itemId)) {
         actor = waitAtStation(actor, true);
         next = {
           ...next,
