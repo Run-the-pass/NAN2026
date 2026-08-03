@@ -51,13 +51,12 @@ import {
 test("스테이지 정보는 실제 맵·레시피와 검증된 설정만 사용한다", () => {
   assert.deepEqual(validateStageInfoUiConfig(stageInfoUiConfig), []);
   assert.deepEqual(availableStageFoods(stageInfoUiConfig["1-1"]!), [
-    "grilled-mushroom",
+    "roasted-potato",
   ]);
-  assert.deepEqual(recipes["grilled-mushroom"], {
-    foodId: "grilled-mushroom",
-    ingredient: { itemId: "mushroom", count: 1 },
+  assert.deepEqual(recipes["roasted-potato"], {
+    foodId: "roasted-potato",
+    ingredient: { itemId: "potato", count: 1 },
     station: "stove",
-    requiredElement: "fire",
     requiresCleanDish: true,
     submissionStation: "submission",
   });
@@ -68,8 +67,8 @@ test("스테이지 정보의 TIP·음식·맵 제한을 한 번에 검증한다"
     mapPreviewKey: "missing-map",
     tipLines: ["가".repeat(31), "둘", "셋"],
     availableFoodIds: [
-      "grilled-mushroom",
-      "grilled-mushroom",
+      "roasted-potato",
+      "roasted-potato",
       "missing-food",
       "four",
       "five",
@@ -81,8 +80,8 @@ test("스테이지 정보의 TIP·음식·맵 제한을 한 번에 검증한다"
   const errors = validateStageInfoUiConfig({ broken: invalid });
   assert.equal(errors.length, 6);
   assert.deepEqual(availableStageFoods(invalid), [
-    "grilled-mushroom",
-    "grilled-mushroom",
+    "roasted-potato",
+    "roasted-potato",
   ]);
 });
 
@@ -139,7 +138,7 @@ test("맵 편집 데이터는 누락 설비와 잘못된 작업·스폰 칸을 �
   assert.ok(errors.some((error) => error.includes("스폰")));
 });
 
-test("재료 상자는 버섯을 최대치까지 채운다", () => {
+test("재료 상자는 감자를 최대치까지 채운다", () => {
   let state = initialState(1, ["water"]);
   for (let elapsed = 0; elapsed < INGREDIENT_INTERVAL_MS * 5; elapsed += 50) {
     state = tick(state, 50);
@@ -221,14 +220,14 @@ test("효과음은 조리 시작·음식 제출·화재 전환을 구분한다",
   assert.ok(gameSoundCues(burning, state).includes("fire-extinguish"));
 });
 
-test("버섯을 불 슬라임이 조리하고 제출하면 주문 수가 오른다", () => {
+test("감자를 조리해 제출하면 주문 수가 오른다", () => {
   let state = initialState(1, ["lightning", "fire"]);
   state = untilIdle(interactActors(state, ["lightning-1"], "ingredient-box"));
-  assert.deepEqual(state.actors["lightning-1"]!.carrying, ["mushroom"]);
+  assert.deepEqual(state.actors["lightning-1"]!.carrying, ["potato"]);
   state = untilIdle(interactActors(state, ["lightning-1"], "stove"));
-  assert.deepEqual(state.stove, ["mushroom"]);
+  assert.deepEqual(state.stove, ["potato"]);
   state = untilIdle(interactActors(state, ["fire-1"], "stove"));
-  assert.deepEqual(state.stove, ["grilled-mushroom"]);
+  assert.deepEqual(state.stove, ["roasted-potato"]);
   assert.equal(state.workstation.status, "COMPLETE");
   state = untilIdle(interactActors(state, ["lightning-1"], "dish-rack"));
   state = untilIdle(interactActors(state, ["lightning-1"], "stove"));
@@ -242,7 +241,7 @@ test("버섯을 불 슬라임이 조리하고 제출하면 주문 수가 오른�
   );
 });
 
-test("식재료가 들어오면 기다리던 불 슬라임이 자동으로 조리한다", () => {
+test("식재료가 들어오면 기다리던 슬라임이 자동으로 조리한다", () => {
   let state = initialState(1, ["fire", "lightning"]);
   state = untilIdle(interactActors(state, ["lightning-1"], "ingredient-box"));
   state = interactActors(state, ["fire-1"], "stove");
@@ -261,7 +260,8 @@ test("식재료가 들어오면 기다리던 불 슬라임이 자동으로 조�
   assert.ok(state.workstation.progressMs < state.workstation.totalMs);
 });
 
-test("복수 명령에서는 불 슬라임만 한 마리 조리한다", () => {
+// 조리 도구는 속성을 가리지 않는다. 다만 한 번에 한 마리만 작업한다.
+test("복수 명령에도 조리 도구는 속성과 무관하게 한 마리만 쓴다", () => {
   let state = initialState(1, ["water", "fire", "lightning", "earth"]);
   state = untilIdle(interactActors(state, ["lightning-1"], "ingredient-box"));
   state = untilIdle(interactActors(state, ["lightning-1"], "stove"));
@@ -271,13 +271,22 @@ test("복수 명령에서는 불 슬라임만 한 마리 조리한다", () => {
     "stove",
   );
   state = until(state, (current) => current.workstation.status === "WORKING");
-  assert.equal(state.workstation.workerId, "fire-1");
+  assert.ok(state.workstation.workerId);
   assert.equal(
     Object.values(state.actors).filter((actor) => actor?.status === "WORKING")
       .length,
     1,
   );
-  assert.ok(state.history.some((entry) => entry.includes("불 슬라임만")));
+  assert.ok(!state.history.some((entry) => entry.includes("불 슬라임만")));
+});
+
+// 불 속성이 아니어도 조리가 끝까지 진행된다.
+test("불이 아닌 슬라임도 조리해서 음식을 완성한다", () => {
+  let state = initialState(1, ["water"]);
+  state = untilIdle(interactActors(state, ["water-1"], "ingredient-box"));
+  state = untilIdle(interactActors(state, ["water-1"], "stove"));
+  state = untilIdle(interactActors(state, ["water-1"], "stove"));
+  assert.deepEqual(state.stove, ["roasted-potato"]);
 });
 
 test("새 이동 명령은 조리 작업을 취소하고 조리 도구 잠금을 푼다", () => {
@@ -323,7 +332,7 @@ test("같은 속성 슬라임을 여러 마리 데려올 수 있다", () => {
   const moved = untilIdle(
     interactActors(state, ["water-2"], "ingredient-box"),
   );
-  assert.deepEqual(moved.actors["water-2"]!.carrying, ["mushroom"]);
+  assert.deepEqual(moved.actors["water-2"]!.carrying, ["potato"]);
   assert.deepEqual(moved.actors["water-1"]!.carrying, []);
   assert.deepEqual(
     { x: moved.actors["water-1"]!.x, y: moved.actors["water-1"]!.y },
@@ -337,8 +346,8 @@ test("CLI는 속성명으로 첫 마리를, ID로 특정 마리를 지목한다"
     "water:ingredient-box",
     "water-2:ingredient-box",
   ]);
-  assert.deepEqual(run.final.actors["water-1"]!.carrying, ["mushroom"]);
-  assert.deepEqual(run.final.actors["water-2"]!.carrying, ["mushroom"]);
+  assert.deepEqual(run.final.actors["water-1"]!.carrying, ["potato"]);
+  assert.deepEqual(run.final.actors["water-2"]!.carrying, ["potato"]);
   assert.throws(() => simulate(["--slimes=water", "earth:stove"]));
 });
 
@@ -412,7 +421,7 @@ test("그릇과 테이블은 조리·제출·오염·세척 동안 ID와 내용�
   state = untilIdle(interactActors(state, ["earth-1"], "ingredient-box"));
   assert.equal(
     state.actors["earth-1"]!.carrying.some(
-      (carried) => isDish(carried) && carried.content === "mushroom",
+      (carried) => isDish(carried) && carried.content === "potato",
     ),
     true,
   );
@@ -477,8 +486,8 @@ const oneStage = (orders: Order[], timeLimitMs = 180_000): Stage[] => [
 
 test("라운드 주문 목록을 주입하고 제출마다 진행도가 오른다", () => {
   const orders: Order[] = [
-    { id: "a", foodId: "grilled-mushroom", targetCount: 2, submittedCount: 0 },
-    { id: "b", foodId: "grilled-mushroom", targetCount: 1, submittedCount: 0 },
+    { id: "a", foodId: "roasted-potato", targetCount: 2, submittedCount: 0 },
+    { id: "b", foodId: "roasted-potato", targetCount: 1, submittedCount: 0 },
   ];
   let state = initialState(1, ["water", "lightning", "fire"], oneStage(orders));
   assert.equal(state.goal, 2);
@@ -509,7 +518,7 @@ test("주문에 없는 음식은 설정대로 처리하고 진행도를 올리�
   const rejected = untilIdle(interactActors(state, ["lightning-1"], "submission"));
   assert.equal(
     rejected.actors["lightning-1"]!.carrying.some(
-      (carried) => isDish(carried) && carried.content === "mushroom",
+      (carried) => isDish(carried) && carried.content === "potato",
     ),
     true,
   );
@@ -552,7 +561,7 @@ test("라운드는 주문을 다 채우면 성공, 남으면 실패로 판정한
       1,
       ["water"],
       oneStage([
-        { id: "a", foodId: "grilled-mushroom", targetCount: 0, submittedCount: 0 },
+        { id: "a", foodId: "roasted-potato", targetCount: 0, submittedCount: 0 },
       ]),
     ),
   );
@@ -563,8 +572,8 @@ test("라운드는 주문을 다 채우면 성공, 남으면 실패로 판정한
 
 test("스테이지를 깨면 골드와 스쿼드를 이어 다음 스테이지로 넘어간다", () => {
   const stages: Stage[] = [
-    { id: "1-1", name: "첫 판", orders: [{ id: "a", foodId: "grilled-mushroom", targetCount: 1, submittedCount: 0 }], timeLimitMs: 180_000 },
-    { id: "1-2", name: "둘째 판", orders: [{ id: "b", foodId: "grilled-mushroom", targetCount: 1, submittedCount: 0 }], timeLimitMs: 120_000 },
+    { id: "1-1", name: "첫 판", orders: [{ id: "a", foodId: "roasted-potato", targetCount: 1, submittedCount: 0 }], timeLimitMs: 180_000 },
+    { id: "1-2", name: "둘째 판", orders: [{ id: "b", foodId: "roasted-potato", targetCount: 1, submittedCount: 0 }], timeLimitMs: 120_000 },
   ];
   let state = initialState(1, ["lightning", "fire"], stages);
   assert.equal(currentStage(state).id, "1-1");
@@ -631,12 +640,12 @@ test("물 슬라임이 5초 상호작용하면 불을 끄고 설비를 되돌린
   state = untilIdle(partial);
   assert.equal(state.fires.stove!.onFire, false);
   assert.equal(state.fires.stove!.extinguishMs, 0);
-  // 진화 뒤에는 깨끗한 그릇에 다시 버섯 구이를 담을 수 있다.
+  // 진화 뒤에는 깨끗한 그릇에 다시 구운 감자를 담을 수 있다.
   state = untilIdle(interactActors(state, ["lightning-1"], "dish-rack"));
   state = untilIdle(interactActors(state, ["lightning-1"], "stove"));
   assert.equal(
     state.actors["lightning-1"]!.carrying.some(
-      (carried) => isDish(carried) && carried.content === "grilled-mushroom",
+      (carried) => isDish(carried) && carried.content === "roasted-potato",
     ),
     true,
   );

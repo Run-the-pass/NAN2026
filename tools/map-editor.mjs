@@ -78,6 +78,9 @@ function validateMap(data) {
 
 const serializeMap = (data) => `// \`npm run map:edit\`가 이 파일을 검증한 뒤 직접 갱신한다.\nexport default ${JSON.stringify(data, null, 2)} as const;\n`;
 const json = (response, status, body) => {
+  // 응답을 이미 보내기 시작한 뒤(예: HTML 스트리밍 중 실패) 오류를 다시 쓰면
+  // 서버 자체가 죽는다. 그 경우는 연결만 닫는다.
+  if (response.headersSent) return response.end();
   response.writeHead(status, { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" });
   response.end(JSON.stringify(body));
 };
@@ -98,9 +101,13 @@ if (process.argv.includes("--check")) {
   console.log("맵 데이터 검증 PASS");
 } else {
   const origin = `http://${HOST}:${PORT}`;
+  // 브라우저가 localhost로 열어도 같은 로컬 서버다. 둘 다 허용하지 않으면
+  // 주소창에 localhost를 친 것만으로 403이 떨어진다.
+  const localHosts = new Set([`${HOST}:${PORT}`, `localhost:${PORT}`]);
+  const localOrigins = new Set([origin, `http://localhost:${PORT}`]);
   const server = createServer(async (request, response) => {
     secureHeaders(response);
-    if (request.headers.host !== `${HOST}:${PORT}`) return json(response, 403, { errors: ["로컬 편집기 주소로만 접근할 수 있습니다."] });
+    if (!localHosts.has(request.headers.host)) return json(response, 403, { errors: ["로컬 편집기 주소로만 접근할 수 있습니다."] });
     try {
       if (request.method === "GET" && request.url === "/") {
         response.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" });
@@ -108,7 +115,7 @@ if (process.argv.includes("--check")) {
       }
       if (request.method === "GET" && request.url === "/map") return json(response, 200, await currentMap());
       if (request.method === "PUT" && request.url === "/map") {
-        if (request.headers.origin !== origin || request.headers["content-type"]?.split(";")[0] !== "application/json") return json(response, 403, { errors: ["편집기 화면에서만 저장할 수 있습니다."] });
+        if (!localOrigins.has(request.headers.origin) || request.headers["content-type"]?.split(";")[0] !== "application/json") return json(response, 403, { errors: ["편집기 화면에서만 저장할 수 있습니다."] });
         let body = "";
         for await (const chunk of request) {
           body += chunk;

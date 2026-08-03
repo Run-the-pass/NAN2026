@@ -6,7 +6,7 @@ export type SlimeTypeId = SlimeElement;
 // 마리 데려올 수 있으므로 속성 자체를 키로 쓰지 않는다. 속성은
 // ActorState.typeId에서 읽는다.
 export type ActorId = string;
-export type ItemId = "mushroom" | "grilled-mushroom";
+export type ItemId = "potato" | "roasted-potato";
 export type DishStatus = "clean" | "filled" | "dirty";
 export type Dish = { id: string; status: DishStatus; content: ItemId | null };
 export type Carried = ItemId | Dish;
@@ -28,8 +28,8 @@ export type TilePosition = { col: number; row: number };
 export type Position = { x: number; y: number };
 
 export const itemLabels: Record<ItemId, string> = {
-  mushroom: "버섯",
-  "grilled-mushroom": "버섯 구이",
+  potato: "감자",
+  "roasted-potato": "구운 감자",
 };
 
 export const itemLabel = (item: ItemId) => itemLabels[item];
@@ -61,7 +61,7 @@ export const stationLabels: Record<StationId, string> = {
   table: "테이블",
 };
 
-export const allItems: ItemId[] = ["mushroom", "grilled-mushroom"];
+export const allItems: ItemId[] = ["potato", "roasted-potato"];
 export const allStations: StationId[] = [
   "ingredient-box",
   "stove",
@@ -76,24 +76,22 @@ export type Recipe = {
   foodId: ItemId;
   ingredient: { itemId: ItemId; count: number };
   station: StationId;
-  requiredElement: SlimeElement;
   requiresCleanDish: boolean;
   submissionStation: StationId;
 };
 
 // 실제 조리 규칙과 스테이지 정보 화면이 함께 읽는 레시피 원본.
 export const recipes = {
-  "grilled-mushroom": {
-    foodId: "grilled-mushroom",
-    ingredient: { itemId: "mushroom", count: 1 },
+  "roasted-potato": {
+    foodId: "roasted-potato",
+    ingredient: { itemId: "potato", count: 1 },
     station: "stove",
-    requiredElement: "fire",
     requiresCleanDish: true,
     submissionStation: "submission",
   },
 } satisfies Partial<Record<ItemId, Recipe>>;
 
-const grilledMushroomRecipe = recipes["grilled-mushroom"];
+const potatoRecipe = recipes["roasted-potato"];
 
 export type StatLevels = { workSpeed: number; moveSpeed: number };
 
@@ -545,15 +543,15 @@ const newFires = (): Partial<Record<StationId, FireState>> =>
 // 기본 스테이지 목록. 이름과 주문 수는 임시값이며 기획이 정해지면
 // 이 배열만 바꾸면 된다.
 export const defaultStages = (): Stage[] => [
-  { id: "1-1", name: "첫 영업", orders: mushroomOrders(3), timeLimitMs: 180_000 },
-  { id: "1-2", name: "점심 러시", orders: mushroomOrders(5), timeLimitMs: 180_000 },
-  { id: "1-3", name: "저녁 마감", orders: mushroomOrders(7), timeLimitMs: 180_000 },
+  { id: "1-1", name: "첫 영업", orders: potatoOrders(3), timeLimitMs: 180_000 },
+  { id: "1-2", name: "점심 러시", orders: potatoOrders(5), timeLimitMs: 180_000 },
+  { id: "1-3", name: "저녁 마감", orders: potatoOrders(7), timeLimitMs: 180_000 },
 ];
 
-function mushroomOrders(count: number): Order[] {
+function potatoOrders(count: number): Order[] {
   return Array.from({ length: count }, (_, index) => ({
     id: `order-${index + 1}`,
-    foodId: grilledMushroomRecipe.foodId,
+    foodId: potatoRecipe.foodId,
     targetCount: 1,
     submittedCount: 0,
   }));
@@ -729,7 +727,7 @@ function releaseWork(state: GameState, actorIds: ActorId[]): GameState {
       ...next,
       workstation: {
         ...next.workstation,
-        status: next.stove.includes(grilledMushroomRecipe.ingredient.itemId)
+        status: next.stove.includes(potatoRecipe.ingredient.itemId)
           ? "IDLE"
           : "MISSING_MATERIAL",
         workerId: null,
@@ -842,19 +840,20 @@ function canUseStation(
   }
   if (station === "ingredient-box") {
     const clean = dishIndex(actor, (dish) => dish.status === "clean") >= 0;
-    return clean || canCarry(actor, grilledMushroomRecipe.ingredient.itemId);
+    return clean || canCarry(actor, potatoRecipe.ingredient.itemId);
   }
   if (station === "stove") {
     return (
-      actor.carrying.includes(grilledMushroomRecipe.ingredient.itemId) ||
+      actor.carrying.includes(potatoRecipe.ingredient.itemId) ||
       dishIndex(
         actor,
-        (dish) => dish.content === grilledMushroomRecipe.ingredient.itemId,
+        (dish) => dish.content === potatoRecipe.ingredient.itemId,
       ) >= 0 ||
-      (state.stove.includes(grilledMushroomRecipe.foodId) &&
+      (state.stove.includes(potatoRecipe.foodId) &&
         dishIndex(actor, (dish) => dish.status === "clean") >= 0) ||
-      state.stove.includes(grilledMushroomRecipe.foodId) ||
-      actor.typeId === grilledMushroomRecipe.requiredElement
+      state.stove.includes(potatoRecipe.foodId) ||
+      // 속성 제한이 없으므로 빈손인 슬라임은 누구나 조리할 수 있다.
+      actor.carrying.length === 0
     );
   }
   return false;
@@ -1055,20 +1054,12 @@ function moveActor(state: GameState, actorId: ActorId, deltaMs: number) {
       if (actor.intent.leader !== actorId) {
         // 불난 설비에서는 진화 속성만 남고 나머지는 작업 불가다.
         const burning = isBurning(next, actor.intent.station);
-        const wrongElement = burning
-          ? actor.typeId !== fireConfig.extinguishElement
-          : actor.intent.station === "stove" &&
-            actor.carrying.length === 0 &&
-            !next.stove.includes(grilledMushroomRecipe.foodId) &&
-            actor.typeId !== grilledMushroomRecipe.requiredElement;
-        if (wrongElement) {
+        if (burning && actor.typeId !== fireConfig.extinguishElement) {
           next = refuse(
             next,
             actorId,
             actor,
-            burning
-              ? "물 슬라임만 불을 끌 수 있습니다."
-              : "불 슬라임만 가열 조리를 할 수 있습니다.",
+            "물 슬라임만 불을 끌 수 있습니다.",
             "WRONG_ELEMENT",
           );
           actor = next.actors[actorId]!;
@@ -1217,10 +1208,10 @@ function moveActor(state: GameState, actorId: ActorId, deltaMs: number) {
       };
       next = event(
         next,
-        `${actor.name}이(가) ${itemLabel(grilledMushroomRecipe.foodId)}를 완성했습니다.`,
+        `${actor.name}이(가) ${itemLabel(potatoRecipe.foodId)}를 완성했습니다.`,
         {
           actors: patchActor(next, actorId, actor),
-          stove: [grilledMushroomRecipe.foodId],
+          stove: [potatoRecipe.foodId],
           workstation: {
             ...next.workstation,
             status: "COMPLETE",
@@ -1426,7 +1417,7 @@ function moveActor(state: GameState, actorId: ActorId, deltaMs: number) {
             ? {
                 ...carried,
                 status: "filled" as const,
-                content: grilledMushroomRecipe.ingredient.itemId,
+                content: potatoRecipe.ingredient.itemId,
               }
             : carried,
         );
@@ -1438,26 +1429,26 @@ function moveActor(state: GameState, actorId: ActorId, deltaMs: number) {
           alert: null,
           alertMs: 0,
         };
-        next = event(next, `${actor.name}이(가) 그릇에 버섯을 담았습니다.`, {
+        next = event(next, `${actor.name}이(가) 그릇에 감자를 담았습니다.`, {
           actors: patchActor(next, actorId, actor),
           ingredients: { ...next.ingredients, stock: next.ingredients.stock - 1 },
         });
         continue;
       }
-      if (!canCarry(actor, grilledMushroomRecipe.ingredient.itemId)) {
+      if (!canCarry(actor, potatoRecipe.ingredient.itemId)) {
         next = refuse(next, actorId, actor, "이미 음식이나 그릇을 들고 있습니다.");
         actor = next.actors[actorId]!;
         continue;
       }
       actor = {
         ...actor,
-        carrying: [...actor.carrying, grilledMushroomRecipe.ingredient.itemId],
+        carrying: [...actor.carrying, potatoRecipe.ingredient.itemId],
         intent: null,
         status: "IDLE",
         alert: null,
         alertMs: 0,
       };
-      next = event(next, `${actor.name}이(가) 버섯을 들었습니다.`, {
+      next = event(next, `${actor.name}이(가) 감자를 들었습니다.`, {
         actors: patchActor(next, actorId, actor),
         ingredients: {
           ...next.ingredients,
@@ -1468,24 +1459,24 @@ function moveActor(state: GameState, actorId: ActorId, deltaMs: number) {
     }
 
     if (station === "stove") {
-      const looseMushroom = actor.carrying.indexOf(
-        grilledMushroomRecipe.ingredient.itemId,
+      const loosePotato = actor.carrying.indexOf(
+        potatoRecipe.ingredient.itemId,
       );
-      const mushroomDish = dishIndex(
+      const potatoDish = dishIndex(
         actor,
-        (dish) => dish.content === grilledMushroomRecipe.ingredient.itemId,
+        (dish) => dish.content === potatoRecipe.ingredient.itemId,
       );
-      if (looseMushroom >= 0 || mushroomDish >= 0) {
+      if (loosePotato >= 0 || potatoDish >= 0) {
         if (next.stove.length >= STORAGE_MAX) {
           next = refuse(next, actorId, actor, "조리 도구가 사용 중입니다.", "TARGET_FULL");
           actor = next.actors[actorId]!;
           continue;
         }
         const carrying = actor.carrying
-          .filter((_, index) => index !== looseMushroom)
+          .filter((_, index) => index !== loosePotato)
           .map((carried, index) => {
-            const originalIndex = looseMushroom >= 0 ? index + 1 : index;
-            return originalIndex === mushroomDish && isDish(carried)
+            const originalIndex = loosePotato >= 0 ? index + 1 : index;
+            return originalIndex === potatoDish && isDish(carried)
               ? { ...carried, status: "clean" as const, content: null }
               : carried;
           });
@@ -1495,9 +1486,9 @@ function moveActor(state: GameState, actorId: ActorId, deltaMs: number) {
           intent: null,
           status: "IDLE",
         };
-        next = event(next, `${actor.name}이(가) 조리 도구에 버섯을 넣었습니다.`, {
+        next = event(next, `${actor.name}이(가) 조리 도구에 감자를 넣었습니다.`, {
           actors: patchActor(next, actorId, actor),
-          stove: [grilledMushroomRecipe.ingredient.itemId],
+          stove: [potatoRecipe.ingredient.itemId],
           workstation: {
             ...next.workstation,
             status: "IDLE",
@@ -1507,7 +1498,7 @@ function moveActor(state: GameState, actorId: ActorId, deltaMs: number) {
         });
         continue;
       }
-      if (next.stove.includes(grilledMushroomRecipe.foodId)) {
+      if (next.stove.includes(potatoRecipe.foodId)) {
         const clean = dishIndex(actor, (dish) => dish.status === "clean");
         if (clean < 0) {
           next = refuse(next, actorId, actor, "완성 음식을 담을 깨끗한 그릇이 필요합니다.");
@@ -1521,14 +1512,14 @@ function moveActor(state: GameState, actorId: ActorId, deltaMs: number) {
               ? {
                   ...carried,
                   status: "filled" as const,
-                  content: grilledMushroomRecipe.foodId,
+                  content: potatoRecipe.foodId,
                 }
               : carried,
           ),
           intent: null,
           status: "IDLE",
         };
-        next = event(next, `${actor.name}이(가) 그릇에 버섯 구이를 담았습니다.`, {
+        next = event(next, `${actor.name}이(가) 그릇에 구운 감자를 담았습니다.`, {
           actors: patchActor(next, actorId, actor),
           stove: [],
           workstation: {
@@ -1545,18 +1536,7 @@ function moveActor(state: GameState, actorId: ActorId, deltaMs: number) {
         actor = next.actors[actorId]!;
         continue;
       }
-      if (actor.typeId !== grilledMushroomRecipe.requiredElement) {
-        next = refuse(
-          next,
-          actorId,
-          actor,
-          "불 슬라임만 가열 조리를 할 수 있습니다.",
-          "WRONG_ELEMENT",
-        );
-        actor = next.actors[actorId]!;
-        continue;
-      }
-      if (!next.stove.includes(grilledMushroomRecipe.ingredient.itemId)) {
+      if (!next.stove.includes(potatoRecipe.ingredient.itemId)) {
         actor = waitAtStation(actor, true);
         next = {
           ...next,
@@ -1579,7 +1559,7 @@ function moveActor(state: GameState, actorId: ActorId, deltaMs: number) {
         alert: null,
         alertMs: 0,
       };
-      next = event(next, `${actor.name}이(가) 버섯을 굽기 시작했습니다.`, {
+      next = event(next, `${actor.name}이(가) 감자를 굽기 시작했습니다.`, {
         actors: patchActor(next, actorId, actor),
         workstation: {
           status: "WORKING",
@@ -1669,7 +1649,7 @@ function advanceIngredients(state: GameState, deltaMs: number) {
   if (timerMs > 0) {
     return { ...state, ingredients: { ...state.ingredients, timerMs } };
   }
-  return event(state, "재료 상자에 버섯이 채워졌습니다.", {
+  return event(state, "재료 상자에 감자가 채워졌습니다.", {
     ingredients: {
       stock: state.ingredients.stock + 1,
       timerMs: INGREDIENT_INTERVAL_MS,
