@@ -15,13 +15,13 @@ export type StageInfoUiConfig = {
 };
 
 export const itemIcons: Record<ItemId, string> = {
-  mushroom: "🍄",
-  "grilled-mushroom": "🍲",
+  potato: "🥔",
+  "roasted-potato": "🍟",
 };
 
 export const stationIcons: Record<StationId, string> = {
-  "ingredient-box": "🍄",
-  stove: "🍳",
+  "ingredient-box": "🥔",
+  stove: "🔪",
   submission: "📬",
   trash: "🗑",
   "dish-rack": "🍽️",
@@ -35,10 +35,10 @@ export const stageInfoUiConfig: Record<string, StageInfoUiConfig> = {
   "1-1": {
     mapPreviewKey: "kitchen-v1",
     tipLines: [
-      "불 슬라임은 조리 도구에서 요리해요.",
+      "조리 도구는 슬라임 누구나 쓸 수 있어요.",
       "완성 음식은 깨끗한 그릇에 담아요.",
     ],
-    availableFoodIds: ["grilled-mushroom"],
+    availableFoodIds: ["roasted-potato"],
     nextStep: "PLAY",
   },
   "1-2": {
@@ -47,7 +47,7 @@ export const stageInfoUiConfig: Record<string, StageInfoUiConfig> = {
       "조리 완료 뒤 12초가 지나면 불이 나요.",
       "물 슬라임은 화재를 5초간 진화해요.",
     ],
-    availableFoodIds: ["grilled-mushroom"],
+    availableFoodIds: ["roasted-potato"],
     nextStep: "PLAY",
   },
   "1-3": {
@@ -56,7 +56,7 @@ export const stageInfoUiConfig: Record<string, StageInfoUiConfig> = {
       "주문 수가 많아도 조리 순서는 같아요.",
       "더러운 그릇은 세척해서 다시 써요.",
     ],
-    availableFoodIds: ["grilled-mushroom"],
+    availableFoodIds: ["roasted-potato"],
     nextStep: "PLAY",
   },
 };

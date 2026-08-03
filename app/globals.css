@@ -11,7 +11,10 @@
 }
 
 * { box-sizing: border-box; }
-html, body { width: 100%; margin: 0; min-height: 100%; }
+/* 홈·게임 모두 뷰포트에 딱 맞는 화면이라 문서 스크롤이 필요 없다.
+   overscroll-behavior가 없으면 스크롤할 것이 없어도 화면이 튕긴다. */
+html, body { width: 100%; margin: 0; min-height: 100%; overscroll-behavior: none; }
+html:has(.home-screen), html:has(.home-screen) body { overflow: hidden; }
 
 body {
   background:
@@ -99,7 +102,9 @@ button, select { font: inherit; }
 .home-start img { height: 13.6svh; }
 .music-settings-home {
   position: fixed;
-  z-index: 8;
+  /* 설정 오버레이가 이 안에 있다. 여기서 쌓임 맥락이 생기므로 홈 메뉴
+     (z-index 8)보다 위에 있어야 모달이 버튼에 가리지 않는다. */
+  z-index: 200;
   top: 64.8svh;
   right: 0;
   left: 0;
@@ -346,10 +351,39 @@ button, select { font: inherit; }
 .order-food { grid-column: 1 / -1; display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 5px; padding: 2px 7px; font-size: 13px; line-height: 1.1; }
 .order-food > span { font-size: 25px; line-height: 1; }
 .order-food small { color: var(--gold); font-size: 11px; }
+/* 완성 음식은 빈 접시 위에 얹어 보여 준다. */
+.order-dish { position: relative; width: 38px; height: 38px; }
+.order-dish img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
+.order-dish img:last-child { inset: 17% 17% 27%; }
 .order-process { grid-column: 1; display: flex; align-items: center; justify-content: center; gap: 4px; padding: 2px; color: #f5eafb; }
 .order-process span { display: grid; place-items: center; min-width: 24px; min-height: 24px; border-radius: 50%; background: #4a4065; }
 .order-process i { color: #9c90af; font-style: normal; }
 .order-card-empty { visibility: hidden; }
+
+/* 영업 시작·마감 임박 문구. 잠깐 크게 떴다가 사라진다. */
+.stage-banner {
+  position: absolute;
+  z-index: 9;
+  top: 34%;
+  left: 50%;
+  width: min(46vw, 520px);
+  animation: stage-banner 1.6s ease-out forwards;
+  pointer-events: none;
+}
+
+@keyframes stage-banner {
+  0% { opacity: 0; transform: translate(-50%, -50%) scale(0.7); }
+  18% { opacity: 1; transform: translate(-50%, -50%) scale(1.06); }
+  28% { transform: translate(-50%, -50%) scale(1); }
+  78% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+  100% { opacity: 0; transform: translate(-50%, -62%) scale(1); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .stage-banner { animation: none; opacity: 1; transform: translate(-50%, -50%); }
+}
+
+.result-title-art { width: min(72%, 340px); margin: 0 auto 6px; }
 
 /* 하단 선택키 + 최근 상황 */
 .hud-bottom {

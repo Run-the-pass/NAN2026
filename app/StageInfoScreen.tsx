@@ -6,7 +6,6 @@ import {
   displayTiles,
   itemLabel,
   recipes,
-  slimeTypes,
   stationLabels,
   type ItemId,
   type Stage,
@@ -79,7 +78,7 @@ function FoodHoverInfo({ foodId }: { foodId: ItemId | null }) {
     },
     {
       icon: stationIcons[recipe.station],
-      label: `${stationLabels[recipe.station]} · ${slimeTypes[recipe.requiredElement].elementLabel}`,
+      label: stationLabels[recipe.station],
     },
     ...(recipe.requiresCleanDish
       ? [{ icon: "🍽️", label: "깨끗한 그릇" }]
