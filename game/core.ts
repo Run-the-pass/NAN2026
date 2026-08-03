@@ -18,6 +18,13 @@ export type StationId =
   | "dish-rack"
   | "washer"
   | "table";
+export type StationInstanceId = `${StationId}@${number},${number}`;
+export type StationInstance = {
+  id: StationInstanceId;
+  type: StationId;
+  displayTile: TilePosition;
+  taskTile: TilePosition;
+};
 export type ActorStatus = "IDLE" | "MOVING" | "WORKING" | "WAITING";
 export type WorkstationStatus =
   | "IDLE"
@@ -211,7 +218,7 @@ export type FireState = {
 
 export type ActorIntent =
   | { kind: "MOVE"; destination: Position; route: Position[] }
-  | { kind: "INTERACT"; station: StationId; leader: ActorId | null; route: Position[] };
+  | { kind: "INTERACT"; station: StationInstanceId; leader: ActorId | null; route: Position[] };
 
 export type ActorState = {
   typeId: SlimeTypeId;
@@ -238,24 +245,24 @@ export type GameState = {
   goal: number;
   gold: number;
   actors: Partial<Record<ActorId, ActorState>>;
-  ingredients: { stock: number; timerMs: number };
-  stove: ItemId[];
-  dishRack: Dish[];
-  table: Carried[];
-  washer: {
+  ingredients: Partial<Record<StationInstanceId, { stock: number; timerMs: number }>>;
+  stoves: Partial<Record<StationInstanceId, ItemId[]>>;
+  dishRacks: Partial<Record<StationInstanceId, Dish[]>>;
+  tables: Partial<Record<StationInstanceId, Carried[]>>;
+  washers: Partial<Record<StationInstanceId, {
     dish: Dish | null;
     workerId: ActorId | null;
     progressMs: number;
     totalMs: number;
-  };
-  workstation: {
+  }>>;
+  workstations: Partial<Record<StationInstanceId, {
     status: WorkstationStatus;
     workerId: ActorId | null;
     progressMs: number;
     totalMs: number;
-  };
+  }>>;
   orders: Order[];
-  fires: Partial<Record<StationId, FireState>>;
+  fires: Partial<Record<StationInstanceId, FireState>>;
   // 이번 판의 스테이지 목록과 지금 진행 중인 위치.
   stages: Stage[];
   stageIndex: number;
@@ -287,9 +294,41 @@ export const stationTileCodes: Record<StationId, string> = {
 
 export type KitchenMapData = {
   rows: readonly string[];
-  taskTiles: Record<StationId, TilePosition>;
+  taskTiles: Partial<Record<StationInstanceId, TilePosition>>;
   spawnTiles: readonly TilePosition[];
 };
+
+export const stationInstanceId = (
+  type: StationId,
+  { col, row }: TilePosition,
+): StationInstanceId => `${type}@${col},${row}`;
+
+export const stationType = (id: StationInstanceId): StationId =>
+  id.slice(0, id.indexOf("@")) as StationId;
+
+const stationDisplays = (data: KitchenMapData) =>
+  data.rows.flatMap((line, row) =>
+    [...line].flatMap((tile, col) => {
+      const type = allStations.find((id) => stationTileCodes[id] === tile);
+      return type ? [{ type, displayTile: { col, row } }] : [];
+    }),
+  );
+
+const automaticTaskTile = (data: KitchenMapData, display: TilePosition) =>
+  [
+    { col: display.col, row: display.row - 1 },
+    { col: display.col - 1, row: display.row },
+    { col: display.col + 1, row: display.row },
+    { col: display.col, row: display.row + 1 },
+  ].find((tile) => data.rows[tile.row]?.[tile.col] === ".");
+
+export function stationInstancesForMap(data: KitchenMapData): StationInstance[] {
+  return stationDisplays(data).flatMap(({ type, displayTile }) => {
+    const id = stationInstanceId(type, displayTile);
+    const taskTile = data.taskTiles[id] ?? automaticTaskTile(data, displayTile);
+    return taskTile ? [{ id, type, displayTile, taskTile }] : [];
+  });
+}
 
 const inMap = ({ col, row }: TilePosition) =>
   Number.isInteger(col) &&
@@ -318,28 +357,33 @@ export function validateKitchenMap(data: KitchenMapData) {
   ) {
     errors.push("맵 바깥 테두리는 조리대나 설비로 막아야 합니다.");
   }
-  for (const id of allStations) {
-    const code = stationTileCodes[id];
-    const displays = data.rows.flatMap((row, rowIndex) =>
-      [...row].flatMap((tile, col) => tile === code ? [{ col, row: rowIndex }] : []),
-    );
-    if (displays.length !== 1) {
-      errors.push(`${stationLabels[id]}: 정확히 한 칸이어야 합니다.`);
-      continue;
-    }
-    const task = data.taskTiles[id];
-    if (!task || !inMap(task) || data.rows[task.row]?.[task.col] !== ".") {
-      errors.push(`${stationLabels[id]} 작업 위치는 바닥이어야 합니다.`);
-    } else if (
-      Math.abs(task.col - displays[0].col) + Math.abs(task.row - displays[0].row) !== 1
-    ) {
-      errors.push(`${stationLabels[id]} 작업 위치는 설비에 인접해야 합니다.`);
+  const displays = stationDisplays(data);
+  for (const type of allStations) {
+    if (!displays.some((display) => display.type === type)) {
+      errors.push(`${stationLabels[type]}: 한 칸 이상 있어야 합니다.`);
     }
   }
-  const taskKeys = allStations.map((id) => {
-    const tile = data.taskTiles[id];
-    return tile ? `${tile.col},${tile.row}` : "";
+  const validIds = new Set(displays.map(({ type, displayTile }) => stationInstanceId(type, displayTile)));
+  for (const key of Object.keys(data.taskTiles)) {
+    if (!validIds.has(key as StationInstanceId)) errors.push(`${key}: 맵에 없는 설비의 작업 위치입니다.`);
+  }
+  const resolvedTasks = displays.flatMap(({ type, displayTile }) => {
+    const id = stationInstanceId(type, displayTile);
+    const task = data.taskTiles[id] ?? automaticTaskTile(data, displayTile);
+    if (!task) {
+      errors.push(`${id}: 인접한 바닥 작업 위치가 없습니다.`);
+      return [];
+    }
+    if (!inMap(task) || data.rows[task.row]?.[task.col] !== ".") {
+      errors.push(`${id}: 작업 위치는 바닥이어야 합니다.`);
+    } else if (
+      Math.abs(task.col - displayTile.col) + Math.abs(task.row - displayTile.row) !== 1
+    ) {
+      errors.push(`${id}: 작업 위치는 설비에 인접해야 합니다.`);
+    }
+    return [task];
   });
+  const taskKeys = resolvedTasks.map((tile) => `${tile.col},${tile.row}`);
   if (new Set(taskKeys).size !== taskKeys.length) {
     errors.push("슬라임 작업 위치는 서로 겹칠 수 없습니다.");
   }
@@ -358,14 +402,19 @@ const mapErrors = validateKitchenMap(mapData);
 if (mapErrors.length) throw new Error(mapErrors.join(" "));
 
 export const KITCHEN_ROWS = mapData.rows;
+export const stationInstances = stationInstancesForMap(mapData);
+export const stationsById = Object.fromEntries(
+  stationInstances.map((station) => [station.id, station]),
+) as Record<StationInstanceId, StationInstance>;
+export const stationInstancesByType = Object.fromEntries(
+  allStations.map((type) => [type, stationInstances.filter((station) => station.type === type)]),
+) as Record<StationId, StationInstance[]>;
 export const displayTiles = Object.fromEntries(
-  allStations.map((id) => {
-    const code = stationTileCodes[id];
-    const row = KITCHEN_ROWS.findIndex((line) => line.includes(code));
-    return [id, { col: KITCHEN_ROWS[row].indexOf(code), row }];
-  }),
-) as Record<StationId, TilePosition>;
-export const taskTiles = mapData.taskTiles;
+  stationInstances.map((station) => [station.id, station.displayTile]),
+) as Record<StationInstanceId, TilePosition>;
+export const taskTiles = Object.fromEntries(
+  stationInstances.map((station) => [station.id, station.taskTile]),
+) as Record<StationInstanceId, TilePosition>;
 export const spawnTiles = mapData.spawnTiles.map((tile) => ({ ...tile }));
 
 const workDuration = { interact: 700, cook: 4_000 };
@@ -376,8 +425,8 @@ export const tileCenter = ({ col, row }: TilePosition) => ({
 });
 
 const hitboxHalfSize = { x: 46, y: 42 };
-export const stationHitboxes = allStations.map((id) => {
-  const center = tileCenter(displayTiles[id]);
+export const stationHitboxes = stationInstances.map(({ displayTile }) => {
+  const center = tileCenter(displayTile);
   return {
     centerX: center.x,
     centerY: center.y,
@@ -386,8 +435,25 @@ export const stationHitboxes = allStations.map((id) => {
   };
 });
 
-function segmentCrossesHitbox(from: Position, to: Position) {
-  return stationHitboxes.some((box) => {
+// 이동 주체를 점으로 계산하므로 벽 타일에 슬라임 몸통 여유를 더한다.
+export const wallHitboxes = KITCHEN_ROWS.flatMap((line, row) =>
+  [...line].flatMap((tile, col) => {
+    if (tile !== "#") return [];
+    const center = tileCenter({ col, row });
+    return [{
+      centerX: center.x,
+      centerY: center.y,
+      halfWidth: TILE_SIZE / 2 + 16,
+      halfHeight: TILE_SIZE / 2 + 16,
+      interior: row > 0 && row < MAP_HEIGHT - 1 && col > 0 && col < MAP_WIDTH - 1,
+    }];
+  }),
+);
+
+const navigationHitboxes = [...stationHitboxes, ...wallHitboxes];
+
+function segmentCrossesObstacle(from: Position, to: Position) {
+  return navigationHitboxes.some((box) => {
     const dx = to.x - from.x;
     const dy = to.y - from.y;
     let near = 0;
@@ -412,10 +478,16 @@ function segmentCrossesHitbox(from: Position, to: Position) {
 }
 
 function routeBetween(from: Position, to: Position) {
+  // 외곽 벽은 경로를 막기만 한다. 외곽 모서리를 후보로 넣으면 맵 밖으로
+  // 우회할 수 있으므로, 경로 후보점은 설비와 내부 벽에만 만든다.
+  const cornerHitboxes = [
+    ...stationHitboxes,
+    ...wallHitboxes.filter((box) => box.interior),
+  ];
   const nodes = [
     from,
     to,
-    ...stationHitboxes.flatMap((box) => [
+    ...cornerHitboxes.flatMap((box) => [
       { x: box.centerX - box.halfWidth - 2, y: box.centerY - box.halfHeight - 2 },
       { x: box.centerX + box.halfWidth + 2, y: box.centerY - box.halfHeight - 2 },
       { x: box.centerX - box.halfWidth - 2, y: box.centerY + box.halfHeight + 2 },
@@ -434,7 +506,7 @@ function routeBetween(from: Position, to: Position) {
     if (current < 0 || !Number.isFinite(costs[current]) || current === 1) break;
     visited[current] = true;
     for (let index = 1; index < nodes.length; index += 1) {
-      if (visited[index] || segmentCrossesHitbox(nodes[current], nodes[index])) continue;
+      if (visited[index] || segmentCrossesObstacle(nodes[current], nodes[index])) continue;
       const cost = costs[current] + Math.hypot(
         nodes[index].x - nodes[current].x,
         nodes[index].y - nodes[current].y,
@@ -534,13 +606,54 @@ export const activeOrders = (state: GameState) =>
 export const roundResult = (state: GameState): "won" | "lost" =>
   state.orders.every(orderComplete) ? "won" : "lost";
 
-const newFires = (): Partial<Record<StationId, FireState>> =>
+const newFires = (): Partial<Record<StationInstanceId, FireState>> =>
   Object.fromEntries(
-    fireConfig.flammableStations.map((station) => [
-      station,
+    stationInstances.filter(({ type }) => fireConfig.flammableStations.includes(type)).map(({ id }) => [
+      id,
       { neglectMs: 0, onFire: false, workerId: null, extinguishMs: 0, spreadMs: 0 },
     ]),
   );
+
+const initialStationState = () => ({
+  ingredients: Object.fromEntries(
+    stationInstancesByType["ingredient-box"].map(({ id }) => [
+      id,
+      { stock: 1, timerMs: INGREDIENT_INTERVAL_MS },
+    ]),
+  ),
+  stoves: Object.fromEntries(stationInstancesByType.stove.map(({ id }) => [id, [] as ItemId[]])),
+  dishRacks: Object.fromEntries(
+    stationInstancesByType["dish-rack"].map(({ id }) => [
+      id,
+      Array.from(
+        { length: Math.min(dishConfig.initialCount, dishConfig.rackCapacity) },
+        (_, index) => ({
+          id: `${id}/dish-${index + 1}`,
+          status: "clean" as const,
+          content: null,
+        }),
+      ),
+    ]),
+  ),
+  tables: Object.fromEntries(stationInstancesByType.table.map(({ id }) => [id, [] as Carried[]])),
+  washers: Object.fromEntries(
+    stationInstancesByType.washer.map(({ id }) => [
+      id,
+      { dish: null, workerId: null, progressMs: 0, totalMs: dishConfig.washMs },
+    ]),
+  ),
+  workstations: Object.fromEntries(
+    stationInstancesByType.stove.map(({ id }) => [
+      id,
+      {
+        status: "MISSING_MATERIAL" as WorkstationStatus,
+        workerId: null,
+        progressMs: 0,
+        totalMs: workDuration.cook,
+      },
+    ]),
+  ),
+});
 
 // 기본 스테이지 목록. 이름과 주문 수는 임시값이며 기획이 정해지면
 // 이 배열만 바꾸면 된다.
@@ -621,6 +734,7 @@ export function initialState(
       total[typeId]! > 1 ? `${label} ${ids[index].split("-")[1]}호` : label,
     );
   });
+  const stationState = initialStationState();
   return {
     seed: seed >>> 0,
     phase: "playing",
@@ -630,29 +744,7 @@ export function initialState(
     goal: roundOrders.length,
     gold: 0,
     actors,
-    ingredients: { stock: 1, timerMs: INGREDIENT_INTERVAL_MS },
-    stove: [],
-    dishRack: Array.from(
-      { length: Math.min(dishConfig.initialCount, dishConfig.rackCapacity) },
-      (_, index) => ({
-        id: `dish-${index + 1}`,
-        status: "clean" as const,
-        content: null,
-      }),
-    ),
-    table: [],
-    washer: {
-      dish: null,
-      workerId: null,
-      progressMs: 0,
-      totalMs: dishConfig.washMs,
-    },
-    workstation: {
-      status: "MISSING_MATERIAL",
-      workerId: null,
-      progressMs: 0,
-      totalMs: workDuration.cook,
-    },
+    ...stationState,
     orders: roundOrders,
     fires: newFires(),
     stages: roundStages,
@@ -720,33 +812,31 @@ const dishIndex = (
 ) => actor.carrying.findIndex((carried) => isDish(carried) && test(carried));
 
 function releaseWork(state: GameState, actorIds: ActorId[]): GameState {
-  let next = state;
-  if (
-    next.workstation.workerId &&
-    actorIds.includes(next.workstation.workerId)
-  ) {
-    next = {
-      ...next,
-      workstation: {
-        ...next.workstation,
-        status: next.stove.includes(grilledMushroomRecipe.ingredient.itemId)
-          ? "IDLE"
-          : "MISSING_MATERIAL",
-        workerId: null,
-        progressMs: 0,
-      },
+  const workstations = { ...state.workstations };
+  const washers = { ...state.washers };
+  let changed = false;
+  for (const [id, workstation] of Object.entries(workstations) as [StationInstanceId, NonNullable<GameState["workstations"][StationInstanceId]>][]) {
+    if (!workstation.workerId || !actorIds.includes(workstation.workerId)) continue;
+    workstations[id] = {
+      ...workstation,
+      status: state.stoves[id]?.includes(grilledMushroomRecipe.ingredient.itemId)
+        ? "IDLE"
+        : "MISSING_MATERIAL",
+      workerId: null,
+      progressMs: 0,
     };
+    changed = true;
   }
-  if (next.washer.workerId && actorIds.includes(next.washer.workerId)) {
-    next = {
-      ...next,
-      washer: { ...next.washer, workerId: null, progressMs: 0 },
-    };
+  for (const [id, washer] of Object.entries(washers) as [StationInstanceId, NonNullable<GameState["washers"][StationInstanceId]>][]) {
+    if (!washer.workerId || !actorIds.includes(washer.workerId)) continue;
+    washers[id] = { ...washer, workerId: null, progressMs: 0 };
+    changed = true;
   }
+  const next = changed ? { ...state, workstations, washers } : state;
   // 진화하던 슬라임이 새 지시를 받으면 설정에 따라 진행도를 버린다.
   const fires = { ...next.fires };
   let dropped = false;
-  for (const station of Object.keys(fires) as StationId[]) {
+  for (const station of Object.keys(fires) as StationInstanceId[]) {
     const fire = fires[station]!;
     if (!fire.workerId || !actorIds.includes(fire.workerId)) continue;
     fires[station] = {
@@ -759,11 +849,11 @@ function releaseWork(state: GameState, actorIds: ActorId[]): GameState {
   return dropped ? { ...next, fires } : next;
 }
 
-const isBurning = (state: GameState, station: StationId) =>
+const isBurning = (state: GameState, station: StationInstanceId) =>
   state.fires[station]?.onFire === true;
 
 // 설비끼리의 배치 거리로만 인접을 본다. 바닥 타일은 전파 경로가 아니다.
-function isAdjacentStation(one: StationId, two: StationId) {
+function isAdjacentStation(one: StationInstanceId, two: StationInstanceId) {
   const from = displayTiles[one];
   const to = displayTiles[two];
   const cols = Math.abs(from.col - to.col);
@@ -811,61 +901,72 @@ export function moveActors(
 function canUseStation(
   state: GameState,
   actor: ActorState,
-  station: StationId,
+  station: StationInstanceId,
 ) {
+  const type = stationType(station);
   // 불이 난 설비는 진화 외의 어떤 작업도 시작할 수 없다.
   if (isBurning(state, station)) {
     return actor.typeId === fireConfig.extinguishElement;
   }
-  if (station === "table") {
+  if (type === "table") {
+    const table = state.tables[station]!;
     return actor.carrying.length > 0
-      ? state.table.length < dishConfig.tableCapacity
-      : Boolean(state.table[0] && canCarry(actor, state.table[0]));
+      ? table.length < dishConfig.tableCapacity
+      : Boolean(table[0] && canCarry(actor, table[0]));
   }
-  if (station === "dish-rack") {
-    const nextDish = state.dishRack[0];
+  if (type === "dish-rack") {
+    const dishRack = state.dishRacks[station]!;
+    const nextDish = dishRack[0];
     return nextDish && canCarry(actor, nextDish)
       ? true
       : dishIndex(actor, (dish) => dish.status === "clean") >= 0 &&
-          state.dishRack.length < dishConfig.rackCapacity;
+          dishRack.length < dishConfig.rackCapacity;
   }
-  if (station === "washer") {
+  if (type === "washer") {
+    const washer = state.washers[station]!;
     const dirty = dishIndex(actor, (dish) => dish.status === "dirty") >= 0;
-    if (!state.washer.dish) return dirty;
-    if (state.washer.dish.status === "dirty") {
-      return actor.typeId === "water" && !state.washer.workerId;
+    if (!washer.dish) return dirty;
+    if (washer.dish.status === "dirty") {
+      return actor.typeId === "water" && !washer.workerId;
     }
-    return canCarry(actor, state.washer.dish);
+    return canCarry(actor, washer.dish);
   }
-  if (station === "submission" || station === "trash") {
+  if (type === "submission" || type === "trash") {
     return actor.carrying.length > 0;
   }
-  if (station === "ingredient-box") {
+  if (type === "ingredient-box") {
     const clean = dishIndex(actor, (dish) => dish.status === "clean") >= 0;
     return clean || canCarry(actor, grilledMushroomRecipe.ingredient.itemId);
   }
-  if (station === "stove") {
+  if (type === "stove") {
+    const stove = state.stoves[station]!;
     return (
       actor.carrying.includes(grilledMushroomRecipe.ingredient.itemId) ||
       dishIndex(
         actor,
         (dish) => dish.content === grilledMushroomRecipe.ingredient.itemId,
       ) >= 0 ||
-      (state.stove.includes(grilledMushroomRecipe.foodId) &&
+      (stove.includes(grilledMushroomRecipe.foodId) &&
         dishIndex(actor, (dish) => dish.status === "clean") >= 0) ||
-      state.stove.includes(grilledMushroomRecipe.foodId) ||
+      stove.includes(grilledMushroomRecipe.foodId) ||
       actor.typeId === grilledMushroomRecipe.requiredElement
     );
   }
   return false;
 }
 
+export function resolveStationTarget(target: StationInstanceId | StationId) {
+  return stationsById[target as StationInstanceId] ?? stationInstancesByType[target as StationId]?.[0];
+}
+
 export function interactActors(
   state: GameState,
   actorIds: ActorId[],
-  station: StationId,
+  target: StationInstanceId | StationId,
 ): GameState {
   if (state.phase !== "playing") return state;
+  const station = resolveStationTarget(target);
+  if (!station) return state;
   const ids = [...new Set(actorIds)];
   const base = releaseWork(state, ids);
   const orders = ids
@@ -876,9 +977,9 @@ export function interactActors(
     .filter((order): order is NonNullable<typeof order> => Boolean(order));
   const leader =
     orders
-      .filter(({ actor }) => canUseStation(base, actor, station))
+      .filter(({ actor }) => canUseStation(base, actor, station.id))
       .sort((a, b) => {
-        const destination = tileCenter(taskTiles[station]);
+        const destination = tileCenter(station.taskTile);
         return (
           routeLength(a.actor, routeBetween(a.actor, destination)) / a.actor.moveSpeed -
           routeLength(b.actor, routeBetween(b.actor, destination)) / b.actor.moveSpeed
@@ -886,11 +987,11 @@ export function interactActors(
       })[0]?.actorId ?? null;
   let actors = base.actors;
   for (const { actorId, actor } of orders) {
-    const route = routeBetween(actor, tileCenter(taskTiles[station]));
+    const route = routeBetween(actor, tileCenter(station.taskTile));
     if (!route.length) continue;
     actors = patchActor({ ...base, actors }, actorId, {
       ...actor,
-      intent: { kind: "INTERACT", station, leader, route },
+      intent: { kind: "INTERACT", station: station.id, leader, route },
       status: "MOVING",
       workLeftMs: 0,
       alert: null,
@@ -900,7 +1001,7 @@ export function interactActors(
   return orders.length
     ? event(
         base,
-        `${orders.length}마리에게 ${stationLabels[station]} 상호작용을 지시했습니다.`,
+        `${orders.length}마리에게 ${stationLabels[station.type]} 상호작용을 지시했습니다.`,
         { actors },
       )
     : state;
@@ -1057,9 +1158,9 @@ function moveActor(state: GameState, actorId: ActorId, deltaMs: number) {
         const burning = isBurning(next, actor.intent.station);
         const wrongElement = burning
           ? actor.typeId !== fireConfig.extinguishElement
-          : actor.intent.station === "stove" &&
+          : stationType(actor.intent.station) === "stove" &&
             actor.carrying.length === 0 &&
-            !next.stove.includes(grilledMushroomRecipe.foodId) &&
+            !next.stoves[actor.intent.station]!.includes(grilledMushroomRecipe.foodId) &&
             actor.typeId !== grilledMushroomRecipe.requiredElement;
         if (wrongElement) {
           next = refuse(
@@ -1077,7 +1178,7 @@ function moveActor(state: GameState, actorId: ActorId, deltaMs: number) {
             next,
             actorId,
             actor,
-            `${withParticle(stationLabels[actor.intent.station])} 지금 사용할 수 없습니다.`,
+            `${withParticle(stationLabels[stationType(actor.intent.station)])} 지금 사용할 수 없습니다.`,
           );
           actor = next.actors[actorId]!;
         } else {
@@ -1132,7 +1233,7 @@ function moveActor(state: GameState, actorId: ActorId, deltaMs: number) {
       };
       next = event(
         next,
-        `${actor.name}이(가) ${withParticle(stationLabels[station])} 진화했습니다.`,
+        `${actor.name}이(가) ${withParticle(stationLabels[stationType(station)])} 진화했습니다.`,
         {
           actors: patchActor(next, actorId, actor),
           fires: {
@@ -1150,16 +1251,18 @@ function moveActor(state: GameState, actorId: ActorId, deltaMs: number) {
       continue;
     }
 
-    const washing =
-      actor.intent.kind === "INTERACT" &&
-      actor.intent.station === "washer" &&
-      next.washer.workerId === actorId;
-    if (washing) {
+    const workingStation = actor.intent.kind === "INTERACT" ? actor.intent.station : null;
+    const washing = workingStation &&
+      stationType(workingStation) === "washer" &&
+      next.washers[workingStation]!.workerId === actorId;
+    if (washing && workingStation) {
+      const station = workingStation;
+      const washer = next.washers[station]!;
       const spent = Math.min(actor.workLeftMs, remaining);
-      const progressMs = Math.min(next.washer.totalMs, next.washer.progressMs + spent);
+      const progressMs = Math.min(washer.totalMs, washer.progressMs + spent);
       if (actor.workLeftMs > remaining) {
         actor = { ...actor, workLeftMs: actor.workLeftMs - remaining };
-        next = { ...next, washer: { ...next.washer, progressMs } };
+        next = { ...next, washers: { ...next.washers, [station]: { ...washer, progressMs } } };
         remaining = 0;
         break;
       }
@@ -1174,34 +1277,38 @@ function moveActor(state: GameState, actorId: ActorId, deltaMs: number) {
       };
       next = event(next, `${actor.name}이(가) 그릇을 깨끗이 씻었습니다.`, {
         actors: patchActor(next, actorId, actor),
-        washer: {
-          ...next.washer,
-          dish: next.washer.dish
-            ? { ...next.washer.dish, status: "clean", content: null }
+        washers: {
+          ...next.washers,
+          [station]: {
+          ...washer,
+          dish: washer.dish
+            ? { ...washer.dish, status: "clean", content: null }
             : null,
           workerId: null,
-          progressMs: next.washer.totalMs,
+          progressMs: washer.totalMs,
+          },
         },
       });
       continue;
     }
 
-    const cooking =
-      actor.intent.kind === "INTERACT" &&
-      actor.intent.station === "stove" &&
-      next.workstation.status === "WORKING" &&
-      next.workstation.workerId === actorId;
-    if (cooking) {
+    const cooking = workingStation &&
+      stationType(workingStation) === "stove" &&
+      next.workstations[workingStation]!.status === "WORKING" &&
+      next.workstations[workingStation]!.workerId === actorId;
+    if (cooking && workingStation) {
+      const station = workingStation;
+      const workstation = next.workstations[station]!;
       const spent = Math.min(actor.workLeftMs, remaining);
       const progressMs = Math.min(
-        next.workstation.totalMs,
-        next.workstation.progressMs + spent,
+        workstation.totalMs,
+        workstation.progressMs + spent,
       );
       if (actor.workLeftMs > remaining) {
         actor = { ...actor, workLeftMs: actor.workLeftMs - remaining };
         next = {
           ...next,
-          workstation: { ...next.workstation, progressMs },
+          workstations: { ...next.workstations, [station]: { ...workstation, progressMs } },
         };
         remaining = 0;
         break;
@@ -1220,13 +1327,13 @@ function moveActor(state: GameState, actorId: ActorId, deltaMs: number) {
         `${actor.name}이(가) ${itemLabel(grilledMushroomRecipe.foodId)}를 완성했습니다.`,
         {
           actors: patchActor(next, actorId, actor),
-          stove: [grilledMushroomRecipe.foodId],
-          workstation: {
-            ...next.workstation,
+          stoves: { ...next.stoves, [station]: [grilledMushroomRecipe.foodId] },
+          workstations: { ...next.workstations, [station]: {
+            ...workstation,
             status: "COMPLETE",
             workerId: null,
-            progressMs: next.workstation.totalMs,
-          },
+            progressMs: workstation.totalMs,
+          } },
         },
       );
       continue;
@@ -1243,6 +1350,7 @@ function moveActor(state: GameState, actorId: ActorId, deltaMs: number) {
       continue;
     }
     const station = actor.intent.station;
+    const type = stationType(station);
 
     // 불이 났으면 다른 작업은 시작하지 않고 진화만 건다.
     const fire = next.fires[station];
@@ -1268,7 +1376,7 @@ function moveActor(state: GameState, actorId: ActorId, deltaMs: number) {
       };
       next = event(
         next,
-        `${actor.name}이(가) ${withParticle(stationLabels[station])} 진화하기 시작했습니다.`,
+        `${actor.name}이(가) ${withParticle(stationLabels[type])} 진화하기 시작했습니다.`,
         {
           actors: patchActor(next, actorId, actor),
           fires: {
@@ -1281,18 +1389,19 @@ function moveActor(state: GameState, actorId: ActorId, deltaMs: number) {
     }
 
     if (
-      station === "stove" &&
-      next.workstation.status === "WORKING" &&
-      next.workstation.workerId !== actorId
+      type === "stove" &&
+      next.workstations[station]!.status === "WORKING" &&
+      next.workstations[station]!.workerId !== actorId
     ) {
       actor = waitAtStation(actor);
       remaining = 0;
       break;
     }
 
-    if (station === "table") {
+    if (type === "table") {
+      const table = next.tables[station]!;
       if (actor.carrying.length > 0) {
-        if (next.table.length >= dishConfig.tableCapacity) {
+        if (table.length >= dishConfig.tableCapacity) {
           next = refuse(next, actorId, actor, "테이블에 빈 자리가 없습니다.", "TARGET_FULL");
           actor = next.actors[actorId]!;
           continue;
@@ -1301,11 +1410,11 @@ function moveActor(state: GameState, actorId: ActorId, deltaMs: number) {
         actor = { ...actor, carrying: actor.carrying.slice(1), intent: null, status: "IDLE" };
         next = event(next, `${actor.name}이(가) ${withParticle(carriedLabel(carried))} 테이블에 놓았습니다.`, {
           actors: patchActor(next, actorId, actor),
-          table: [...next.table, carried],
+          tables: { ...next.tables, [station]: [...table, carried] },
         });
         continue;
       }
-      const carried = next.table[0];
+      const carried = table[0];
       if (!carried || !canCarry(actor, carried)) {
         next = refuse(next, actorId, actor, "테이블에서 집을 수 있는 물건이 없습니다.");
         actor = next.actors[actorId]!;
@@ -1314,13 +1423,14 @@ function moveActor(state: GameState, actorId: ActorId, deltaMs: number) {
       actor = { ...actor, carrying: [carried], intent: null, status: "IDLE" };
       next = event(next, `${actor.name}이(가) 테이블에서 ${withParticle(carriedLabel(carried))} 들었습니다.`, {
         actors: patchActor(next, actorId, actor),
-        table: next.table.slice(1),
+        tables: { ...next.tables, [station]: table.slice(1) },
       });
       continue;
     }
 
-    if (station === "dish-rack") {
-      const ready = next.dishRack[0];
+    if (type === "dish-rack") {
+      const dishRack = next.dishRacks[station]!;
+      const ready = dishRack[0];
       if (ready && canCarry(actor, ready)) {
         actor = {
           ...actor,
@@ -1330,12 +1440,12 @@ function moveActor(state: GameState, actorId: ActorId, deltaMs: number) {
         };
         next = event(next, `${actor.name}이(가) 깨끗한 그릇을 들었습니다.`, {
           actors: patchActor(next, actorId, actor),
-          dishRack: next.dishRack.slice(1),
+          dishRacks: { ...next.dishRacks, [station]: dishRack.slice(1) },
         });
         continue;
       }
       const clean = dishIndex(actor, (dish) => dish.status === "clean");
-      if (clean < 0 || next.dishRack.length >= dishConfig.rackCapacity) {
+      if (clean < 0 || dishRack.length >= dishConfig.rackCapacity) {
         next = refuse(next, actorId, actor, "그릇을 가져가거나 반납할 수 없습니다.");
         actor = next.actors[actorId]!;
         continue;
@@ -1349,13 +1459,14 @@ function moveActor(state: GameState, actorId: ActorId, deltaMs: number) {
       };
       next = event(next, `${actor.name}이(가) 깨끗한 그릇을 반납했습니다.`, {
         actors: patchActor(next, actorId, actor),
-        dishRack: [...next.dishRack, dish],
+        dishRacks: { ...next.dishRacks, [station]: [...dishRack, dish] },
       });
       continue;
     }
 
-    if (station === "washer") {
-      if (!next.washer.dish) {
+    if (type === "washer") {
+      const washer = next.washers[station]!;
+      if (!washer.dish) {
         const dirty = dishIndex(actor, (dish) => dish.status === "dirty");
         if (dirty < 0) {
           next = refuse(next, actorId, actor, "세척할 더러운 그릇이 없습니다.");
@@ -1373,17 +1484,17 @@ function moveActor(state: GameState, actorId: ActorId, deltaMs: number) {
         };
         next = event(next, starts ? `${actor.name}이(가) 그릇을 씻기 시작했습니다.` : `${actor.name}이(가) 더러운 그릇을 세척기에 놓았습니다.`, {
           actors: patchActor(next, actorId, actor),
-          washer: {
+          washers: { ...next.washers, [station]: {
             dish,
             workerId: starts ? actorId : null,
             progressMs: 0,
             totalMs: dishConfig.washMs,
-          },
+          } },
         });
         continue;
       }
-      if (next.washer.dish.status === "dirty") {
-        if (actor.typeId !== "water" || next.washer.workerId) {
+      if (washer.dish.status === "dirty") {
+        if (actor.typeId !== "water" || washer.workerId) {
           next = refuse(next, actorId, actor, "물 슬라임만 그릇을 씻을 수 있습니다.", "WRONG_ELEMENT");
           actor = next.actors[actorId]!;
           continue;
@@ -1391,30 +1502,31 @@ function moveActor(state: GameState, actorId: ActorId, deltaMs: number) {
         actor = { ...actor, status: "WORKING", workLeftMs: dishConfig.washMs };
         next = event(next, `${actor.name}이(가) 그릇을 씻기 시작했습니다.`, {
           actors: patchActor(next, actorId, actor),
-          washer: { ...next.washer, workerId: actorId, progressMs: 0 },
+          washers: { ...next.washers, [station]: { ...washer, workerId: actorId, progressMs: 0 } },
         });
         continue;
       }
-      if (!canCarry(actor, next.washer.dish)) {
+      if (!canCarry(actor, washer.dish)) {
         next = refuse(next, actorId, actor, "씻은 그릇을 들 수 없습니다.");
         actor = next.actors[actorId]!;
         continue;
       }
       actor = {
         ...actor,
-        carrying: [...actor.carrying, next.washer.dish],
+        carrying: [...actor.carrying, washer.dish],
         intent: null,
         status: "IDLE",
       };
       next = event(next, `${actor.name}이(가) 씻은 그릇을 꺼냈습니다.`, {
         actors: patchActor(next, actorId, actor),
-        washer: { ...next.washer, dish: null, workerId: null, progressMs: 0 },
+        washers: { ...next.washers, [station]: { ...washer, dish: null, workerId: null, progressMs: 0 } },
       });
       continue;
     }
 
-    if (station === "ingredient-box") {
-      if (next.ingredients.stock < 1) {
+    if (type === "ingredient-box") {
+      const ingredients = next.ingredients[station]!;
+      if (ingredients.stock < 1) {
         actor = waitAtStation(actor, true);
         remaining = 0;
         break;
@@ -1440,7 +1552,7 @@ function moveActor(state: GameState, actorId: ActorId, deltaMs: number) {
         };
         next = event(next, `${actor.name}이(가) 그릇에 버섯을 담았습니다.`, {
           actors: patchActor(next, actorId, actor),
-          ingredients: { ...next.ingredients, stock: next.ingredients.stock - 1 },
+          ingredients: { ...next.ingredients, [station]: { ...ingredients, stock: ingredients.stock - 1 } },
         });
         continue;
       }
@@ -1459,15 +1571,14 @@ function moveActor(state: GameState, actorId: ActorId, deltaMs: number) {
       };
       next = event(next, `${actor.name}이(가) 버섯을 들었습니다.`, {
         actors: patchActor(next, actorId, actor),
-        ingredients: {
-          ...next.ingredients,
-          stock: next.ingredients.stock - 1,
-        },
+        ingredients: { ...next.ingredients, [station]: { ...ingredients, stock: ingredients.stock - 1 } },
       });
       continue;
     }
 
-    if (station === "stove") {
+    if (type === "stove") {
+      const stove = next.stoves[station]!;
+      const workstation = next.workstations[station]!;
       const looseMushroom = actor.carrying.indexOf(
         grilledMushroomRecipe.ingredient.itemId,
       );
@@ -1476,7 +1587,7 @@ function moveActor(state: GameState, actorId: ActorId, deltaMs: number) {
         (dish) => dish.content === grilledMushroomRecipe.ingredient.itemId,
       );
       if (looseMushroom >= 0 || mushroomDish >= 0) {
-        if (next.stove.length >= STORAGE_MAX) {
+        if (stove.length >= STORAGE_MAX) {
           next = refuse(next, actorId, actor, "조리 도구가 사용 중입니다.", "TARGET_FULL");
           actor = next.actors[actorId]!;
           continue;
@@ -1497,17 +1608,17 @@ function moveActor(state: GameState, actorId: ActorId, deltaMs: number) {
         };
         next = event(next, `${actor.name}이(가) 조리 도구에 버섯을 넣었습니다.`, {
           actors: patchActor(next, actorId, actor),
-          stove: [grilledMushroomRecipe.ingredient.itemId],
-          workstation: {
-            ...next.workstation,
+          stoves: { ...next.stoves, [station]: [grilledMushroomRecipe.ingredient.itemId] },
+          workstations: { ...next.workstations, [station]: {
+            ...workstation,
             status: "IDLE",
             workerId: null,
             progressMs: 0,
-          },
+          } },
         });
         continue;
       }
-      if (next.stove.includes(grilledMushroomRecipe.foodId)) {
+      if (stove.includes(grilledMushroomRecipe.foodId)) {
         const clean = dishIndex(actor, (dish) => dish.status === "clean");
         if (clean < 0) {
           next = refuse(next, actorId, actor, "완성 음식을 담을 깨끗한 그릇이 필요합니다.");
@@ -1530,13 +1641,13 @@ function moveActor(state: GameState, actorId: ActorId, deltaMs: number) {
         };
         next = event(next, `${actor.name}이(가) 그릇에 버섯 구이를 담았습니다.`, {
           actors: patchActor(next, actorId, actor),
-          stove: [],
-          workstation: {
-            ...next.workstation,
+          stoves: { ...next.stoves, [station]: [] },
+          workstations: { ...next.workstations, [station]: {
+            ...workstation,
             status: "MISSING_MATERIAL",
             workerId: null,
             progressMs: 0,
-          },
+          } },
         });
         continue;
       }
@@ -1556,17 +1667,17 @@ function moveActor(state: GameState, actorId: ActorId, deltaMs: number) {
         actor = next.actors[actorId]!;
         continue;
       }
-      if (!next.stove.includes(grilledMushroomRecipe.ingredient.itemId)) {
+      if (!stove.includes(grilledMushroomRecipe.ingredient.itemId)) {
         actor = waitAtStation(actor, true);
         next = {
           ...next,
           actors: patchActor(next, actorId, actor),
-          workstation: {
-            ...next.workstation,
+          workstations: { ...next.workstations, [station]: {
+            ...workstation,
             status: "MISSING_MATERIAL",
             workerId: actorId,
             progressMs: 0,
-          },
+          } },
         };
         remaining = 0;
         break;
@@ -1581,17 +1692,17 @@ function moveActor(state: GameState, actorId: ActorId, deltaMs: number) {
       };
       next = event(next, `${actor.name}이(가) 버섯을 굽기 시작했습니다.`, {
         actors: patchActor(next, actorId, actor),
-        workstation: {
+        workstations: { ...next.workstations, [station]: {
           status: "WORKING",
           workerId: actorId,
           progressMs: 0,
           totalMs,
-        },
+        } },
       });
       continue;
     }
 
-    if (station === "submission") {
+    if (type === "submission") {
       const filledDish = dishIndex(
         actor,
         (dish) => dish.status === "filled" && dish.content !== null,
@@ -1656,28 +1767,41 @@ function decayAlerts(state: GameState, deltaMs: number) {
 }
 
 function advanceIngredients(state: GameState, deltaMs: number) {
-  if (state.ingredients.stock >= INGREDIENT_MAX) {
-    return {
-      ...state,
+  let next = state;
+  for (const station of stationInstancesByType["ingredient-box"]) {
+    const ingredients = next.ingredients[station.id]!;
+    if (ingredients.stock >= INGREDIENT_MAX) {
+      next = {
+        ...next,
+        ingredients: {
+          ...next.ingredients,
+          [station.id]: { ...ingredients, timerMs: INGREDIENT_INTERVAL_MS },
+        },
+      };
+      continue;
+    }
+    const timerMs = ingredients.timerMs - deltaMs;
+    if (timerMs > 0) {
+      next = {
+        ...next,
+        ingredients: { ...next.ingredients, [station.id]: { ...ingredients, timerMs } },
+      };
+      continue;
+    }
+    next = event(next, "재료 상자에 버섯이 채워졌습니다.", {
       ingredients: {
-        ...state.ingredients,
-        timerMs: INGREDIENT_INTERVAL_MS,
+        ...next.ingredients,
+        [station.id]: {
+          stock: ingredients.stock + 1,
+          timerMs: INGREDIENT_INTERVAL_MS,
+        },
       },
-    };
+    });
   }
-  const timerMs = state.ingredients.timerMs - deltaMs;
-  if (timerMs > 0) {
-    return { ...state, ingredients: { ...state.ingredients, timerMs } };
-  }
-  return event(state, "재료 상자에 버섯이 채워졌습니다.", {
-    ingredients: {
-      stock: state.ingredients.stock + 1,
-      timerMs: INGREDIENT_INTERVAL_MS,
-    },
-  });
+  return next;
 }
 
-function igniteStation(state: GameState, station: StationId, message: string) {
+function igniteStation(state: GameState, station: StationInstanceId, message: string) {
   const fire = state.fires[station];
   // 화재 대상이 아니거나 이미 불이 난 곳에는 중복 적용하지 않는다.
   if (!fire || fire.onFire) return state;
@@ -1697,15 +1821,16 @@ function igniteStation(state: GameState, station: StationId, message: string) {
 
 // 방치 판정: 지금 상호작용 상태를 가진 설비는 조리 도구뿐이다. 다른
 // 설비가 상태를 갖게 되면 여기에 분기를 추가한다.
-function isNeglected(state: GameState, station: StationId) {
+function isNeglected(state: GameState, station: StationInstanceId) {
   return (
-    station === "stove" && state.workstation.status === fireConfig.neglectStatus
+    stationType(station) === "stove" &&
+    state.workstations[station]?.status === fireConfig.neglectStatus
   );
 }
 
 function advanceFires(state: GameState, deltaMs: number) {
   let next = state;
-  for (const station of Object.keys(next.fires) as StationId[]) {
+  for (const station of Object.keys(next.fires) as StationInstanceId[]) {
     const fire = next.fires[station]!;
     if (!fire.onFire) {
       const neglectMs = isNeglected(next, station) ? fire.neglectMs + deltaMs : 0;
@@ -1716,7 +1841,7 @@ function advanceFires(state: GameState, deltaMs: number) {
       next = igniteStation(
         next,
         station,
-        `${withParticle(stationLabels[station])} 방치해 불이 났습니다.`,
+        `${withParticle(stationLabels[stationType(station)])} 방치해 불이 났습니다.`,
       );
       continue;
     }
@@ -1730,7 +1855,7 @@ function advanceFires(state: GameState, deltaMs: number) {
       fires: { ...next.fires, [station]: { ...fire, spreadMs: 0 } },
     };
     // 이미 불이 났거나 화재 대상이 아닌 설비에는 옮겨붙지 않는다.
-    const victim = (Object.keys(next.fires) as StationId[]).find(
+    const victim = (Object.keys(next.fires) as StationInstanceId[]).find(
       (id) =>
         id !== station &&
         !next.fires[id]!.onFire &&
@@ -1740,7 +1865,7 @@ function advanceFires(state: GameState, deltaMs: number) {
       next = igniteStation(
         next,
         victim,
-        `${stationLabels[station]}의 불이 ${withParticle(stationLabels[victim], ["으로", "로"])} 옮겨붙었습니다.`,
+        `${stationLabels[stationType(station)]}의 불이 ${withParticle(stationLabels[stationType(victim)], ["으로", "로"])} 옮겨붙었습니다.`,
       );
     }
   }

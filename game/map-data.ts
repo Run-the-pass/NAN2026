@@ -6,38 +6,38 @@ export default {
     "#..............#",
     "#C............W#",
     "#..............#",
-    "#....#....#....#",
+    "#....T....#....#",
     "#..............#",
     "#....#....#....#",
     "#..............#",
     "#######S#X######"
   ],
   "taskTiles": {
-    "ingredient-box": {
+    "ingredient-box@4,1": {
       "col": 4,
       "row": 2
     },
-    "stove": {
+    "stove@1,3": {
       "col": 2,
       "row": 3
     },
-    "submission": {
+    "submission@7,9": {
       "col": 7,
       "row": 8
     },
-    "trash": {
+    "trash@9,9": {
       "col": 9,
       "row": 8
     },
-    "dish-rack": {
+    "dish-rack@11,1": {
       "col": 11,
       "row": 2
     },
-    "washer": {
+    "washer@14,3": {
       "col": 13,
       "row": 3
     },
-    "table": {
+    "table@7,1": {
       "col": 7,
       "row": 2
     }

@@ -55,21 +55,36 @@ function validateMap(data) {
     errors.push("맵 바깥 테두리는 조리대나 설비로 막아야 합니다.");
   }
   if (!data.taskTiles || typeof data.taskTiles !== "object") errors.push("슬라임 작업 위치 정보가 없습니다.");
+  const displays = [];
   for (const [id, code] of Object.entries(stationCodes)) {
-    const displays = data.rows.flatMap((row, rowIndex) => [...row].flatMap((tile, col) => tile === code ? [{ col, row: rowIndex }] : []));
-    if (displays.length !== 1) {
-      errors.push(`${stationLabels[id]}: 정확히 한 칸이어야 합니다.`);
-      continue;
-    }
-    const task = data.taskTiles?.[id];
-    if (!position(task) || data.rows[task.row]?.[task.col] !== ".") {
-      errors.push(`${stationLabels[id]} 작업 위치는 바닥이어야 합니다.`);
-    } else if (Math.abs(task.col - displays[0].col) + Math.abs(task.row - displays[0].row) !== 1) {
-      errors.push(`${stationLabels[id]} 작업 위치는 설비에 인접해야 합니다.`);
-    }
+    const found = data.rows.flatMap((row, rowIndex) => [...row].flatMap((tile, col) => tile === code ? [{ id, col, row: rowIndex, instanceId: `${id}@${col},${rowIndex}` }] : []));
+    if (!found.length) errors.push(`${stationLabels[id]}: 한 칸 이상 있어야 합니다.`);
+    displays.push(...found);
   }
-  const tasks = Object.keys(stationCodes).map((id) => data.taskTiles?.[id]).filter(position);
-  if (tasks.length === 7 && new Set(tasks.map((tile) => `${tile.col},${tile.row}`)).size !== 7) errors.push("슬라임 작업 위치는 서로 겹칠 수 없습니다.");
+  const validIds = new Set(displays.map(({ instanceId }) => instanceId));
+  for (const id of Object.keys(data.taskTiles ?? {})) {
+    if (!validIds.has(id)) errors.push(`${id}: 맵에 없는 설비의 작업 위치입니다.`);
+  }
+  const tasks = displays.flatMap((display) => {
+    const adjacent = [
+      { col: display.col, row: display.row - 1 },
+      { col: display.col - 1, row: display.row },
+      { col: display.col + 1, row: display.row },
+      { col: display.col, row: display.row + 1 },
+    ];
+    const task = data.taskTiles?.[display.instanceId] ?? adjacent.find((tile) => data.rows[tile.row]?.[tile.col] === ".");
+    if (!task) {
+      errors.push(`${display.instanceId}: 인접한 바닥 작업 위치가 없습니다.`);
+      return [];
+    }
+    if (!position(task) || data.rows[task.row]?.[task.col] !== ".") {
+      errors.push(`${display.instanceId}: 작업 위치는 바닥이어야 합니다.`);
+    } else if (Math.abs(task.col - display.col) + Math.abs(task.row - display.row) !== 1) {
+      errors.push(`${display.instanceId}: 작업 위치는 설비에 인접해야 합니다.`);
+    }
+    return [task];
+  });
+  if (new Set(tasks.map((tile) => `${tile.col},${tile.row}`)).size !== tasks.length) errors.push("슬라임 작업 위치는 서로 겹칠 수 없습니다.");
   if (!Array.isArray(data.spawnTiles) || data.spawnTiles.length !== 4 || data.spawnTiles.some((tile) => !position(tile) || data.rows[tile.row]?.[tile.col] !== ".") || new Set(data.spawnTiles.map((tile) => `${tile.col},${tile.row}`)).size !== 4) {
     errors.push("스폰 4칸은 서로 다른 바닥이어야 합니다.");
   }

@@ -42,12 +42,16 @@ export function gameSoundCues(
     return cues;
   }
   if (previous.timeLeft > 30 && next.timeLeft <= 30) cues.push("low-time");
-  if (next.ingredients.stock > previous.ingredients.stock) cues.push("new-item");
-  if (
-    previous.workstation.status !== "WORKING" &&
-    next.workstation.status === "WORKING"
-  ) cues.push("grill");
-  if (!previous.washer.workerId && next.washer.workerId) cues.push("wash");
+  if (Object.entries(next.ingredients).some(([id, box]) =>
+    box!.stock > (previous.ingredients[id as keyof GameState["ingredients"]]?.stock ?? 0)
+  )) cues.push("new-item");
+  if (Object.entries(next.workstations).some(([id, workstation]) =>
+    previous.workstations[id as keyof GameState["workstations"]]?.status !== "WORKING" &&
+    workstation?.status === "WORKING"
+  )) cues.push("grill");
+  if (Object.entries(next.washers).some(([id, washer]) =>
+    !previous.washers[id as keyof GameState["washers"]]?.workerId && washer?.workerId
+  )) cues.push("wash");
   if (
     Object.keys(next.actors).some((id) => {
       const actorId = id as keyof GameState["actors"];

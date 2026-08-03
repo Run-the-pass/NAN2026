@@ -3,7 +3,7 @@
 import { useRef, useState } from "react";
 import {
   KITCHEN_ROWS,
-  displayTiles,
+  stationInstances,
   itemLabel,
   recipes,
   slimeTypes,
@@ -21,9 +21,9 @@ import {
 } from "./stage-info";
 
 const stationByTile = new Map(
-  Object.entries(displayTiles).map(([station, tile]) => [
-    `${tile.col},${tile.row}`,
-    station as StationId,
+  stationInstances.map(({ type, displayTile }) => [
+    `${displayTile.col},${displayTile.row}`,
+    type as StationId,
   ]),
 );
 

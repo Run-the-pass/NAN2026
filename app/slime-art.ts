@@ -87,11 +87,26 @@ export function slimeDataUri(
 
 export const facings: Facing[] = ["down", "up", "left", "right"];
 
+// 물 슬라임 얼굴을 원본 에셋 배율로 환산한 공통 좌표.
+// 원본 에셋 3종은 1.12배 크게 그리므로 각 수치를 그만큼 줄였다.
+const authoredFaceGeometry = {
+  eyeOffsetX: 31,
+  eyeY: 18,
+  eyeRadius: 10,
+  blinkY: 16,
+  blinkWidth: 20,
+  blinkHeight: 5,
+  mouthY: 30,
+  mouthRadius: 14,
+} as const;
+
 // 원본 슬라임 몸통 위에 그릴 얼굴 위치. 위를 볼 때는 얼굴을 숨긴다.
 export function authoredFaceLayout(facing: Facing, blink = false) {
   if (facing === "up") return null;
   return {
-    x: facing === "left" ? -34 : facing === "right" ? 24 : -5,
+    ...authoredFaceGeometry,
+    x: facing === "left" ? -30 : facing === "right" ? 29 : -1,
+    y: facing === "down" ? 0 : 2,
     blink,
   };
 }

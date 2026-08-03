@@ -5,18 +5,17 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   TILE_SIZE,
   KITCHEN_ROWS,
-  displayTiles,
   initialState,
   interactActors,
   isWalkable,
   moveActors,
   pixelToTile,
   slimeTypes,
-  taskTiles,
   tick,
   tileCenter,
   INGREDIENT_MAX,
-  allStations,
+  stationInstances,
+  stationType,
   stationLabels,
   activeOrders,
   itemLabel,
@@ -35,6 +34,7 @@ import {
   type GameState,
   type SlimeTypeId,
   type StationId,
+  type StationInstanceId,
 } from "../game/core";
 import {
   facingFromDelta,
@@ -125,7 +125,7 @@ const emptyMetrics = (): Metrics => ({
 
 type InspectorTarget =
   | { kind: "actor"; id: ActorId }
-  | { kind: "station"; id: StationId };
+  | { kind: "station"; id: StationInstanceId };
 
 const stationPanelInfo: Record<
   StationId,
@@ -262,15 +262,17 @@ function GameInspector({
       </aside>
     );
   }
-  const info = stationPanelInfo[target.id];
+  const type = stationType(target.id);
+  const info = stationPanelInfo[type];
   return (
-    <aside className="game-inspector" data-station aria-label={`${stationLabels[target.id]} 정보`}>
+    <aside className="game-inspector" data-station aria-label={`${stationLabels[type]} 정보`}>
       <button className="inspector-close" type="button" onClick={onClose} aria-label="정보 패널 닫기">×</button>
-      <button className="inspector-station-icon" type="button" onClick={() => onHelp(target.id)} aria-label={`${stationLabels[target.id]} 자세히 보기`}>
-        <span aria-hidden>{stationIcons[target.id]}</span>
+      <button className="inspector-station-icon" type="button" onClick={() => onHelp(type)} aria-label={`${stationLabels[type]} 자세히 보기`}>
+        <span aria-hidden>{stationIcons[type]}</span>
       </button>
       <p className="eyebrow">STATION INFO</p>
-      <h2>{stationLabels[target.id]}</h2>
+      <h2>{stationLabels[type]}</h2>
+      <small>{target.id}</small>
       <div className="inspector-copy">
         {info.description.map((line) => <p key={line}>{line}</p>)}
       </div>
@@ -435,7 +437,7 @@ export default function Game() {
           }
         >
       >;
-      stations!: Record<StationId, Phaser.GameObjects.Text>;
+      stations!: Record<StationInstanceId, Phaser.GameObjects.Text>;
 
       // 가만히 있을 때: 원본 SVG의 숨쉬기를 tween으로 옮긴 것.
       breathe(visual: Phaser.GameObjects.Container, scale = SLIME_SCALE) {
@@ -513,31 +515,59 @@ export default function Game() {
           const face = authoredFaceLayout(sprite.facing, sprite.blinking);
           sprite.faceLayer.clear();
           if (face) {
+            const eyeY = face.y + face.eyeY;
+            const mouthY = face.y + face.mouthY;
             sprite.faceLayer.fillStyle(0x020100, 1);
             if (face.blink) {
-              if (sprite.typeId === "fire") {
-                sprite.faceLayer
-                  .fillTriangle(face.x - 50, 4, face.x - 22, 13, face.x - 25, 20)
-                  .fillTriangle(face.x + 50, 4, face.x + 22, 13, face.x + 25, 20);
-              } else {
-                sprite.faceLayer
-                  .fillRoundedRect(face.x - 47, 8, 24, 6, 3)
-                  .fillRoundedRect(face.x + 23, 8, 24, 6, 3);
-              }
-            } else if (sprite.typeId === "fire") {
               sprite.faceLayer
-                .fillTriangle(face.x - 52, -2, face.x - 19, 12, face.x - 25, 28)
-                .fillTriangle(face.x + 52, -2, face.x + 19, 12, face.x + 25, 28);
+                .fillRoundedRect(
+                  face.x - face.eyeOffsetX - face.blinkWidth / 2,
+                  face.y + face.blinkY,
+                  face.blinkWidth,
+                  face.blinkHeight,
+                  face.blinkHeight / 2,
+                )
+                .fillRoundedRect(
+                  face.x + face.eyeOffsetX - face.blinkWidth / 2,
+                  face.y + face.blinkY,
+                  face.blinkWidth,
+                  face.blinkHeight,
+                  face.blinkHeight / 2,
+                );
+            } else if (sprite.typeId === "fire") {
+              // 각 눈은 원호와 사선 한 개로 닫아, 원의 윗부분만 잘라낸다.
+              const fireEyeRadius = face.eyeRadius * 1.2;
+              sprite.faceLayer
+                .beginPath()
+                .arc(
+                  face.x - face.eyeOffsetX,
+                  eyeY,
+                  fireEyeRadius,
+                  -Math.PI / 15,
+                  7 * Math.PI / 6,
+                )
+                .closePath()
+                .fillPath()
+                .beginPath()
+                .arc(
+                  face.x + face.eyeOffsetX,
+                  eyeY,
+                  fireEyeRadius,
+                  -Math.PI / 6,
+                  16 * Math.PI / 15,
+                )
+                .closePath()
+                .fillPath();
             } else {
               sprite.faceLayer
-                .fillCircle(face.x - 35, 10, 12)
-                .fillCircle(face.x + 35, 10, 12);
+                .fillCircle(face.x - face.eyeOffsetX, eyeY, face.eyeRadius)
+                .fillCircle(face.x + face.eyeOffsetX, eyeY, face.eyeRadius);
             }
             sprite.faceLayer
               .beginPath()
-              .moveTo(face.x - 18, 38)
-              .lineTo(face.x + 18, 38)
-              .arc(face.x, 38, 18, 0, Math.PI)
+              .moveTo(face.x - face.mouthRadius, mouthY)
+              .lineTo(face.x + face.mouthRadius, mouthY)
+              .arc(face.x, mouthY, face.mouthRadius, 0, Math.PI)
               .closePath()
               .fillPath();
           }
@@ -568,7 +598,7 @@ export default function Game() {
 
       create() {
         this.cameras.main
-          .setBackgroundColor("#171527")
+          .setBackgroundColor("#21130b")
           .setZoom(RENDER_SCALE)
           .centerOn(480, 300);
         // Phaser는 캔버스 밖 DOM 오버레이의 좌표도 입력으로 받으므로,
@@ -626,11 +656,12 @@ export default function Game() {
           decor.fillStyle(0xf6d48e, 0.95).fillCircle(x, 105, 5);
         }
         // 네 주방 설비를 서로 다른 실루엣으로 그린다.
-        this.stations = {} as Record<StationId, Phaser.GameObjects.Text>;
-        for (const id of allStations) {
-          const { x, y } = tileCenter(displayTiles[id]);
+        this.stations = {} as Record<StationInstanceId, Phaser.GameObjects.Text>;
+        for (const station of stationInstances) {
+          const { id, type, displayTile, taskTile } = station;
+          const { x, y } = tileCenter(displayTile);
           const shape = this.add.graphics().setDepth(y);
-          if (id === "ingredient-box") {
+          if (type === "ingredient-box") {
             shape
               .fillStyle(0x6d3f20, 1)
               .fillRect(x - 28, y - 28, 56, 56)
@@ -638,37 +669,37 @@ export default function Game() {
               .strokeRect(x - 28, y - 28, 56, 56)
               .lineStyle(2, 0x3d2415, 0.8)
               .strokeLineShape(new Phaser.Geom.Line(x, y - 26, x, y + 26));
-          } else if (id === "stove") {
+          } else if (type === "stove") {
             shape
               .fillStyle(0x28272b, 1)
               .fillRect(x - 28, y - 28, 56, 56)
               .lineStyle(3, 0x807f86, 0.9)
               .strokeRect(x - 28, y - 28, 56, 56)
-              .fillStyle(stationColors[id], 0.9)
+              .fillStyle(stationColors[type], 0.9)
               .fillEllipse(x, y - 10, 48, 22)
               .lineStyle(2, 0xe9d3b1, 0.75)
               .strokeEllipse(x, y - 10, 48, 22)
               .fillStyle(0xffb347, 0.8)
               .fillCircle(x - 9, y - 11, 3)
               .fillCircle(x + 7, y - 14, 4);
-          } else if (id === "submission") {
+          } else if (type === "submission") {
             shape
-              .fillStyle(stationColors[id], 1)
+              .fillStyle(stationColors[type], 1)
               .fillRoundedRect(x - 27, y - 22, 54, 45, 5)
               .lineStyle(2, 0xb9edbd, 0.75)
               .strokeRoundedRect(x - 27, y - 22, 54, 45, 5)
               .fillStyle(0x183b24, 1)
               .fillRect(x - 14, y - 8, 28, 4);
-          } else if (id === "dish-rack") {
+          } else if (type === "dish-rack") {
             shape
               .fillStyle(0x4b382a, 1)
               .fillRoundedRect(x - 27, y - 23, 54, 46, 5)
-              .lineStyle(3, stationColors[id], 0.95)
+              .lineStyle(3, stationColors[type], 0.95)
               .strokeRoundedRect(x - 27, y - 23, 54, 46, 5)
               .lineStyle(2, 0xd9e8ff, 0.7)
               .strokeLineShape(new Phaser.Geom.Line(x - 20, y - 5, x + 20, y - 5))
               .strokeLineShape(new Phaser.Geom.Line(x - 20, y + 10, x + 20, y + 10));
-          } else if (id === "washer") {
+          } else if (type === "washer") {
             shape
               .fillStyle(0x394b50, 1)
               .fillRoundedRect(x - 27, y - 18, 54, 42, 6)
@@ -676,9 +707,9 @@ export default function Game() {
               .fillEllipse(x, y - 14, 45, 18)
               .lineStyle(2, 0xcdf8ff, 0.8)
               .strokeEllipse(x, y - 14, 45, 18);
-          } else if (id === "table") {
+          } else if (type === "table") {
             shape
-              .fillStyle(stationColors[id], 1)
+              .fillStyle(stationColors[type], 1)
               .fillRoundedRect(x - 29, y - 17, 58, 34, 6)
               .lineStyle(3, 0xc89258, 0.9)
               .strokeRoundedRect(x - 29, y - 17, 58, 34, 6)
@@ -687,7 +718,7 @@ export default function Game() {
               .fillRect(x + 15, y + 14, 7, 12);
           } else {
             shape
-              .fillStyle(stationColors[id], 1)
+              .fillStyle(stationColors[type], 1)
               .fillRect(x - 28, y - 28, 56, 56)
               .lineStyle(3, 0xbdb6c9, 0.65)
               .strokeRect(x - 28, y - 28, 56, 56)
@@ -697,20 +728,20 @@ export default function Game() {
               .strokeLineShape(new Phaser.Geom.Line(x - 13, y - 8, x - 13, y + 16))
               .strokeLineShape(new Phaser.Geom.Line(x + 13, y - 8, x + 13, y + 16));
           }
-          const workAt = tileCenter(taskTiles[id]);
+          const workAt = tileCenter(taskTile);
           this.add
-            .circle(workAt.x, workAt.y, 5, stationColors[id], 0.38)
+            .circle(workAt.x, workAt.y, 5, stationColors[type], 0.38)
             .setStrokeStyle(1, 0xffefd2, 0.55)
             .setDepth(1);
           this.add
-            .text(x, y - 10, stationIcons[id], {
+            .text(x, y - 10, stationIcons[type], {
               fontSize: "20px",
               resolution: RENDER_SCALE,
             })
             .setOrigin(0.5)
             .setDepth(y + 1);
           this.add
-            .text(x, y + 22, stationLabels[id], {
+            .text(x, y + 22, stationLabels[type], {
               color: "#f8efff",
               fontFamily: "Jua, sans-serif",
               fontSize: "10px",
@@ -791,7 +822,7 @@ export default function Game() {
                 if (!pointer.leftButtonDown()) return;
                 const additive =
                   pointer.event instanceof MouseEvent && pointer.event.shiftKey;
-                setInspected({ kind: "actor", id: actorId });
+                setInspected(null);
                 setSelectedActors((selected) =>
                   additive
                     ? selected.includes(actorId)
@@ -925,7 +956,7 @@ export default function Game() {
               actor.y <= bottom
             );
           });
-          setInspected(inside[0] ? { kind: "actor", id: inside[0] } : null);
+          setInspected(null);
           setSelectedActors((selected) =>
             start.additive ? [...new Set([...selected, ...inside])] : inside,
           );
@@ -950,7 +981,7 @@ export default function Game() {
                 actor.status === "MOVING"
                   ? "walk"
                   : actor.status === "WORKING"
-                    ? current.workstation.workerId === actorId
+                    ? Object.values(current.workstations).some((workstation) => workstation?.workerId === actorId)
                       ? "stir"
                       : "pick"
                     : "idle";
@@ -974,27 +1005,27 @@ export default function Game() {
                 .setPosition(actor.x, actor.y - 52)
                 .setDepth(actor.y + 2);
             }
-            for (const id of allStations) {
+            for (const { id, type } of stationInstances) {
               const fire = current.fires[id];
               const label = fire?.onFire
                 ? // 불이 난 설비는 진화 진행도를 대신 보여 준다.
                   `🔥 ${Math.round((fire.extinguishMs / fireConfig.extinguishMs) * 100)}%`
-                : id === "ingredient-box"
-                  ? `${current.ingredients.stock}/${INGREDIENT_MAX}`
-                  : id === "stove"
-                    ? current.workstation.status === "WORKING"
-                      ? `${workStatusLabels.WORKING} ${Math.round((current.workstation.progressMs / current.workstation.totalMs) * 100)}%`
-                      : workStatusLabels[current.workstation.status]
-                    : id === "dish-rack"
-                      ? `${current.dishRack.length}/${dishConfig.rackCapacity}`
-                      : id === "washer"
-                        ? current.washer.workerId
-                          ? `세척 ${Math.round((current.washer.progressMs / current.washer.totalMs) * 100)}%`
-                          : current.washer.dish
-                            ? current.washer.dish.status === "clean" ? "세척 완료" : "세척 대기"
+                : type === "ingredient-box"
+                  ? `${current.ingredients[id]!.stock}/${INGREDIENT_MAX}`
+                  : type === "stove"
+                    ? current.workstations[id]!.status === "WORKING"
+                      ? `${workStatusLabels.WORKING} ${Math.round((current.workstations[id]!.progressMs / current.workstations[id]!.totalMs) * 100)}%`
+                      : workStatusLabels[current.workstations[id]!.status]
+                    : type === "dish-rack"
+                      ? `${current.dishRacks[id]!.length}/${dishConfig.rackCapacity}`
+                      : type === "washer"
+                        ? current.washers[id]!.workerId
+                          ? `세척 ${Math.round((current.washers[id]!.progressMs / current.washers[id]!.totalMs) * 100)}%`
+                          : current.washers[id]!.dish
+                            ? current.washers[id]!.dish!.status === "clean" ? "세척 완료" : "세척 대기"
                             : "비어 있음"
-                        : id === "table"
-                          ? current.table[0] ? carriedLabel(current.table[0]) : "비어 있음"
+                        : type === "table"
+                          ? current.tables[id]![0] ? carriedLabel(current.tables[id]![0]) : "비어 있음"
                           : "";
               this.stations[id].setText(label);
             }
@@ -1014,10 +1045,10 @@ export default function Game() {
       parent: "game-canvas",
       width: 960 * RENDER_SCALE,
       height: 600 * RENDER_SCALE,
-      backgroundColor: "#171527",
+      backgroundColor: "#21130b",
       scene: Restaurant,
       render: { antialias: true },
-      scale: { mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.CENTER_BOTH },
+      scale: { mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.CENTER_VERTICALLY },
     });
     return () => {
       view.current = null;
@@ -1047,14 +1078,14 @@ export default function Game() {
       (actorId) => stateRef.current?.actors[actorId]?.typeId === element,
     );
     setSelectedActors(ids);
-    setInspected(ids[0] ? { kind: "actor", id: ids[0] } : null);
+    setInspected(null);
   }, [squad]);
 
   const selectEveryone = useCallback(() => {
     if (!squad) return;
     const ids = squadActorIds(squad);
     setSelectedActors(ids);
-    setInspected(ids[0] ? { kind: "actor", id: ids[0] } : null);
+    setInspected(null);
   }, [squad]);
 
   // 속성 키와 전체 선택 키.
@@ -1236,6 +1267,17 @@ export default function Game() {
               <b>Space</b>
               <small>전체</small>
             </button>
+            {selectedActors.length === 1 && (
+              <button
+                type="button"
+                className="control-key-info"
+                aria-label="선택한 슬라임 상세 정보 열기"
+                onClick={() => setInspected({ kind: "actor", id: selectedActors[0] })}
+              >
+                <b>ⓘ</b>
+                <small>정보</small>
+              </button>
+            )}
           </div>
 
           <div className="hud-right">
@@ -1245,14 +1287,16 @@ export default function Game() {
           </div>
         </div>
 
-        {inspected && (
-          <GameInspector
-            state={state}
-            target={inspected}
-            onClose={() => setInspected(null)}
-            onHelp={setHelpStation}
-          />
-        )}
+        <div className="info-rail" role="complementary" aria-label="선택 정보 영역">
+          {inspected && (
+            <GameInspector
+              state={state}
+              target={inspected}
+              onClose={() => setInspected(null)}
+              onHelp={setHelpStation}
+            />
+          )}
+        </div>
 
         {helpStation && (
           <StationHelp id={helpStation} onClose={() => setHelpStation(null)} />
