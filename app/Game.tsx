@@ -506,23 +506,25 @@ export default function Game() {
         if (sprite.typeId === "fire" && sprite.fireFace) {
           sprite.art.setTexture("slime-fire-art").setFlipX(sprite.facing === "left");
           const face = fireFaceLayout(sprite.facing, sprite.blinking);
-          sprite.fireFace
-            .clear()
-            // 원본에 박힌 정면 얼굴만 같은 몸통색으로 덮는다.
-            .fillStyle(0xfc7d01, 1)
-            .fillEllipse(-5, 30, 168, 90);
+          sprite.fireFace.clear();
           if (face) {
             sprite.fireFace.fillStyle(0x020100, 1);
             if (face.blink) {
               sprite.fireFace
-                .fillRoundedRect(face.x - 50, 8, 28, 6, 3)
-                .fillRoundedRect(face.x + 22, 8, 28, 6, 3);
+                .fillRoundedRect(face.x - 47, 8, 24, 6, 3)
+                .fillRoundedRect(face.x + 23, 8, 24, 6, 3);
             } else {
               sprite.fireFace
-                .fillCircle(face.x - 36, 10, 14)
-                .fillCircle(face.x + 36, 10, 14);
+                .fillCircle(face.x - 35, 10, 12)
+                .fillCircle(face.x + 35, 10, 12);
             }
-            sprite.fireFace.fillEllipse(face.x, 48, 38, 24);
+            sprite.fireFace
+              .beginPath()
+              .moveTo(face.x - 18, 38)
+              .lineTo(face.x + 18, 38)
+              .arc(face.x, 38, 18, 0, Math.PI)
+              .closePath()
+              .fillPath();
           }
           return;
         }
