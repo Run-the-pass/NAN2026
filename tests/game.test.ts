@@ -15,6 +15,8 @@ import {
   INGREDIENT_INTERVAL_MS,
   INGREDIENT_MAX,
   KITCHEN_ROWS,
+  MAP_HEIGHT,
+  MAP_WIDTH,
   TILE_SIZE,
   allStations,
   displayTiles,
@@ -25,6 +27,7 @@ import {
   slimeTypes,
   stationHitboxes,
   taskTiles,
+  spawnTiles,
   tick,
   tileCenter,
   activeOrders,
@@ -33,6 +36,7 @@ import {
   isDish,
   orderConfig,
   recipes,
+  validateKitchenMap,
   roundResult,
   currentStage,
   defaultStages,
@@ -41,6 +45,7 @@ import {
   type GameState,
   type Order,
   type Stage,
+  type KitchenMapData,
 } from "../game/core.js";
 
 test("스테이지 정보는 실제 맵·레시피와 검증된 설정만 사용한다", () => {
@@ -102,8 +107,13 @@ const untilIdle = (state: GameState) =>
   );
 
 test("주방 설비는 인접한 작업 타일을 가진다", () => {
-  assert.equal(KITCHEN_ROWS.length, 10);
-  assert.ok(KITCHEN_ROWS.every((row) => row.length === 16));
+  assert.equal(KITCHEN_ROWS.length, MAP_HEIGHT);
+  assert.ok(KITCHEN_ROWS.every((row) => row.length === MAP_WIDTH));
+  assert.deepEqual(validateKitchenMap({
+    rows: KITCHEN_ROWS,
+    taskTiles,
+    spawnTiles,
+  }), []);
   for (const id of allStations) {
     const task = taskTiles[id];
     const display = displayTiles[id];
@@ -115,6 +125,20 @@ test("주방 설비는 인접한 작업 타일을 가진다", () => {
   }
 });
 
+test("맵 편집 데이터는 누락 설비와 잘못된 작업·스폰 칸을 거부한다", () => {
+  const rows = [...KITCHEN_ROWS];
+  rows[1] = rows[1].replace("I", ".");
+  const broken: KitchenMapData = {
+    rows,
+    taskTiles: { ...taskTiles, stove: displayTiles.stove },
+    spawnTiles: [spawnTiles[0], spawnTiles[0], spawnTiles[2], spawnTiles[3]],
+  };
+  const errors = validateKitchenMap(broken);
+  assert.ok(errors.some((error) => error.includes("재료 상자")));
+  assert.ok(errors.some((error) => error.includes("조리 도구")));
+  assert.ok(errors.some((error) => error.includes("스폰")));
+});
+
 test("재료 상자는 버섯을 최대치까지 채운다", () => {
   let state = initialState(1, ["water"]);
   for (let elapsed = 0; elapsed < INGREDIENT_INTERVAL_MS * 5; elapsed += 50) {
@@ -124,7 +148,7 @@ test("재료 상자는 버섯을 최대치까지 채운다", () => {
 });
 
 test("바닥 지시는 순간이동 없이 선택한 슬라임을 이동시킨다", () => {
-  const destination = { x: 156, y: 148 };
+  const destination = tileCenter({ col: 8, row: 4 });
   let state = moveActors(
     initialState(1, ["lightning", "fire"]),
     ["lightning-1", "fire-1"],
@@ -460,7 +484,7 @@ test("라운드 주문 목록을 주입하고 제출마다 진행도가 오른�
   assert.equal(state.goal, 2);
   assert.deepEqual(
     activeOrders(state).map((order) => order.id),
-    ["a"],
+    ["a", "b"],
   );
   state = cookAndSubmit(state);
   assert.equal(state.orders[0].submittedCount, 1);
@@ -623,8 +647,10 @@ test("화재는 인접한 화재 대상 설비로만 전파된다", () => {
   try {
     fireConfig.flammableStations = ["stove", "ingredient-box"];
     fireConfig.spreadIntervalMs = 1_000;
-    // 조리 도구와 재료 상자는 타일 거리 3이다.
-    fireConfig.spreadRange = 3;
+    // 맵 에디터에서 배치가 바뀌어도 현재 두 설비의 거리로 검증한다.
+    fireConfig.spreadRange =
+      Math.abs(displayTiles.stove.col - displayTiles["ingredient-box"].col) +
+      Math.abs(displayTiles.stove.row - displayTiles["ingredient-box"].row);
     let state = burnStove(initialState(1, ["water", "fire", "lightning"]));
     assert.equal(state.fires["ingredient-box"]!.onFire, false);
     state = until(

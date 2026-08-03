@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>슬라임 레스토랑 로컬 맵 에디터</title>
+  <style>
+    :root { color-scheme: dark; font-family: system-ui, sans-serif; --gold:#ffd46b; --panel:#28223a; --line:#675a7d; }
+    * { box-sizing:border-box; }
+    body { margin:0; min-height:100vh; background:#12101e; color:#faf2ff; }
+    header { display:flex; align-items:center; justify-content:space-between; gap:20px; padding:18px 24px; border-bottom:1px solid var(--line); background:#211c31; }
+    h1,h2,p { margin:0; } h1 { font-size:22px; } header p { color:#bfb2d6; font-size:13px; }
+    main { display:grid; grid-template-columns:minmax(620px,1fr) 330px; gap:20px; padding:20px; }
+    .board-shell,.side { border:1px solid var(--line); border-radius:16px; background:var(--panel); box-shadow:0 18px 50px #0005; }
+    .board-shell { padding:18px; }
+    .board { display:grid; grid-template-columns:repeat(16,1fr); aspect-ratio:16/10; overflow:hidden; border:3px solid #f7e3b0; border-radius:10px; background:#3e2414; touch-action:none; }
+    .cell { position:relative; display:grid; place-items:center; min-width:0; border:1px solid #2a160b80; padding:0; background:#4b2c19; color:#fff; font-size:clamp(10px,1.7vw,24px); cursor:crosshair; }
+    .cell[data-tile="#"] { background:#a66f38; box-shadow:inset 0 0 0 2px #d5a46755; }
+    .cell[data-station] { background:#76503a; box-shadow:inset 0 0 0 2px #fff4; }
+    .marker { position:absolute; border-radius:999px; padding:1px 4px; background:#171427e8; color:#fff; font-size:9px; }
+    .marker.task { right:2px; bottom:2px; color:#8be5ff; } .marker.spawn { top:2px; left:2px; color:#ffe47e; }
+    .side { display:grid; align-content:start; gap:16px; padding:18px; }
+    .local { border:1px solid #5c9c69; border-radius:10px; padding:10px; background:#173022; color:#a9e8b4; font-size:12px; }
+    .palette { display:grid; gap:8px; } .palette section { display:grid; gap:6px; }
+    .palette h2 { color:#cfc1e2; font-size:13px; }
+    .tools { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:6px; }
+    button { border:1px solid #75678f; border-radius:9px; padding:8px; background:#43395b; color:#fff; cursor:pointer; font:inherit; }
+    button:hover,button:focus-visible { border-color:var(--gold); outline:none; }
+    .tools button[aria-pressed="true"] { border-color:#fff; box-shadow:0 0 0 2px var(--gold); background:#5b4978; }
+    .actions { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+    .save { background:var(--gold); color:#21192c; font-weight:800; }
+    #status { min-height:42px; border-radius:9px; padding:9px; background:#171427; color:#c9bddc; font-size:12px; white-space:pre-line; }
+    #status[data-error] { color:#ffb6c8; }
+    .help { color:#bfb2d6; font-size:12px; line-height:1.5; }
+    @media (max-width:900px) { main { grid-template-columns:1fr; } .board-shell { overflow-x:auto; } .board { min-width:620px; } }
+  </style>
+</head>
+<body>
+  <header><div><h1>슬라임 레스토랑 맵 에디터</h1><p>16×10 게임 맵을 직접 편집하고 저장합니다.</p></div><strong>LOCAL ONLY</strong></header>
+  <main>
+    <section class="board-shell" aria-label="맵 편집 영역"><div class="board" id="board" role="grid" aria-label="16×10 맵"></div></section>
+    <aside class="side">
+      <p class="local">이 도구는 127.0.0.1에서만 실행되며 배포 게임에는 포함되지 않습니다.</p>
+      <div class="palette" id="palette"></div>
+      <div class="actions"><button class="save" id="save">저장 및 적용</button><button id="reload">다시 불러오기</button></div>
+      <p id="status" role="status" aria-live="polite">맵을 불러오는 중…</p>
+      <p class="help">바닥·조리대는 드래그해서 칠할 수 있습니다. 설비를 옮긴 뒤 해당 설비의 상호작용 칸도 인접한 바닥으로 옮기세요. 스폰 1~4는 서로 다른 바닥에 둡니다.</p>
+    </aside>
+  </main>
+  <script>
+    const stations = [
+      ["ingredient-box","I","🍄","재료 상자"],["stove","C","🍳","조리 도구"],["submission","S","📬","음식 제출대"],
+      ["trash","X","🗑️","쓰레기"],["dish-rack","D","🍽️","그릇 생성대"],["washer","W","🫧","세척기"],["table","T","🪵","테이블"]
+    ];
+    const palette = document.querySelector("#palette"), board = document.querySelector("#board"), status = document.querySelector("#status");
+    let data, dirty = false, painting = false, brush = { kind:"tile", value:"." };
+    const tools = [
+      ["타일", [["tile",".","바닥"],["tile","#","조리대/벽"]]],
+      ["설비", stations.map(([id,code,icon,label]) => ["station",code,`${icon} ${label}`])],
+      ["상호작용 칸", stations.map(([id,,icon,label]) => ["task",id,`${icon} ${label}`])],
+      ["스폰", [0,1,2,3].map((index) => ["spawn",String(index),`스폰 ${index + 1}`])],
+    ];
+    for (const [title, items] of tools) {
+      const section = document.createElement("section"), heading = document.createElement("h2"), group = document.createElement("div");
+      heading.textContent = title; group.className = "tools"; section.append(heading, group);
+      for (const [kind,value,label] of items) {
+        const button = document.createElement("button"); button.type = "button"; button.textContent = label; button.dataset.kind = kind; button.dataset.value = value;
+        button.addEventListener("click", () => { brush = { kind, value }; document.querySelectorAll(".tools button").forEach((item) => item.setAttribute("aria-pressed", String(item === button))); });
+        group.append(button);
+      }
+      palette.append(section);
+    }
+    document.querySelector('.tools button[data-value="."]').click();
+    const setRow = (row, col, value) => data.rows[row] = data.rows[row].slice(0,col) + value + data.rows[row].slice(col + 1);
+    function apply(col,row) {
+      if (!data) return;
+      if (brush.kind === "tile") setRow(row,col,brush.value);
+      if (brush.kind === "station") {
+        data.rows = data.rows.map((line) => line.replace(brush.value,".")); setRow(row,col,brush.value);
+      }
+      if (brush.kind === "task") data.taskTiles[brush.value] = { col,row };
+      if (brush.kind === "spawn") data.spawnTiles[Number(brush.value)] = { col,row };
+      dirty = true; status.textContent = "저장되지 않은 변경 사항이 있습니다."; status.removeAttribute("data-error"); render();
+    }
+    function render() {
+      board.replaceChildren();
+      data.rows.forEach((line,row) => [...line].forEach((tile,col) => {
+        const cell = document.createElement("button"), station = stations.find(([,code]) => code === tile);
+        cell.type = "button"; cell.className = "cell"; cell.dataset.tile = tile; cell.setAttribute("role","gridcell");
+        cell.setAttribute("aria-label", `${col + 1}열 ${row + 1}행 ${station ? station[3] : tile === "#" ? "조리대" : "바닥"}`);
+        if (station) { cell.dataset.station = station[0]; cell.textContent = station[2]; }
+        const task = stations.find(([id]) => data.taskTiles[id]?.col === col && data.taskTiles[id]?.row === row);
+        const spawn = data.spawnTiles.findIndex((position) => position.col === col && position.row === row);
+        if (task) { const badge = document.createElement("span"); badge.className = "marker task"; badge.textContent = `작업:${task[2]}`; cell.append(badge); }
+        if (spawn >= 0) { const badge = document.createElement("span"); badge.className = "marker spawn"; badge.textContent = `S${spawn + 1}`; cell.append(badge); }
+        cell.addEventListener("pointerdown", (event) => { event.preventDefault(); painting = true; apply(col,row); });
+        cell.addEventListener("pointerenter", () => { if (painting && brush.kind === "tile") apply(col,row); });
+        board.append(cell);
+      }));
+    }
+    async function load() {
+      const response = await fetch("/map", { cache:"no-store" });
+      data = await response.json(); dirty = false; status.textContent = "현재 게임 맵을 불러왔습니다."; status.removeAttribute("data-error"); render();
+    }
+    document.addEventListener("pointerup", () => painting = false);
+    document.querySelector("#save").addEventListener("click", async () => {
+      const response = await fetch("/map", { method:"PUT", headers:{"content-type":"application/json"}, body:JSON.stringify(data) });
+      const result = await response.json();
+      if (!response.ok) { status.dataset.error = ""; status.textContent = result.errors.join("\n"); return; }
+      dirty = false; status.removeAttribute("data-error"); status.textContent = "저장 완료. 게임을 새로고침하면 바로 적용됩니다.";
+    });
+    document.querySelector("#reload").addEventListener("click", () => { if (!dirty || confirm("저장하지 않은 변경을 버릴까요?")) load(); });
+    addEventListener("beforeunload", (event) => { if (dirty) event.preventDefault(); });
+    load().catch((error) => { status.dataset.error = ""; status.textContent = error.message; });
+  </script>
+</body>
+</html>

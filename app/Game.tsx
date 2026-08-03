@@ -1,7 +1,7 @@
 "use client";
 
 import * as Phaser from "phaser";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   TILE_SIZE,
   KITCHEN_ROWS,
@@ -15,13 +15,12 @@ import {
   taskTiles,
   tick,
   tileCenter,
-  STORAGE_MAX,
   INGREDIENT_MAX,
   allStations,
   stationLabels,
   activeOrders,
-  orderComplete,
   itemLabel,
+  recipes,
   fireConfig,
   squadActorIds,
   currentStage,
@@ -119,6 +118,58 @@ const emptyMetrics = (): Metrics => ({
   buttonCommands: 0,
 });
 
+type InspectorTarget =
+  | { kind: "actor"; id: ActorId }
+  | { kind: "station"; id: StationId };
+
+const stationPanelInfo: Record<
+  StationId,
+  { description: string[]; required: SlimeTypeId[]; steps: string[] }
+> = {
+  "ingredient-box": {
+    description: ["버섯이 일정 시간마다 채워집니다.", "빈손이나 깨끗한 그릇으로 꺼냅니다."],
+    required: [],
+    steps: ["🍄 버섯 받기"],
+  },
+  stove: {
+    description: ["버섯을 넣고 불 슬라임으로 조리합니다.", "완성 음식은 깨끗한 그릇에 담습니다."],
+    required: ["fire"],
+    steps: ["🍄 버섯", "🔥 조리", "🍽️ 그릇"],
+  },
+  submission: {
+    description: ["주문 음식이 담긴 그릇을 제출합니다.", "제출한 그릇은 더러워집니다."],
+    required: [],
+    steps: ["🍲 음식", "📬 제출"],
+  },
+  trash: {
+    description: ["들고 있는 음식이나 재료를 버립니다.", "그릇 자체는 버리지 않습니다."],
+    required: [],
+    steps: ["🗑️ 음식 폐기"],
+  },
+  "dish-rack": {
+    description: ["깨끗한 그릇을 꺼내는 곳입니다.", "생성대에는 그릇이 최대 3개 있습니다."],
+    required: [],
+    steps: ["🍽️ 그릇 받기"],
+  },
+  washer: {
+    description: ["더러운 그릇을 맡겨 세척합니다.", "물 슬라임이 세척을 완료할 수 있습니다."],
+    required: ["water"],
+    steps: ["🍽️ 더러운 그릇", "💧 세척"],
+  },
+  table: {
+    description: ["재료나 그릇을 한 칸 보관합니다.", "다른 슬라임에게 물건을 인계할 수 있습니다."],
+    required: [],
+    steps: ["🪵 보관", "🤝 인계"],
+  },
+};
+
+const slimePortrait = (typeId: SlimeTypeId) =>
+  typeId === "water"
+    ? "/slimes/water.svg"
+    : typeId === "fire"
+      ? "/slimes/fire.svg"
+      : slimeDataUri(typeId, "down");
+
 function StatGauges({ levels }: { levels: Record<string, number> }) {
   return (
     <ul className="slime-stats">
@@ -141,16 +192,136 @@ function StatGauges({ levels }: { levels: Record<string, number> }) {
   );
 }
 
+function OrderCards({ state }: { state: GameState }) {
+  const orders = activeOrders(state);
+  const urgency = state.timeLeft <= 20 ? "danger" : state.timeLeft <= 40 ? "warn" : "ready";
+  return (
+    <section className="order-cards" aria-label="진행 중인 주문">
+      {[0, 1, 2].map((index) => {
+        const order = orders[index];
+        if (!order) return <span className="order-card order-card-empty" aria-hidden key={index} />;
+        const recipe = recipes[order.foodId as keyof typeof recipes];
+        return (
+          <article className="order-card" data-urgency={urgency} key={order.id}>
+            <header>
+              <b>주문 {index + 1}</b>
+              <span>영업 {state.timeLeft}초</span>
+            </header>
+            <strong className="order-food">
+              <span aria-hidden>{itemIcons[order.foodId]}</span>
+              {itemLabel(order.foodId)}
+              <small>{order.submittedCount}/{order.targetCount}</small>
+            </strong>
+            <div className="order-process" aria-label="조리 흐름">
+              <span>{recipe ? itemIcons[recipe.ingredient.itemId] : "?"}</span>
+              <i aria-hidden>→</i>
+              <span>{recipe ? slimeTypes[recipe.requiredElement].elementLabel : "?"}</span>
+            </div>
+            <footer>
+              <span aria-hidden>{recipe ? stationIcons[recipe.station] : "?"}</span>
+              {recipe ? stationLabels[recipe.station] : "조리 정보 없음"}
+            </footer>
+          </article>
+        );
+      })}
+    </section>
+  );
+}
+
+function GameInspector({
+  state,
+  target,
+  onClose,
+  onHelp,
+}: {
+  state: GameState;
+  target: InspectorTarget;
+  onClose: () => void;
+  onHelp: (id: StationId) => void;
+}) {
+  if (target.kind === "actor") {
+    const actor = state.actors[target.id];
+    if (!actor) return null;
+    const type = slimeTypes[actor.typeId];
+    return (
+      <aside className="game-inspector" data-type={actor.typeId} aria-label={`${actor.name} 정보`}>
+        <button className="inspector-close" type="button" onClick={onClose} aria-label="정보 패널 닫기">×</button>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img className="inspector-portrait" src={slimePortrait(actor.typeId)} alt="" />
+        <p className="eyebrow">SLIME INFO</p>
+        <h2>{actor.name}</h2>
+        <p className="inspector-copy">{type.trait}</p>
+        <StatGauges levels={actor.statLevels} />
+        <h3>가능한 일</h3>
+        <div className="inspector-badges">
+          {type.role.split(" · ").map((role) => <span key={role}>{role}</span>)}
+        </div>
+      </aside>
+    );
+  }
+  const info = stationPanelInfo[target.id];
+  return (
+    <aside className="game-inspector" data-station aria-label={`${stationLabels[target.id]} 정보`}>
+      <button className="inspector-close" type="button" onClick={onClose} aria-label="정보 패널 닫기">×</button>
+      <button className="inspector-station-icon" type="button" onClick={() => onHelp(target.id)} aria-label={`${stationLabels[target.id]} 자세히 보기`}>
+        <span aria-hidden>{stationIcons[target.id]}</span>
+      </button>
+      <p className="eyebrow">STATION INFO</p>
+      <h2>{stationLabels[target.id]}</h2>
+      <div className="inspector-copy">
+        {info.description.map((line) => <p key={line}>{line}</p>)}
+      </div>
+      <h3>필요 슬라임</h3>
+      <div className="required-slimes">
+        {info.required.length ? info.required.map((typeId) => (
+          <span key={typeId}>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={slimePortrait(typeId)} alt="" />
+            {slimeTypes[typeId].name}
+          </span>
+        )) : <span className="any-slime">누구나 사용 가능</span>}
+      </div>
+      <h3>작업 흐름</h3>
+      <div className="station-workflow">
+        {info.steps.map((step, index) => (
+          <span key={step}>{index > 0 && <i aria-hidden>→</i>}<b>{step}</b></span>
+        ))}
+      </div>
+      <small className="inspector-hint">설비를 우클릭하면 선택한 슬라임에게 지시합니다.</small>
+    </aside>
+  );
+}
+
+function StationHelp({ id, onClose }: { id: StationId; onClose: () => void }) {
+  const info = stationPanelInfo[id];
+  return (
+    <section className="station-help-overlay" role="dialog" aria-modal="true" aria-labelledby="station-help-title">
+      <div>
+        <span className="station-help-icon" aria-hidden>{stationIcons[id]}</span>
+        <section>
+          <p className="eyebrow">도구 인포</p>
+          <h2 id="station-help-title">{stationLabels[id]}</h2>
+          {info.description.map((line) => <p key={line}>{line}</p>)}
+          <p><b>조작:</b> 슬라임 선택 후 설비 타일을 우클릭</p>
+        </section>
+        <button type="button" onClick={onClose}>확인</button>
+      </div>
+    </section>
+  );
+}
+
 export default function Game() {
   const [squad, setSquad] = useState<SlimeTypeId[] | null>(null);
   // 일반 플레이는 첫 직원 한 마리, 상호작용 검증은 네 마리로 시작한다.
   const [picked, setPicked] = useState<SlimeTypeId>("water");
   const [state, setState] = useState<GameState | null>(null);
   const [selectedActors, setSelectedActors] = useState<ActorId[]>([]);
+  const [inspected, setInspected] = useState<InspectorTarget | null>(null);
+  const [helpStation, setHelpStation] = useState<StationId | null>(null);
   const [stageInfoOpen, setStageInfoOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [resumeCount, setResumeCount] = useState<number | null>(null);
-  const paused = stageInfoOpen || settingsOpen || resumeCount !== null;
+  const paused = stageInfoOpen || settingsOpen || helpStation !== null || resumeCount !== null;
 
   const [saved, setSaved] = useState("");
   const stateRef = useRef(state);
@@ -382,6 +553,10 @@ export default function Game() {
           .setBackgroundColor("#171527")
           .setZoom(RENDER_SCALE)
           .centerOn(480, 300);
+        // Phaser는 캔버스 밖 DOM 오버레이의 좌표도 입력으로 받으므로,
+        // 실제 캔버스에서 시작한 포인터만 게임 명령으로 처리한다.
+        const fromCanvas = (pointer: Phaser.Input.Pointer) =>
+          pointer.event?.target === this.game.canvas;
         // 나무와 금속 중심의 판타지 식당 바닥과 벽.
         const planks = this.add.graphics().setDepth(0);
         KITCHEN_ROWS.forEach((row, rowIndex) => {
@@ -550,6 +725,11 @@ export default function Game() {
                 inputEvent: Phaser.Types.Input.EventData,
               ) => {
                 inputEvent.stopPropagation();
+                if (!fromCanvas(pointer)) return;
+                if (pointer.leftButtonDown()) {
+                  setInspected({ kind: "station", id });
+                  return;
+                }
                 if (!pointer.rightButtonDown()) return;
                 metrics.current.buttonCommands += 1;
                 setState((value) =>
@@ -589,9 +769,11 @@ export default function Game() {
                 inputEvent: Phaser.Types.Input.EventData,
               ) => {
                 inputEvent.stopPropagation();
+                if (!fromCanvas(pointer)) return;
                 if (!pointer.leftButtonDown()) return;
                 const additive =
                   pointer.event instanceof MouseEvent && pointer.event.shiftKey;
+                setInspected({ kind: "actor", id: actorId });
                 setSelectedActors((selected) =>
                   additive
                     ? selected.includes(actorId)
@@ -662,6 +844,7 @@ export default function Game() {
           additive: boolean;
         } | null = null;
         this.input.on("pointerdown", (pointer: Phaser.Input.Pointer) => {
+          if (!fromCanvas(pointer)) return;
           if (pointer.leftButtonDown()) {
             dragStart = {
               world: this.cameras.main.getWorldPoint(pointer.x, pointer.y),
@@ -706,6 +889,7 @@ export default function Game() {
             dishConfig.dragThresholdPx
           ) {
             setSelectedActors([]);
+            setInspected(null);
             return;
           }
           const point = this.cameras.main.getWorldPoint(pointer.x, pointer.y);
@@ -723,6 +907,7 @@ export default function Game() {
               actor.y <= bottom
             );
           });
+          setInspected(inside[0] ? { kind: "actor", id: inside[0] } : null);
           setSelectedActors((selected) =>
             start.additive ? [...new Set([...selected, ...inside])] : inside,
           );
@@ -829,12 +1014,30 @@ export default function Game() {
     roundSeed.current = next.seed;
     setSaved("");
     setSelectedActors([]);
+    setInspected(null);
+    setHelpStation(null);
     setStageInfoOpen(true);
     setSettingsOpen(false);
     setResumeCount(null);
     setState(next);
     setSquad(list);
   }
+
+  const selectElement = useCallback((element: SlimeTypeId) => {
+    if (!squad) return;
+    const ids = squadActorIds(squad).filter(
+      (actorId) => stateRef.current?.actors[actorId]?.typeId === element,
+    );
+    setSelectedActors(ids);
+    setInspected(ids[0] ? { kind: "actor", id: ids[0] } : null);
+  }, [squad]);
+
+  const selectEveryone = useCallback(() => {
+    if (!squad) return;
+    const ids = squadActorIds(squad);
+    setSelectedActors(ids);
+    setInspected(ids[0] ? { kind: "actor", id: ids[0] } : null);
+  }, [squad]);
 
   // 속성 키와 전체 선택 키.
   useEffect(() => {
@@ -844,11 +1047,16 @@ export default function Game() {
       ["SELECT", "INPUT", "TEXTAREA"].includes(target.tagName);
     const down = (event: KeyboardEvent) => {
       if (isTyping(event.target) || event.repeat) return;
+      if (event.code === "Escape" && helpStation) {
+        event.preventDefault();
+        setHelpStation(null);
+        return;
+      }
       if (event.code === "Escape") {
         event.preventDefault();
         setSettingsOpen((open) => {
           const next = !open;
-          setResumeCount(next || stageInfoOpen ? null : 3);
+          setResumeCount(next || stageInfoOpen || helpStation !== null ? null : 3);
           return next;
         });
         return;
@@ -860,28 +1068,22 @@ export default function Game() {
         KeyE: "lightning",
         KeyR: "earth",
       } as const;
-      const roster = squadActorIds(squad);
       const element = elementByKey[event.code as keyof typeof elementByKey];
       if (element) {
         // 속성 키 하나가 그 속성의 모든 마리를 고른다.
-        setSelectedActors(
-          roster.filter(
-            (actorId) =>
-              stateRef.current?.actors[actorId]?.typeId === element,
-          ),
-        );
+        selectElement(element);
         return;
       }
       if (event.code !== "Space") return;
       event.preventDefault();
-      setSelectedActors(roster);
+      selectEveryone();
     };
     window.addEventListener("keydown", down);
     return () => {
       window.removeEventListener("keydown", down);
     };
     // 핸들러는 ref만 보므로 squad가 바뀔 때만 다시 건다.
-  }, [squad, settingsOpen, stageInfoOpen]);
+  }, [helpStation, selectElement, selectEveryone, settingsOpen, squad, stageInfoOpen]);
 
   // 슬라임 선택 화면
   if (!squad || !state) {
@@ -948,6 +1150,12 @@ export default function Game() {
       : isLastStage(state)
         ? "모든 스테이지를 클리어했습니다!"
         : `${currentStage(state).id} 클리어!`;
+  const selectedElements = new Set(
+    selectedActors.flatMap((actorId) => {
+      const typeId = state.actors[actorId]?.typeId;
+      return typeId ? [typeId] : [];
+    }),
+  );
 
   return (
     <main className="stage">
@@ -955,14 +1163,14 @@ export default function Game() {
       {!stageInfoOpen && (
         <GameSoundEffects state={state} selectedActors={selectedActors} />
       )}
-      <div className="stage-frame">
+      <div className="stage-frame" data-inspector={inspected ? "" : undefined}>
         <div id="game-canvas" aria-label="탑다운 판타지 식당 게임 맵" />
         <MusicSettings
           variant="game"
           open={settingsOpen}
           onOpenChange={(open) => {
             setSettingsOpen(open);
-            setResumeCount(open || stageInfoOpen ? null : 3);
+            setResumeCount(open || stageInfoOpen || helpStation !== null ? null : 3);
           }}
         />
         {resumeCount !== null && (
@@ -971,7 +1179,9 @@ export default function Game() {
           </div>
         )}
 
-        <div className="hud-top">
+        <OrderCards state={state} />
+
+        <div className="hud-top" aria-label="라운드 정보">
           <span className="hud-chip">
             🍽 {currentStage(state).id} {currentStage(state).name}
           </span>
@@ -984,60 +1194,36 @@ export default function Game() {
           <span className="hud-chip">💰 {state.gold}G</span>
         </div>
 
-        <div className="hud-pots" aria-label="주문과 재고">
-          <span className="pot-chip" data-status="ORDER">
-            <b>음식 주문</b>
-            {activeOrders(state).map((order) => (
-              <span key={order.id}>
-                {itemIcons[order.foodId]} {itemLabel(order.foodId)}{" "}
-                {order.submittedCount}/{order.targetCount}
-                {orderComplete(order) ? " ✅" : ""}
-              </span>
-            ))}
-          </span>
-          <span className="pot-chip">
-            <b>재료 상자</b>
-            🍄 {state.ingredients.stock}/{INGREDIENT_MAX}
-          </span>
-          <span className="pot-chip" data-status={state.fires.stove?.onFire ? "FULL" : state.stove.length >= STORAGE_MAX ? "FULL" : undefined}>
-            <b>조리 도구</b>
-            <span>
-              {state.fires.stove?.onFire
-                ? `🔥 화재 · 진화 ${Math.round((state.fires.stove.extinguishMs / fireConfig.extinguishMs) * 100)}%`
-                : `${workStatusLabels[state.workstation.status]}${
-                    state.workstation.status === "WORKING"
-                      ? ` ${Math.round((state.workstation.progressMs / state.workstation.totalMs) * 100)}%`
-                      : ""
-                  }`}
-            </span>
-            {state.stove.map((item, index) => (
-              <span key={`${item}-${index}`}>{itemIcons[item]}</span>
-            ))}
-            {state.stove.length}/{STORAGE_MAX}
-          </span>
-          <span className="pot-chip">
-            <b>그릇</b>
-            <span>🍽️ 생성대 {state.dishRack.length}/{dishConfig.rackCapacity}</span>
-            <span>
-              🫧 {state.washer.workerId
-                ? `세척 ${Math.round((state.washer.progressMs / state.washer.totalMs) * 100)}%`
-                : state.washer.dish?.status === "clean"
-                  ? "세척 완료"
-                  : state.washer.dish
-                    ? "세척 대기"
-                    : "세척기 비어 있음"}
-            </span>
-            <span>🪵 {state.table[0] ? carriedLabel(state.table[0]) : "테이블 비어 있음"}</span>
-          </span>
-        </div>
-
         <div className="hud-bottom">
-          {/* 레시피 전체 대신 지금 할 일 하나만 크게 보여 준다. */}
-          <div className="step" role="status" aria-live="polite">
-            <small>조작</small>
-            <strong>좌클릭·Shift·드래그 선택 · 우클릭 이동/상호작용</strong>
-            {/* 앞에 설비가 있으면 직접 할 수 있는 일을 알려 준다. */}
-            <span className="reach">Q 물 · W 불 · E 번개 · R 땅 · Space 전체</span>
+          <div className="control-keys" aria-label="슬라임 선택키">
+            {([
+              ["Q", "water"],
+              ["W", "fire"],
+              ["E", "lightning"],
+              ["R", "earth"],
+            ] as const).map(([key, typeId]) => (
+              <button
+                type="button"
+                key={key}
+                data-type={typeId}
+                aria-label={`${key}: ${slimeTypes[typeId].name} 슬라임 선택`}
+                aria-pressed={selectedElements.has(typeId)}
+                onClick={() => selectElement(typeId)}
+              >
+                <b>{key}</b>
+                <small>{slimeTypes[typeId].name}</small>
+              </button>
+            ))}
+            <button
+              type="button"
+              className="control-key-space"
+              aria-label="Space: 모든 슬라임 선택"
+              aria-pressed={selectedActors.length === squadActorIds(squad).length}
+              onClick={selectEveryone}
+            >
+              <b>Space</b>
+              <small>전체</small>
+            </button>
           </div>
 
           <div className="hud-right">
@@ -1046,6 +1232,19 @@ export default function Game() {
             </div>
           </div>
         </div>
+
+        {inspected && (
+          <GameInspector
+            state={state}
+            target={inspected}
+            onClose={() => setInspected(null)}
+            onHelp={setHelpStation}
+          />
+        )}
+
+        {helpStation && (
+          <StationHelp id={helpStation} onClose={() => setHelpStation(null)} />
+        )}
 
         {stageInfoOpen && (
           <StageInfoScreen

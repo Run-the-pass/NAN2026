@@ -11,6 +11,8 @@
     "start": "WRANGLER_LOG_PATH=.wrangler/wrangler.log vinext start",
     "test": "tsc --outDir .test-dist --module NodeNext --moduleResolution NodeNext --target ES2022 --skipLibCheck --noEmit false game/core.ts game/cli.ts tests/game.test.ts && node --test .test-dist/tests/game.test.js",
     "simulate": "tsc --outDir .simulate-dist --module NodeNext --moduleResolution NodeNext --target ES2022 --skipLibCheck --noEmit false game/core.ts game/cli.ts && node .simulate-dist/cli.js",
+    "map:edit": "node tools/map-editor.mjs",
+    "map:check": "node tools/map-editor.mjs --check",
     "lint": "eslint . --ignore-pattern dist --ignore-pattern .next",
     "db:generate": "drizzle-kit generate"
   },

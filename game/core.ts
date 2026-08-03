@@ -1,3 +1,5 @@
+import kitchenMap from "./map-data.js";
+
 export type SlimeElement = "water" | "fire" | "lightning" | "earth";
 export type SlimeTypeId = SlimeElement;
 // 슬라임 한 마리의 인스턴스 ID(`water-1`, `water-2`). 같은 속성을 여러
@@ -149,7 +151,7 @@ export const statTables = {
 // 게임 동작을 그대로 유지한다.
 export const orderConfig = {
   // 동시에 노출하는 주문 수.
-  activeOrderCount: 1,
+  activeOrderCount: 3,
   // 주문에 없는 음식 처리. reject는 거부하고 음식을 그대로 들려 둔다.
   invalidSubmission: "reject" as "reject" | "discard",
   // 목표를 일찍 채웠을 때 라운드를 바로 끝낼지.
@@ -265,51 +267,106 @@ export type GameState = {
 };
 
 export const TILE_SIZE = 60;
+export const MAP_WIDTH = 16;
+export const MAP_HEIGHT = 10;
 export const GOLD_PER_ORDER = 100;
 export const INGREDIENT_MAX = 4;
 export const INGREDIENT_INTERVAL_MS = 6_000;
 export const STORAGE_MAX = 1;
 
 // I 재료 상자, C 조리 도구, S 제출대, X 쓰레기, D 그릇, W 세척기, T 테이블.
-export const KITCHEN_ROWS = [
-  "################",
-  "#..............#",
-  "#..............#",
-  "#...I...T..D...#",
-  "#..............#",
-  "#..C........W..#",
-  "#..............#",
-  "#.....S..X.....#",
-  "#..............#",
-  "################",
-] as const;
-
-export const displayTiles: Record<StationId, TilePosition> = {
-  "ingredient-box": { col: 4, row: 3 },
-  stove: { col: 3, row: 5 },
-  submission: { col: 6, row: 7 },
-  trash: { col: 9, row: 7 },
-  "dish-rack": { col: 11, row: 3 },
-  washer: { col: 12, row: 5 },
-  table: { col: 8, row: 3 },
+export const stationTileCodes: Record<StationId, string> = {
+  "ingredient-box": "I",
+  stove: "C",
+  submission: "S",
+  trash: "X",
+  "dish-rack": "D",
+  washer: "W",
+  table: "T",
 };
 
-export const taskTiles: Record<StationId, TilePosition> = {
-  "ingredient-box": { col: 4, row: 4 },
-  stove: { col: 3, row: 6 },
-  submission: { col: 6, row: 6 },
-  trash: { col: 9, row: 6 },
-  "dish-rack": { col: 11, row: 4 },
-  washer: { col: 12, row: 6 },
-  table: { col: 8, row: 4 },
+export type KitchenMapData = {
+  rows: readonly string[];
+  taskTiles: Record<StationId, TilePosition>;
+  spawnTiles: readonly TilePosition[];
 };
 
-export const spawnTiles: TilePosition[] = [
-  { col: 7, row: 5 },
-  { col: 5, row: 8 },
-  { col: 10, row: 8 },
-  { col: 8, row: 8 },
-];
+const inMap = ({ col, row }: TilePosition) =>
+  Number.isInteger(col) &&
+  Number.isInteger(row) &&
+  col >= 0 &&
+  col < MAP_WIDTH &&
+  row >= 0 &&
+  row < MAP_HEIGHT;
+
+export function validateKitchenMap(data: KitchenMapData) {
+  const errors: string[] = [];
+  const allowed = new Set(["#", ".", ...Object.values(stationTileCodes)]);
+  if (
+    data.rows.length !== MAP_HEIGHT ||
+    data.rows.some((row) => row.length !== MAP_WIDTH)
+  ) {
+    errors.push(`맵은 ${MAP_WIDTH}×${MAP_HEIGHT}여야 합니다.`);
+    return errors;
+  }
+  if (data.rows.some((row) => [...row].some((tile) => !allowed.has(tile)))) {
+    errors.push("알 수 없는 맵 타일이 있습니다.");
+  }
+  if (
+    [...data.rows[0], ...data.rows[MAP_HEIGHT - 1]].includes(".") ||
+    data.rows.slice(1, -1).some((row) => row[0] === "." || row.at(-1) === ".")
+  ) {
+    errors.push("맵 바깥 테두리는 조리대나 설비로 막아야 합니다.");
+  }
+  for (const id of allStations) {
+    const code = stationTileCodes[id];
+    const displays = data.rows.flatMap((row, rowIndex) =>
+      [...row].flatMap((tile, col) => tile === code ? [{ col, row: rowIndex }] : []),
+    );
+    if (displays.length !== 1) {
+      errors.push(`${stationLabels[id]}: 정확히 한 칸이어야 합니다.`);
+      continue;
+    }
+    const task = data.taskTiles[id];
+    if (!task || !inMap(task) || data.rows[task.row]?.[task.col] !== ".") {
+      errors.push(`${stationLabels[id]} 상호작용 칸은 바닥이어야 합니다.`);
+    } else if (
+      Math.abs(task.col - displays[0].col) + Math.abs(task.row - displays[0].row) !== 1
+    ) {
+      errors.push(`${stationLabels[id]} 상호작용 칸은 설비에 인접해야 합니다.`);
+    }
+  }
+  const taskKeys = allStations.map((id) => {
+    const tile = data.taskTiles[id];
+    return tile ? `${tile.col},${tile.row}` : "";
+  });
+  if (new Set(taskKeys).size !== taskKeys.length) {
+    errors.push("설비 상호작용 칸은 서로 겹칠 수 없습니다.");
+  }
+  if (
+    data.spawnTiles.length !== 4 ||
+    new Set(data.spawnTiles.map((tile) => `${tile.col},${tile.row}`)).size !== 4 ||
+    data.spawnTiles.some((tile) => !inMap(tile) || data.rows[tile.row]?.[tile.col] !== ".")
+  ) {
+    errors.push("스폰 4칸은 서로 다른 바닥이어야 합니다.");
+  }
+  return errors;
+}
+
+const mapData = kitchenMap as KitchenMapData;
+const mapErrors = validateKitchenMap(mapData);
+if (mapErrors.length) throw new Error(mapErrors.join(" "));
+
+export const KITCHEN_ROWS = mapData.rows;
+export const displayTiles = Object.fromEntries(
+  allStations.map((id) => {
+    const code = stationTileCodes[id];
+    const row = KITCHEN_ROWS.findIndex((line) => line.includes(code));
+    return [id, { col: KITCHEN_ROWS[row].indexOf(code), row }];
+  }),
+) as Record<StationId, TilePosition>;
+export const taskTiles = mapData.taskTiles;
+export const spawnTiles = mapData.spawnTiles.map((tile) => ({ ...tile }));
 
 const workDuration = { interact: 700, cook: 4_000 };
 
