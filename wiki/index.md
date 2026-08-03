@@ -17,6 +17,8 @@ sources:
   - raw/테마_변경_명세_공방에서_식당으로.md
   - raw/water_slime.svg
   - raw/fire_slime.svg
+  - raw/electric.svg
+  - raw/earth.svg
   - raw/0_home.mp3
   - raw/1_main.mp3
   - raw/2_rush.mp3
@@ -54,6 +56,7 @@ sources:
 - [전체 화면 레이아웃 보정 계획](plan-full-viewport-layout.md) — 홈·게임의 뷰포트 채움, 긴 화면 배경, 설정 안 홈 이동과 낮은 가로 화면 HUD 완료 조건.
 - [스테이지 루프 계획](plan-stage-loop.md) — 추가본의 여러 스테이지·정산·게임 오버 흐름 중 실제 라운드 루프 구현 범위.
 - [불 슬라임·설비 타일·병합 검수 계획](plan-fire-slime-station-hitbox-merge-review.md) — 불 방향·깜빡임, 정사각형 설비 판정과 Claude 병합 회귀 검수 범위.
+- [원본 번개·땅·불 슬라임 적용 계획](plan-authored-slime-assets.md) — 제공 SVG의 몸통 크기, 원본 표정, 인게임 방향·깜빡임과 공용 동작 적용 범위.
 - [스테이지 전환 정보 화면 계획](plan-stage-transition-info.md) — 선택·정산과 인게임 사이의 맵 미리보기, 음식 정보, TIP과 다음 전환 완료 조건.
 - [인게임 맵 UI·로컬 맵 에디터 계획](plan-map-ui-local-editor.md) — 주문 카드·우측 정보 패널·선택키 재배치와 배포에서 분리된 16×10 맵 편집 완료 조건.
 - [UI·인게임 시각 에셋 필요 목록](ui-asset-needs.md) — 기존 에셋과 교체가 필요한 설비·아이템·타일·슬라임·공용 아이콘의 우선순위와 전달 규격.

@@ -561,11 +561,11 @@ button, select { font: inherit; }
 .slime-portrait { display: block; flex: none; width: 72px; height: 64px; object-fit: contain; }
 .slime-select-card .slime-portrait { margin-top: 4px; }
 .slime-portrait[data-water],
-.slime-portrait[data-fire] {
+.slime-portrait[data-authored] {
   transform-origin: 50% 88%;
   animation: slime-card-stretch 2.8s ease-in-out infinite;
 }
-.slime-portrait[data-fire] {
+.slime-portrait[data-authored] {
   width: 84px;
   height: 76px;
   margin-top: -8px;
@@ -1128,7 +1128,7 @@ button, select { font: inherit; }
   .slime-select-card strong { font-size: 12px; }
   .slime-select-card small { min-height: 0; font-size: 9px; }
   .slime-portrait { width: 48px; height: 42px; }
-  .slime-portrait[data-fire] { width: 56px; height: 50px; margin-top: -5px; margin-bottom: -3px; }
+  .slime-portrait[data-authored] { width: 56px; height: 50px; margin-top: -5px; margin-bottom: -3px; }
   .slime-stats { gap: 2px; margin-top: 0; }
   .slime-stats li { grid-template-columns: 14px 1fr auto; gap: 2px; font-size: 9px; }
   .stat-gauge { gap: 1px; }
@@ -1147,5 +1147,5 @@ button, select { font: inherit; }
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; transition: none !important; }
-  .home-cauldron, .home-cauldron-bubble, .slime-portrait[data-water], .slime-portrait[data-fire] { animation: none; }
+  .home-cauldron, .home-cauldron-bubble, .slime-portrait[data-water], .slime-portrait[data-authored] { animation: none; }
 }

@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { simulate } from "../game/cli.js";
 import { parseSession } from "../game/session.js";
-import { facingFromDelta, fireFaceLayout, slimeSvg, type Facing } from "../app/slime-art.js";
+import { authoredFaceLayout, facingFromDelta, slimeSvg, type Facing } from "../app/slime-art.js";
 import { gameMusicSource } from "../app/music-source.js";
 import { gameSoundCues } from "../app/sound-events.js";
 import {
@@ -381,10 +381,10 @@ test("슬라임 아트는 네 속성색과 방향별 얼굴을 만든다", () =>
   assert.equal(Number(face("water", "left")) < 0, true);
   assert.equal(Number(face("water", "right")) > 0, true);
   assert.equal(facingFromDelta(9, -2, "down"), "right");
-  assert.equal(fireFaceLayout("left")!.x < 0, true);
-  assert.equal(fireFaceLayout("right")!.x > 0, true);
-  assert.equal(fireFaceLayout("down", true)!.blink, true);
-  assert.equal(fireFaceLayout("up"), null);
+  assert.equal(authoredFaceLayout("left")!.x < 0, true);
+  assert.equal(authoredFaceLayout("right")!.x > 0, true);
+  assert.equal(authoredFaceLayout("down", true)!.blink, true);
+  assert.equal(authoredFaceLayout("up"), null);
 });
 
 test("그릇은 고유 ID로 생성되고 땅 슬라임만 두 개를 나른다", () => {

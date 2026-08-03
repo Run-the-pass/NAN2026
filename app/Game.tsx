@@ -39,7 +39,7 @@ import {
 import {
   facingFromDelta,
   facings,
-  fireFaceLayout,
+  authoredFaceLayout,
   slimeDataUri,
   type Facing,
 } from "./slime-art";
@@ -61,6 +61,11 @@ const typeColors: Record<SlimeTypeId, number> = {
   lightning: 0xefb229,
   earth: 0x8b6c42,
 };
+const authoredSlimeAssets: Partial<Record<SlimeTypeId, string>> = {
+  fire: "/slimes/fire.svg",
+  lightning: "/slimes/lightning.svg",
+  earth: "/slimes/earth.svg",
+};
 const allTypeIds = Object.keys(slimeTypes) as SlimeTypeId[];
 // 캔버스 내부 해상도 배율. 카메라 zoom도 같은 값을 써서 보이는
 // 영역은 그대로 두고 픽셀만 촘촘하게 만든다.
@@ -68,9 +73,9 @@ const RENDER_SCALE = 3;
 // 텍스처는 world 58x45로 그린다. 확대에 견디도록 넉넉히 구워 둔다.
 const SLIME_TEXTURE = { width: 348, height: 270 };
 const SLIME_SCALE = 58 / SLIME_TEXTURE.width;
-const FIRE_TEXTURE = { width: 348, height: 301 };
-// 불꽃 여백을 뺀 원본 몸통 폭이 생성형 슬라임의 58px 몸통과 맞는다.
-const FIRE_SLIME_SCALE = SLIME_SCALE * 1.12;
+const AUTHORED_TEXTURE = { width: 348, height: 301 };
+// 머리 장식 여백을 뺀 원본 몸통 폭이 물 슬라임의 58px 몸통과 맞는다.
+const AUTHORED_SLIME_SCALE = SLIME_SCALE * 1.12;
 // 젓기만 손에 드는 것이 없어 따로 보여 줘야 한다.
 type Motion = "idle" | "walk" | "stir" | "pick";
 const alertIcons: Record<string, string> = {
@@ -166,9 +171,7 @@ const stationPanelInfo: Record<
 const slimePortrait = (typeId: SlimeTypeId) =>
   typeId === "water"
     ? "/slimes/water.svg"
-    : typeId === "fire"
-      ? "/slimes/fire.svg"
-      : slimeDataUri(typeId, "down");
+    : authoredSlimeAssets[typeId] ?? slimeDataUri(typeId, "down");
 
 function StatGauges({ levels }: { levels: Record<string, number> }) {
   return (
@@ -420,7 +423,7 @@ export default function Game() {
             body: Phaser.GameObjects.Container;
             visual: Phaser.GameObjects.Container;
             art: Phaser.GameObjects.Image;
-            fireFace?: Phaser.GameObjects.Graphics;
+            faceLayer?: Phaser.GameObjects.Graphics;
             carried: Phaser.GameObjects.Text;
             selected: Phaser.GameObjects.Arc;
             facing: Facing;
@@ -503,22 +506,34 @@ export default function Game() {
       paintSlime(actorId: ActorId) {
         const sprite = this.slimes[actorId];
         if (!sprite) return;
-        if (sprite.typeId === "fire" && sprite.fireFace) {
-          sprite.art.setTexture("slime-fire-art").setFlipX(sprite.facing === "left");
-          const face = fireFaceLayout(sprite.facing, sprite.blinking);
-          sprite.fireFace.clear();
+        if (authoredSlimeAssets[sprite.typeId] && sprite.faceLayer) {
+          sprite.art
+            .setTexture(`slime-${sprite.typeId}-art`)
+            .setFlipX(sprite.facing === "left");
+          const face = authoredFaceLayout(sprite.facing, sprite.blinking);
+          sprite.faceLayer.clear();
           if (face) {
-            sprite.fireFace.fillStyle(0x020100, 1);
+            sprite.faceLayer.fillStyle(0x020100, 1);
             if (face.blink) {
-              sprite.fireFace
-                .fillRoundedRect(face.x - 47, 8, 24, 6, 3)
-                .fillRoundedRect(face.x + 23, 8, 24, 6, 3);
+              if (sprite.typeId === "fire") {
+                sprite.faceLayer
+                  .fillTriangle(face.x - 50, 4, face.x - 22, 13, face.x - 25, 20)
+                  .fillTriangle(face.x + 50, 4, face.x + 22, 13, face.x + 25, 20);
+              } else {
+                sprite.faceLayer
+                  .fillRoundedRect(face.x - 47, 8, 24, 6, 3)
+                  .fillRoundedRect(face.x + 23, 8, 24, 6, 3);
+              }
+            } else if (sprite.typeId === "fire") {
+              sprite.faceLayer
+                .fillTriangle(face.x - 52, -2, face.x - 19, 12, face.x - 25, 28)
+                .fillTriangle(face.x + 52, -2, face.x + 19, 12, face.x + 25, 28);
             } else {
-              sprite.fireFace
+              sprite.faceLayer
                 .fillCircle(face.x - 35, 10, 12)
                 .fillCircle(face.x + 35, 10, 12);
             }
-            sprite.fireFace
+            sprite.faceLayer
               .beginPath()
               .moveTo(face.x - 18, 38)
               .lineTo(face.x + 18, 38)
@@ -533,11 +548,12 @@ export default function Game() {
       }
 
       preload() {
-        if (kinds.includes("fire")) {
-          this.load.svg("slime-fire-art", "/slimes/fire.svg", FIRE_TEXTURE);
-        }
         for (const typeId of kinds) {
-          if (typeId === "fire") continue;
+          const asset = authoredSlimeAssets[typeId];
+          if (asset) {
+            this.load.svg(`slime-${typeId}-art`, asset, AUTHORED_TEXTURE);
+            continue;
+          }
           for (const facing of facings) {
             for (const blink of [false, true]) {
               this.load.svg(
@@ -748,13 +764,13 @@ export default function Game() {
         for (const actorId of roster) {
           const actor = current?.actors[actorId];
           if (!actor) continue;
-          const fire = actor.typeId === "fire";
-          const scale = fire ? FIRE_SLIME_SCALE : SLIME_SCALE;
+          const authored = Boolean(authoredSlimeAssets[actor.typeId]);
+          const scale = authored ? AUTHORED_SLIME_SCALE : SLIME_SCALE;
           const art = this.add
-            .image(0, 0, fire ? "slime-fire-art" : `slime-${actor.typeId}-down`)
-            .setOrigin(0.5, fire ? 0.62 : 0.5);
-          const fireFace = fire ? this.add.graphics() : undefined;
-          const visual = this.add.container(0, 0, fireFace ? [art, fireFace] : [art]);
+            .image(0, 0, authored ? `slime-${actor.typeId}-art` : `slime-${actor.typeId}-down`)
+            .setOrigin(0.5, authored ? 0.62 : 0.5);
+          const faceLayer = authored ? this.add.graphics() : undefined;
+          const visual = this.add.container(0, 0, faceLayer ? [art, faceLayer] : [art]);
           const container = this.add
             .container(actor.x, actor.y, [visual])
             .setDepth(actor.y)
@@ -800,7 +816,7 @@ export default function Game() {
             body: container,
             visual,
             art,
-            fireFace,
+            faceLayer,
             carried,
             selected,
             facing: "down",
@@ -1115,14 +1131,8 @@ export default function Game() {
                   <img
                     className="slime-portrait"
                     data-water={typeId === "water" ? "" : undefined}
-                    data-fire={typeId === "fire" ? "" : undefined}
-                    src={
-                      typeId === "water"
-                        ? "/slimes/water.svg"
-                        : typeId === "fire"
-                          ? "/slimes/fire.svg"
-                          : slimeDataUri(typeId, "down", { animate: true })
-                    }
+                    data-authored={authoredSlimeAssets[typeId] ? "" : undefined}
+                    src={slimePortrait(typeId)}
                     alt=""
                   />
                   <strong>{kind.name} 슬라임 · {kind.elementLabel}</strong>
