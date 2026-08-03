@@ -32,6 +32,7 @@ import {
   type ActorId,
   type Carried,
   type GameState,
+  type ItemId,
   type SlimeTypeId,
   type StationId,
   type StationInstanceId,
@@ -94,13 +95,31 @@ const workStatusLabels = {
 // 주방 설비 타일 색.
 const stationColors: Record<StationId, number> = {
   "ingredient-box": 0x9a6235,
-  stove: 0xc65b32,
+  stove: 0x8b5b32,
   submission: 0x3f7f4a,
   trash: 0x585264,
   "dish-rack": 0x6f83a7,
   washer: 0x3e8e9e,
   table: 0x8b5b32,
 };
+// 이모지 대신 그림으로 그리는 설비. 조리 도구는 불을 쓰지 않으므로
+// 테이블 위에 올린 도마로 표현한다.
+const stationImages: Partial<Record<StationId, string>> = {
+  stove: "/food/doma.png",
+  "ingredient-box": "/food/gamja.png",
+};
+const STATION_ART_PX = 34;
+// 판이 시작할 때와 마감이 다가올 때 잠깐 띄우는 큰 문구.
+const bannerImages = {
+  start: "/text/business-start-title.png",
+  closing: "/text/closing-soon-title.png",
+} as const;
+const BANNER_MS = 1600;
+// 주문 카드에 빈 접시 위로 얹어 그리는 완성 음식.
+const foodImages: Partial<Record<ItemId, string>> = {
+  "roasted-potato": "/food/gamja.png",
+};
+
 const carriedIcon = (carried: Carried) =>
   isDish(carried)
     ? carried.status === "dirty"
@@ -132,14 +151,14 @@ const stationPanelInfo: Record<
   { description: string[]; required: SlimeTypeId[]; steps: string[] }
 > = {
   "ingredient-box": {
-    description: ["버섯이 일정 시간마다 채워집니다.", "빈손이나 깨끗한 그릇으로 꺼냅니다."],
+    description: ["감자가 일정 시간마다 채워집니다.", "빈손이나 깨끗한 그릇으로 꺼냅니다."],
     required: [],
-    steps: ["🍄 버섯 받기"],
+    steps: ["🥔 감자 받기"],
   },
   stove: {
-    description: ["버섯을 넣고 불 슬라임으로 조리합니다.", "완성 음식은 깨끗한 그릇에 담습니다."],
-    required: ["fire"],
-    steps: ["🍄 버섯", "🔥 조리", "🍽️ 그릇"],
+    description: ["감자를 넣고 손질하면 요리가 됩니다.", "완성 음식은 깨끗한 그릇에 담습니다."],
+    required: [],
+    steps: ["🥔 감자", "🔪 손질", "🍽️ 그릇"],
   },
   submission: {
     description: ["주문 음식이 담긴 그릇을 제출합니다.", "제출한 그릇은 더러워집니다."],
@@ -195,6 +214,20 @@ function StatGauges({ levels }: { levels: Record<string, number> }) {
   );
 }
 
+// 완성 음식은 빈 접시 위에 올려 보여 준다. 그림이 없는 음식은 이모지로 남긴다.
+function OrderDish({ foodId }: { foodId: ItemId }) {
+  const art = foodImages[foodId];
+  if (!art) return <span aria-hidden>{itemIcons[foodId]}</span>;
+  return (
+    <span className="order-dish" aria-hidden>
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img src="/food/plate.png" alt="" />
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img src={art} alt="" />
+    </span>
+  );
+}
+
 function OrderCards({ state }: { state: GameState }) {
   const orders = activeOrders(state);
   const urgency = state.timeLeft <= 20 ? "danger" : state.timeLeft <= 40 ? "warn" : "ready";
@@ -211,17 +244,16 @@ function OrderCards({ state }: { state: GameState }) {
               <span>영업 {state.timeLeft}초</span>
             </header>
             <strong className="order-food">
-              <span aria-hidden>{itemIcons[order.foodId]}</span>
+              <OrderDish foodId={order.foodId} />
               {itemLabel(order.foodId)}
               <small>{order.submittedCount}/{order.targetCount}</small>
             </strong>
             <div className="order-process" aria-label="조리 흐름">
               <span>{recipe ? itemIcons[recipe.ingredient.itemId] : "?"}</span>
               <i aria-hidden>→</i>
-              <span>{recipe ? slimeTypes[recipe.requiredElement].elementLabel : "?"}</span>
+              <span>{recipe ? stationIcons[recipe.station] : "?"}</span>
             </div>
             <footer>
-              <span aria-hidden>{recipe ? stationIcons[recipe.station] : "?"}</span>
               {recipe ? stationLabels[recipe.station] : "조리 정보 없음"}
             </footer>
           </article>
@@ -326,6 +358,7 @@ export default function Game() {
   const [stageInfoOpen, setStageInfoOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [resumeCount, setResumeCount] = useState<number | null>(null);
+  const [banner, setBanner] = useState<keyof typeof bannerImages | null>(null);
   const paused = stageInfoOpen || settingsOpen || helpStation !== null || resumeCount !== null;
 
   const [saved, setSaved] = useState("");
@@ -343,6 +376,22 @@ export default function Game() {
   useEffect(() => {
     selectedActorsRef.current = selectedActors;
   }, [selectedActors]);
+
+  // 판이 시작되면 "영업 시작", 30초가 남으면 "마감 임박"을 한 번씩 띄운다.
+  const startedStageId =
+    state?.phase === "playing" && !stageInfoOpen ? currentStage(state).id : null;
+  const closingSoon = state?.phase === "playing" && state.timeLeft <= 30;
+  useEffect(() => {
+    if (startedStageId) setBanner("start");
+  }, [startedStageId]);
+  useEffect(() => {
+    if (closingSoon) setBanner("closing");
+  }, [closingSoon]);
+  useEffect(() => {
+    if (!banner) return;
+    const timer = setTimeout(() => setBanner(null), BANNER_MS);
+    return () => clearTimeout(timer);
+  }, [banner]);
 
   useEffect(() => {
     if (!squad || paused) return;
@@ -578,6 +627,9 @@ export default function Game() {
       }
 
       preload() {
+        for (const [id, url] of Object.entries(stationImages)) {
+          this.load.image(`station-${id}`, url);
+        }
         for (const typeId of kinds) {
           const asset = authoredSlimeAssets[typeId];
           if (asset) {
@@ -669,19 +721,16 @@ export default function Game() {
               .strokeRect(x - 28, y - 28, 56, 56)
               .lineStyle(2, 0x3d2415, 0.8)
               .strokeLineShape(new Phaser.Geom.Line(x, y - 26, x, y + 26));
-          } else if (type === "stove") {
+          } else if (type === "stove" || type === "table") {
+            // 조리 도구는 불을 쓰지 않는다. 테이블 위에 도마를 올린 모습이다.
             shape
-              .fillStyle(0x28272b, 1)
-              .fillRect(x - 28, y - 28, 56, 56)
-              .lineStyle(3, 0x807f86, 0.9)
-              .strokeRect(x - 28, y - 28, 56, 56)
-              .fillStyle(stationColors[type], 0.9)
-              .fillEllipse(x, y - 10, 48, 22)
-              .lineStyle(2, 0xe9d3b1, 0.75)
-              .strokeEllipse(x, y - 10, 48, 22)
-              .fillStyle(0xffb347, 0.8)
-              .fillCircle(x - 9, y - 11, 3)
-              .fillCircle(x + 7, y - 14, 4);
+              .fillStyle(stationColors[type], 1)
+              .fillRoundedRect(x - 29, y - 17, 58, 34, 6)
+              .lineStyle(3, 0xc89258, 0.9)
+              .strokeRoundedRect(x - 29, y - 17, 58, 34, 6)
+              .fillStyle(0x563619, 1)
+              .fillRect(x - 22, y + 14, 7, 12)
+              .fillRect(x + 15, y + 14, 7, 12);
           } else if (type === "submission") {
             shape
               .fillStyle(stationColors[type], 1)
@@ -707,15 +756,6 @@ export default function Game() {
               .fillEllipse(x, y - 14, 45, 18)
               .lineStyle(2, 0xcdf8ff, 0.8)
               .strokeEllipse(x, y - 14, 45, 18);
-          } else if (type === "table") {
-            shape
-              .fillStyle(stationColors[type], 1)
-              .fillRoundedRect(x - 29, y - 17, 58, 34, 6)
-              .lineStyle(3, 0xc89258, 0.9)
-              .strokeRoundedRect(x - 29, y - 17, 58, 34, 6)
-              .fillStyle(0x563619, 1)
-              .fillRect(x - 22, y + 14, 7, 12)
-              .fillRect(x + 15, y + 14, 7, 12);
           } else {
             shape
               .fillStyle(stationColors[type], 1)
@@ -733,23 +773,20 @@ export default function Game() {
             .circle(workAt.x, workAt.y, 5, stationColors[type], 0.38)
             .setStrokeStyle(1, 0xffefd2, 0.55)
             .setDepth(1);
-          this.add
-            .text(x, y - 10, stationIcons[type], {
-              fontSize: "20px",
-              resolution: RENDER_SCALE,
-            })
-            .setOrigin(0.5)
-            .setDepth(y + 1);
-          this.add
-            .text(x, y + 22, stationLabels[type], {
-              color: "#f8efff",
-              fontFamily: "Jua, sans-serif",
-              fontSize: "10px",
-              align: "center",
-              resolution: RENDER_SCALE,
-            })
-            .setOrigin(0.5)
-            .setDepth(y + 1);
+          if (stationImages[type]) {
+            const art = this.add.image(x, y - 10, `station-${type}`).setDepth(y + 1);
+            art.setScale(STATION_ART_PX / Math.max(art.width, art.height));
+          } else {
+            this.add
+              .text(x, y - 10, stationIcons[type], {
+                fontSize: "20px",
+                resolution: RENDER_SCALE,
+              })
+              .setOrigin(0.5)
+              .setDepth(y + 1);
+          }
+          // 설비 이름은 상시 표시하지 않는다. 그림으로 알아보고, 자세한
+          // 내용은 클릭했을 때 정보 패널에서 본다.
           // 재료 수와 조리 상태 표시.
           this.stations[id] = this.add
             .text(x, y - 30, "", {
@@ -1222,6 +1259,16 @@ export default function Game() {
           </div>
         )}
 
+        {banner && (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            className="stage-banner"
+            key={banner}
+            src={bannerImages[banner]}
+            alt={banner === "start" ? "영업 시작" : "마감 임박"}
+          />
+        )}
+
         <OrderCards state={state} />
 
         <div className="hud-top" aria-label="라운드 정보">
@@ -1322,13 +1369,12 @@ export default function Game() {
           aria-labelledby="result-title"
         >
           <div>
-            <p className="eyebrow">
-              {state.phase === "lost"
-                ? "GAME OVER"
-                : isLastStage(state)
-                  ? "ALL CLEAR"
-                  : "STAGE CLEAR"}
-            </p>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              className="result-title-art"
+              src={state.phase === "lost" ? "/text/game-over-title.png" : "/text/business-end-title.png"}
+              alt={state.phase === "lost" ? "게임 오버" : "영업 종료"}
+            />
             <h2 id="result-title">{result}</h2>
             {/* 정산: 주문 성공은 골드로, 실수는 횟수만 보여 준다. */}
             <dl className="settle">

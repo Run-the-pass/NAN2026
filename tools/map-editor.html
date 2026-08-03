@@ -154,8 +154,12 @@
       delete data.taskTiles[value]; dirty = true; render(); status.textContent = `${value} 작업 위치를 자동으로 돌렸습니다.`;
     });
     async function load() {
+      // 파일을 그냥 열면 /map을 부를 서버가 없어 fetch가 "Failed to fetch"로 끝난다.
+      if (!location.protocol.startsWith("http")) throw new Error("이 파일을 직접 열면 맵을 불러올 수 없습니다. 터미널에서 `npm run map:edit`을 실행한 뒤 http://127.0.0.1:4173 으로 접속하세요.");
       const response = await fetch("/map", { cache:"no-store" });
-      data = await response.json(); dirty = false; status.textContent = "현재 게임 맵을 불러왔습니다."; status.removeAttribute("data-error"); render();
+      const body = await response.json();
+      if (!response.ok) throw new Error(body.errors?.join("\n") ?? `맵을 불러오지 못했습니다. (${response.status})`);
+      data = body; dirty = false; status.textContent = "현재 게임 맵을 불러왔습니다."; status.removeAttribute("data-error"); render();
     }
     document.querySelector("#save").addEventListener("click", async () => {
       const response = await fetch("/map", { method:"PUT", headers:{"content-type":"application/json"}, body:JSON.stringify(data) });
@@ -163,9 +167,10 @@
       if (!response.ok) { status.dataset.error = ""; status.textContent = result.errors.join("\n"); return; }
       dirty = false; status.removeAttribute("data-error"); status.textContent = "저장 완료. 게임을 새로고침하면 바로 적용됩니다.";
     });
-    document.querySelector("#reload").addEventListener("click", () => { if (!dirty || confirm("저장하지 않은 변경을 버릴까요?")) load(); });
+    const showError = (error) => { status.dataset.error = ""; status.textContent = error.message; };
+    document.querySelector("#reload").addEventListener("click", () => { if (!dirty || confirm("저장하지 않은 변경을 버릴까요?")) load().catch(showError); });
     addEventListener("beforeunload", (event) => { if (dirty) event.preventDefault(); });
-    load().catch((error) => { status.dataset.error = ""; status.textContent = error.message; });
+    load().catch(showError);
   </script>
 </body>
 </html>
