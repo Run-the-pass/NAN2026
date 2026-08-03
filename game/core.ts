@@ -329,11 +329,11 @@ export function validateKitchenMap(data: KitchenMapData) {
     }
     const task = data.taskTiles[id];
     if (!task || !inMap(task) || data.rows[task.row]?.[task.col] !== ".") {
-      errors.push(`${stationLabels[id]} 상호작용 칸은 바닥이어야 합니다.`);
+      errors.push(`${stationLabels[id]} 작업 위치는 바닥이어야 합니다.`);
     } else if (
       Math.abs(task.col - displays[0].col) + Math.abs(task.row - displays[0].row) !== 1
     ) {
-      errors.push(`${stationLabels[id]} 상호작용 칸은 설비에 인접해야 합니다.`);
+      errors.push(`${stationLabels[id]} 작업 위치는 설비에 인접해야 합니다.`);
     }
   }
   const taskKeys = allStations.map((id) => {
@@ -341,7 +341,7 @@ export function validateKitchenMap(data: KitchenMapData) {
     return tile ? `${tile.col},${tile.row}` : "";
   });
   if (new Set(taskKeys).size !== taskKeys.length) {
-    errors.push("설비 상호작용 칸은 서로 겹칠 수 없습니다.");
+    errors.push("슬라임 작업 위치는 서로 겹칠 수 없습니다.");
   }
   if (
     data.spawnTiles.length !== 4 ||

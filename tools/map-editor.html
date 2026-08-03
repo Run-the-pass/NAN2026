@@ -44,7 +44,7 @@
       <div class="palette" id="palette"></div>
       <div class="actions"><button class="save" id="save">저장 및 적용</button><button id="reload">다시 불러오기</button></div>
       <p id="status" role="status" aria-live="polite">맵을 불러오는 중…</p>
-      <p class="help">바닥·조리대는 드래그해서 칠할 수 있습니다. 설비를 옮긴 뒤 해당 설비의 상호작용 칸도 인접한 바닥으로 옮기세요. 스폰 1~4는 서로 다른 바닥에 둡니다.</p>
+      <p class="help">바닥·조리대는 마우스 왼쪽 버튼을 누른 동안만 드래그해서 칠합니다. 슬라임이 서서 일할 칸은 “슬라임 작업 위치”에서 같은 설비를 고른 뒤, 설비에 붙어 있는 바닥을 클릭하세요. 스폰 1~4는 서로 다른 바닥에 둡니다.</p>
     </aside>
   </main>
   <script>
@@ -53,11 +53,11 @@
       ["trash","X","🗑️","쓰레기"],["dish-rack","D","🍽️","그릇 생성대"],["washer","W","🫧","세척기"],["table","T","🪵","테이블"]
     ];
     const palette = document.querySelector("#palette"), board = document.querySelector("#board"), status = document.querySelector("#status");
-    let data, dirty = false, painting = false, brush = { kind:"tile", value:"." };
+    let data, dirty = false, brush = { kind:"tile", value:"." };
     const tools = [
       ["타일", [["tile",".","바닥"],["tile","#","조리대/벽"]]],
       ["설비", stations.map(([id,code,icon,label]) => ["station",code,`${icon} ${label}`])],
-      ["상호작용 칸", stations.map(([id,,icon,label]) => ["task",id,`${icon} ${label}`])],
+      ["슬라임 작업 위치", stations.map(([id,,icon,label]) => ["task",id,`${icon} ${label} 작업 위치`])],
       ["스폰", [0,1,2,3].map((index) => ["spawn",String(index),`스폰 ${index + 1}`])],
     ];
     for (const [title, items] of tools) {
@@ -74,35 +74,48 @@
     const setRow = (row, col, value) => data.rows[row] = data.rows[row].slice(0,col) + value + data.rows[row].slice(col + 1);
     function apply(col,row) {
       if (!data) return;
-      if (brush.kind === "tile") setRow(row,col,brush.value);
+      if (brush.kind === "tile") {
+        if (data.rows[row][col] === brush.value) return;
+        setRow(row,col,brush.value);
+        const cell = board.querySelector(`[data-col="${col}"][data-row="${row}"]`);
+        if (cell) {
+          const markers = [...cell.querySelectorAll(".marker")];
+          cell.dataset.tile = brush.value; cell.removeAttribute("data-station"); cell.replaceChildren(...markers);
+          cell.setAttribute("aria-label", `${col + 1}열 ${row + 1}행 ${brush.value === "#" ? "조리대" : "바닥"}`);
+        }
+      }
       if (brush.kind === "station") {
         data.rows = data.rows.map((line) => line.replace(brush.value,".")); setRow(row,col,brush.value);
       }
       if (brush.kind === "task") data.taskTiles[brush.value] = { col,row };
       if (brush.kind === "spawn") data.spawnTiles[Number(brush.value)] = { col,row };
-      dirty = true; status.textContent = "저장되지 않은 변경 사항이 있습니다."; status.removeAttribute("data-error"); render();
+      dirty = true; status.textContent = "저장되지 않은 변경 사항이 있습니다."; status.removeAttribute("data-error");
+      if (brush.kind !== "tile") render();
     }
     function render() {
       board.replaceChildren();
       data.rows.forEach((line,row) => [...line].forEach((tile,col) => {
         const cell = document.createElement("button"), station = stations.find(([,code]) => code === tile);
-        cell.type = "button"; cell.className = "cell"; cell.dataset.tile = tile; cell.setAttribute("role","gridcell");
+        cell.type = "button"; cell.className = "cell"; cell.dataset.tile = tile; cell.dataset.col = col; cell.dataset.row = row; cell.setAttribute("role","gridcell");
         cell.setAttribute("aria-label", `${col + 1}열 ${row + 1}행 ${station ? station[3] : tile === "#" ? "조리대" : "바닥"}`);
         if (station) { cell.dataset.station = station[0]; cell.textContent = station[2]; }
         const task = stations.find(([id]) => data.taskTiles[id]?.col === col && data.taskTiles[id]?.row === row);
         const spawn = data.spawnTiles.findIndex((position) => position.col === col && position.row === row);
-        if (task) { const badge = document.createElement("span"); badge.className = "marker task"; badge.textContent = `작업:${task[2]}`; cell.append(badge); }
+        if (task) { const badge = document.createElement("span"); badge.className = "marker task"; badge.textContent = `서기:${task[2]}`; cell.append(badge); }
         if (spawn >= 0) { const badge = document.createElement("span"); badge.className = "marker spawn"; badge.textContent = `S${spawn + 1}`; cell.append(badge); }
-        cell.addEventListener("pointerdown", (event) => { event.preventDefault(); painting = true; apply(col,row); });
-        cell.addEventListener("pointerenter", () => { if (painting && brush.kind === "tile") apply(col,row); });
         board.append(cell);
       }));
     }
+    const applyAtPointer = (event) => {
+      const cell = event.target instanceof Element ? event.target.closest(".cell") : null;
+      if (cell) apply(Number(cell.dataset.col), Number(cell.dataset.row));
+    };
+    board.addEventListener("pointerdown", (event) => { if (event.button === 0) { event.preventDefault(); applyAtPointer(event); } });
+    board.addEventListener("pointermove", (event) => { if ((event.buttons & 1) && brush.kind === "tile") applyAtPointer(event); });
     async function load() {
       const response = await fetch("/map", { cache:"no-store" });
       data = await response.json(); dirty = false; status.textContent = "현재 게임 맵을 불러왔습니다."; status.removeAttribute("data-error"); render();
     }
-    document.addEventListener("pointerup", () => painting = false);
     document.querySelector("#save").addEventListener("click", async () => {
       const response = await fetch("/map", { method:"PUT", headers:{"content-type":"application/json"}, body:JSON.stringify(data) });
       const result = await response.json();
