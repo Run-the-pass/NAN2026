@@ -5,6 +5,8 @@ import { fileURLToPath } from "node:url";
 
 const HOST = "127.0.0.1";
 const PORT = 4173;
+const MAP_WIDTH = 14;
+const MAP_HEIGHT = 8;
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const htmlPath = resolve(root, "tools/map-editor.html");
 const mapPath = resolve(root, "game/map-data.ts");
@@ -20,9 +22,9 @@ const stationCodes = {
 };
 const stationLabels = {
   "ingredient-box": "재료 상자",
-  stove: "조리 도구",
+  stove: "도마",
   submission: "음식 제출대",
-  trash: "쓰레기 처리 공간",
+  trash: "소각기",
   "dish-rack": "그릇 생성대",
   washer: "세척기",
   table: "테이블",
@@ -40,18 +42,18 @@ const position = (value) =>
   Number.isInteger(value.col) &&
   Number.isInteger(value.row) &&
   value.col >= 0 &&
-  value.col < 16 &&
+  value.col < MAP_WIDTH &&
   value.row >= 0 &&
-  value.row < 10;
+  value.row < MAP_HEIGHT;
 
 function validateMap(data) {
   const errors = [];
-  if (!data || !Array.isArray(data.rows) || data.rows.length !== 10 || data.rows.some((row) => typeof row !== "string" || row.length !== 16)) {
-    return ["맵은 16×10이어야 합니다."];
+  if (!data || !Array.isArray(data.rows) || data.rows.length !== MAP_HEIGHT || data.rows.some((row) => typeof row !== "string" || row.length !== MAP_WIDTH)) {
+    return [`맵은 ${MAP_WIDTH}×${MAP_HEIGHT}여야 합니다.`];
   }
   const allowed = new Set(["#", ".", ...Object.values(stationCodes)]);
   if (data.rows.some((row) => [...row].some((tile) => !allowed.has(tile)))) errors.push("알 수 없는 타일이 있습니다.");
-  if ([...data.rows[0], ...data.rows[9]].includes(".") || data.rows.slice(1, -1).some((row) => row[0] === "." || row.at(-1) === ".")) {
+  if ([...data.rows[0], ...data.rows[MAP_HEIGHT - 1]].includes(".") || data.rows.slice(1, -1).some((row) => row[0] === "." || row.at(-1) === ".")) {
     errors.push("맵 바깥 테두리는 조리대나 설비로 막아야 합니다.");
   }
   if (!data.taskTiles || typeof data.taskTiles !== "object") errors.push("슬라임 작업 위치 정보가 없습니다.");
@@ -65,7 +67,7 @@ function validateMap(data) {
   for (const id of Object.keys(data.taskTiles ?? {})) {
     if (!validIds.has(id)) errors.push(`${id}: 맵에 없는 설비의 작업 위치입니다.`);
   }
-  const tasks = displays.flatMap((display) => {
+  for (const display of displays) {
     const adjacent = [
       { col: display.col, row: display.row - 1 },
       { col: display.col - 1, row: display.row },
@@ -75,16 +77,14 @@ function validateMap(data) {
     const task = data.taskTiles?.[display.instanceId] ?? adjacent.find((tile) => data.rows[tile.row]?.[tile.col] === ".");
     if (!task) {
       errors.push(`${display.instanceId}: 인접한 바닥 작업 위치가 없습니다.`);
-      return [];
+      continue;
     }
     if (!position(task) || data.rows[task.row]?.[task.col] !== ".") {
       errors.push(`${display.instanceId}: 작업 위치는 바닥이어야 합니다.`);
     } else if (Math.abs(task.col - display.col) + Math.abs(task.row - display.row) !== 1) {
       errors.push(`${display.instanceId}: 작업 위치는 설비에 인접해야 합니다.`);
     }
-    return [task];
-  });
-  if (new Set(tasks.map((tile) => `${tile.col},${tile.row}`)).size !== tasks.length) errors.push("슬라임 작업 위치는 서로 겹칠 수 없습니다.");
+  }
   if (!Array.isArray(data.spawnTiles) || data.spawnTiles.length !== 4 || data.spawnTiles.some((tile) => !position(tile) || data.rows[tile.row]?.[tile.col] !== ".") || new Set(data.spawnTiles.map((tile) => `${tile.col},${tile.row}`)).size !== 4) {
     errors.push("스폰 4칸은 서로 다른 바닥이어야 합니다.");
   }

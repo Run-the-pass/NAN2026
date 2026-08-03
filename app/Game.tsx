@@ -4,6 +4,8 @@ import * as Phaser from "phaser";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   TILE_SIZE,
+  MAP_WIDTH,
+  MAP_HEIGHT,
   KITCHEN_ROWS,
   initialState,
   interactActors,
@@ -25,8 +27,10 @@ import {
   currentStage,
   isLastStage,
   nextStage,
+  recruitSlime,
   GOLD_PER_ORDER,
   dishConfig,
+  incineratorConfig,
   carriedLabel,
   isDish,
   type ActorId,
@@ -166,9 +170,9 @@ const stationPanelInfo: Record<
     steps: ["🍲 음식", "📬 제출"],
   },
   trash: {
-    description: ["들고 있는 음식이나 재료를 버립니다.", "그릇 자체는 버리지 않습니다."],
-    required: [],
-    steps: ["🗑️ 음식 폐기"],
+    description: ["쓰레기를 최대 5개까지 보관합니다.", "불 슬라임이 소각 작업으로 비웁니다."],
+    required: ["fire"],
+    steps: ["🗑️ 쓰레기 투입", "🔥 소각"],
   },
   "dish-rack": {
     description: ["깨끗한 그릇을 꺼내는 곳입니다.", "생성대에는 그릇이 최대 3개 있습니다."],
@@ -211,6 +215,52 @@ function StatGauges({ levels }: { levels: Record<string, number> }) {
         </li>
       ))}
     </ul>
+  );
+}
+
+function RecruitScreen({
+  picked,
+  onPick,
+  onConfirm,
+}: {
+  picked: SlimeTypeId;
+  onPick: (typeId: SlimeTypeId) => void;
+  onConfirm: () => void;
+}) {
+  return (
+    <section className="recruit-overlay" role="dialog" aria-modal="true" aria-labelledby="recruit-title">
+      <div className="recruit-screen">
+        <h2 id="recruit-title">추가할 슬라임을 선택하세요!</h2>
+        <div className="select-grid">
+          {allTypeIds.map((typeId) => {
+            const kind = slimeTypes[typeId];
+            return (
+              <button
+                key={typeId}
+                className="slime-select-card"
+                data-slime-type={typeId}
+                data-active={picked === typeId ? "" : undefined}
+                aria-pressed={picked === typeId}
+                onClick={() => onPick(typeId)}
+              >
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  className="slime-portrait"
+                  data-water={typeId === "water" ? "" : undefined}
+                  data-authored={authoredSlimeAssets[typeId] ? "" : undefined}
+                  src={slimePortrait(typeId)}
+                  alt=""
+                />
+                <strong>{kind.name} 슬라임</strong>
+                <small>{kind.role}</small>
+              </button>
+            );
+          })}
+        </div>
+        <p>선택: {slimeTypes[picked].name} 슬라임</p>
+        <button className="select-start" type="button" onClick={onConfirm}>확인</button>
+      </div>
+    </section>
   );
 }
 
@@ -356,10 +406,11 @@ export default function Game() {
   const [inspected, setInspected] = useState<InspectorTarget | null>(null);
   const [helpStation, setHelpStation] = useState<StationId | null>(null);
   const [stageInfoOpen, setStageInfoOpen] = useState(false);
+  const [recruitOpen, setRecruitOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [resumeCount, setResumeCount] = useState<number | null>(null);
   const [banner, setBanner] = useState<keyof typeof bannerImages | null>(null);
-  const paused = stageInfoOpen || settingsOpen || helpStation !== null || resumeCount !== null;
+  const paused = stageInfoOpen || recruitOpen || settingsOpen || helpStation !== null || resumeCount !== null;
 
   const [saved, setSaved] = useState("");
   const stateRef = useRef(state);
@@ -377,9 +428,15 @@ export default function Game() {
     selectedActorsRef.current = selectedActors;
   }, [selectedActors]);
 
+  useEffect(() => {
+    setInspected((current) => selectedActors.length === 1
+      ? { kind: "actor", id: selectedActors[0] }
+      : current?.kind === "actor" ? null : current);
+  }, [selectedActors]);
+
   // 판이 시작되면 "영업 시작", 30초가 남으면 "마감 임박"을 한 번씩 띄운다.
   const startedStageId =
-    state?.phase === "playing" && !stageInfoOpen ? currentStage(state).id : null;
+    state?.phase === "playing" && !stageInfoOpen && !recruitOpen ? currentStage(state).id : null;
   const closingSoon = state?.phase === "playing" && state.timeLeft <= 30;
   useEffect(() => {
     if (startedStageId) setBanner("start");
@@ -652,7 +709,7 @@ export default function Game() {
         this.cameras.main
           .setBackgroundColor("#21130b")
           .setZoom(RENDER_SCALE)
-          .centerOn(480, 300);
+          .centerOn(MAP_WIDTH * TILE_SIZE / 2, MAP_HEIGHT * TILE_SIZE / 2);
         // Phaser는 캔버스 밖 DOM 오버레이의 좌표도 입력으로 받으므로,
         // 실제 캔버스에서 시작한 포인터만 게임 명령으로 처리한다.
         const fromCanvas = (pointer: Phaser.Input.Pointer) =>
@@ -691,26 +748,10 @@ export default function Game() {
             }
           });
         });
-        // 식당 경계와 중앙 배식 동선을 읽기 쉽게 만든다.
-        const decor = this.add.graphics().setDepth(0);
-        decor.fillStyle(0x24150c, 0.85);
-        decor.fillRect(60, 60, 840, 10).fillRect(60, 530, 840, 10);
-        decor.fillStyle(0x8a4f24, 0.35);
-        decor.fillRoundedRect(300, 400, 360, 65, 12);
-        decor.lineStyle(2, 0xe3a44d, 0.35).strokeRoundedRect(300, 400, 360, 65, 12);
-        for (const x of [95, 805]) {
-          decor.fillStyle(0x2b170d, 0.9).fillRect(x, 150, 60, 8);
-          decor.fillStyle(0x9c5e2c, 0.75).fillRect(x + 8, 130, 18, 20);
-          decor.fillStyle(0x7d4321, 0.8).fillRect(x + 32, 136, 18, 14);
-        }
-        for (const x of [120, 840]) {
-          decor.fillStyle(0xf6bd5b, 0.16).fillCircle(x, 105, 54);
-          decor.fillStyle(0xf6d48e, 0.95).fillCircle(x, 105, 5);
-        }
         // 네 주방 설비를 서로 다른 실루엣으로 그린다.
         this.stations = {} as Record<StationInstanceId, Phaser.GameObjects.Text>;
         for (const station of stationInstances) {
-          const { id, type, displayTile, taskTile } = station;
+          const { id, type, displayTile } = station;
           const { x, y } = tileCenter(displayTile);
           const shape = this.add.graphics().setDepth(y);
           if (type === "ingredient-box") {
@@ -768,15 +809,10 @@ export default function Game() {
               .strokeLineShape(new Phaser.Geom.Line(x - 13, y - 8, x - 13, y + 16))
               .strokeLineShape(new Phaser.Geom.Line(x + 13, y - 8, x + 13, y + 16));
           }
-          const workAt = tileCenter(taskTile);
-          this.add
-            .circle(workAt.x, workAt.y, 5, stationColors[type], 0.38)
-            .setStrokeStyle(1, 0xffefd2, 0.55)
-            .setDepth(1);
           if (stationImages[type]) {
             const art = this.add.image(x, y - 10, `station-${type}`).setDepth(y + 1);
             art.setScale(STATION_ART_PX / Math.max(art.width, art.height));
-          } else {
+          } else if (type !== "table") {
             this.add
               .text(x, y - 10, stationIcons[type], {
                 fontSize: "20px",
@@ -859,7 +895,6 @@ export default function Game() {
                 if (!pointer.leftButtonDown()) return;
                 const additive =
                   pointer.event instanceof MouseEvent && pointer.event.shiftKey;
-                setInspected(null);
                 setSelectedActors((selected) =>
                   additive
                     ? selected.includes(actorId)
@@ -1062,7 +1097,11 @@ export default function Game() {
                             ? current.washers[id]!.dish!.status === "clean" ? "세척 완료" : "세척 대기"
                             : "비어 있음"
                         : type === "table"
-                          ? current.tables[id]![0] ? carriedLabel(current.tables[id]![0]) : "비어 있음"
+                          ? current.tables[id]![0] ? carriedLabel(current.tables[id]![0]) : ""
+                          : type === "trash"
+                            ? current.incinerators[id]!.workerId
+                              ? `소각 ${Math.round((current.incinerators[id]!.progressMs / current.incinerators[id]!.totalMs) * 100)}%`
+                              : `${current.incinerators[id]!.count}/${incineratorConfig.capacity}`
                           : "";
               this.stations[id].setText(label);
             }
@@ -1074,18 +1113,18 @@ export default function Game() {
       }
     }
 
-    // 맵은 960x600 좌표계지만 화면에서는 1.5배 넘게 늘어난다. 캔버스
+    // 맵 좌표계보다 화면에서는 크게 늘어나므로 캔버스
     // 내부 해상도를 RENDER_SCALE배로 잡고 카메라를 같은 배율로 당겨
     // 같은 영역을 더 촘촘한 픽셀로 그린다.
     const game = new Phaser.Game({
       type: Phaser.AUTO,
       parent: "game-canvas",
-      width: 960 * RENDER_SCALE,
-      height: 600 * RENDER_SCALE,
+      width: MAP_WIDTH * TILE_SIZE * RENDER_SCALE,
+      height: MAP_HEIGHT * TILE_SIZE * RENDER_SCALE,
       backgroundColor: "#21130b",
       scene: Restaurant,
       render: { antialias: true },
-      scale: { mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.CENTER_VERTICALLY },
+      scale: { mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.CENTER_HORIZONTALLY },
     });
     return () => {
       view.current = null;
@@ -1103,6 +1142,7 @@ export default function Game() {
     setInspected(null);
     setHelpStation(null);
     setStageInfoOpen(true);
+    setRecruitOpen(false);
     setSettingsOpen(false);
     setResumeCount(null);
     setState(next);
@@ -1115,14 +1155,12 @@ export default function Game() {
       (actorId) => stateRef.current?.actors[actorId]?.typeId === element,
     );
     setSelectedActors(ids);
-    setInspected(null);
   }, [squad]);
 
   const selectEveryone = useCallback(() => {
     if (!squad) return;
     const ids = squadActorIds(squad);
     setSelectedActors(ids);
-    setInspected(null);
   }, [squad]);
 
   // 속성 키와 전체 선택 키.
@@ -1147,7 +1185,7 @@ export default function Game() {
         });
         return;
       }
-      if (stageInfoOpen || settingsOpen) return;
+      if (stageInfoOpen || recruitOpen || settingsOpen) return;
       const elementByKey = {
         KeyQ: "water",
         KeyW: "fire",
@@ -1169,7 +1207,7 @@ export default function Game() {
       window.removeEventListener("keydown", down);
     };
     // 핸들러는 ref만 보므로 squad가 바뀔 때만 다시 건다.
-  }, [helpStation, selectElement, selectEveryone, settingsOpen, squad, stageInfoOpen]);
+  }, [helpStation, recruitOpen, selectElement, selectEveryone, settingsOpen, squad, stageInfoOpen]);
 
   // 슬라임 선택 화면
   if (!squad || !state) {
@@ -1240,7 +1278,7 @@ export default function Game() {
   return (
     <main className="stage">
       <Music src={gameMusicSource(state.timeLeft, state.phase)} />
-      {!stageInfoOpen && (
+      {!stageInfoOpen && !recruitOpen && (
         <GameSoundEffects state={state} selectedActors={selectedActors} />
       )}
       <div className="stage-frame" data-inspector={inspected ? "" : undefined}>
@@ -1250,7 +1288,7 @@ export default function Game() {
           open={settingsOpen}
           onOpenChange={(open) => {
             setSettingsOpen(open);
-            setResumeCount(open || stageInfoOpen || helpStation !== null ? null : 3);
+            setResumeCount(open || stageInfoOpen || recruitOpen || helpStation !== null ? null : 3);
           }}
         />
         {resumeCount !== null && (
@@ -1314,17 +1352,6 @@ export default function Game() {
               <b>Space</b>
               <small>전체</small>
             </button>
-            {selectedActors.length === 1 && (
-              <button
-                type="button"
-                className="control-key-info"
-                aria-label="선택한 슬라임 상세 정보 열기"
-                onClick={() => setInspected({ kind: "actor", id: selectedActors[0] })}
-              >
-                <b>ⓘ</b>
-                <small>정보</small>
-              </button>
-            )}
           </div>
 
           <div className="hud-right">
@@ -1354,12 +1381,26 @@ export default function Game() {
             key={currentStage(state).id}
             stage={currentStage(state)}
             onNext={(step) => {
-              if (step === "PLAY") setStageInfoOpen(false);
+              setStageInfoOpen(false);
+              if (step === "RECRUIT") setRecruitOpen(true);
             }}
           />
         )}
 
       </div>
+
+      {recruitOpen && (
+        <RecruitScreen
+          picked={picked}
+          onPick={setPicked}
+          onConfirm={() => {
+            const recruited = recruitSlime(state, picked);
+            setState(recruited);
+            setSquad(recruited.squad);
+            setRecruitOpen(false);
+          }}
+        />
+      )}
 
       {state.phase !== "playing" && (
         <section

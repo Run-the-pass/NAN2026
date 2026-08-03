@@ -13,7 +13,7 @@
     main { display:grid; grid-template-columns:minmax(620px,1fr) 330px; gap:20px; padding:20px; }
     .board-shell,.side { border:1px solid var(--line); border-radius:16px; background:var(--panel); box-shadow:0 18px 50px #0005; }
     .board-shell { padding:18px; }
-    .board { display:grid; grid-template-columns:repeat(16,1fr); aspect-ratio:16/10; overflow:hidden; border:3px solid #f7e3b0; border-radius:10px; background:#3e2414; touch-action:none; }
+    .board { display:grid; grid-template-columns:repeat(14,1fr); aspect-ratio:14/8; overflow:hidden; border:3px solid #f7e3b0; border-radius:10px; background:#3e2414; touch-action:none; }
     .cell { position:relative; display:grid; place-items:center; min-width:0; border:1px solid #2a160b80; padding:0; background:#4b2c19; color:#fff; font-size:clamp(10px,1.7vw,24px); cursor:crosshair; }
     .cell[data-tile="#"] { background:#a66f38; box-shadow:inset 0 0 0 2px #d5a46755; }
     .cell[data-station] { background:#76503a; box-shadow:inset 0 0 0 2px #fff4; }
@@ -37,9 +37,9 @@
   </style>
 </head>
 <body>
-  <header><div><h1>슬라임 레스토랑 맵 에디터</h1><p>16×10 게임 맵을 직접 편집하고 저장합니다.</p></div><strong>LOCAL ONLY</strong></header>
+  <header><div><h1>슬라임 레스토랑 맵 에디터</h1><p>14×8 게임 맵을 직접 편집하고 저장합니다.</p></div><strong>LOCAL ONLY</strong></header>
   <main>
-    <section class="board-shell" aria-label="맵 편집 영역"><div class="board" id="board" role="grid" aria-label="16×10 맵"></div></section>
+    <section class="board-shell" aria-label="맵 편집 영역"><div class="board" id="board" role="grid" aria-label="14×8 맵"></div></section>
     <aside class="side">
       <p class="local">이 도구는 127.0.0.1에서만 실행되며 배포 게임에는 포함되지 않습니다.</p>
       <div class="palette" id="palette"></div>
@@ -51,8 +51,8 @@
   </main>
   <script>
     const stations = [
-      ["ingredient-box","I","🍄","재료 상자"],["stove","C","🍳","조리 도구"],["submission","S","📬","음식 제출대"],
-      ["trash","X","🗑️","쓰레기"],["dish-rack","D","🍽️","그릇 생성대"],["washer","W","🫧","세척기"],["table","T","🪵","테이블"]
+      ["ingredient-box","I","🥔","재료 상자"],["stove","C","🔪","도마"],["submission","S","📬","음식 제출대"],
+      ["trash","X","🔥","소각기"],["dish-rack","D","🍽️","그릇 생성대"],["washer","W","🫧","세척기"],["table","T","▤","테이블"]
     ];
     const palette = document.querySelector("#palette"), board = document.querySelector("#board"), status = document.querySelector("#status");
     let data, dirty = false, brush = { kind:"tile", value:"." };

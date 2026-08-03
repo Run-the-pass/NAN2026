@@ -23,10 +23,10 @@ export const stationIcons: Record<StationId, string> = {
   "ingredient-box": "🥔",
   stove: "🔪",
   submission: "📬",
-  trash: "🗑",
+  trash: "🔥",
   "dish-rack": "🍽️",
   washer: "🫧",
-  table: "🪵",
+  table: "▤",
 };
 
 const mapPreviewKeys = new Set(["kitchen-v1"]);
@@ -35,7 +35,7 @@ export const stageInfoUiConfig: Record<string, StageInfoUiConfig> = {
   "1-1": {
     mapPreviewKey: "kitchen-v1",
     tipLines: [
-      "조리 도구는 슬라임 누구나 쓸 수 있어요.",
+      "도마는 슬라임 누구나 쓸 수 있어요.",
       "완성 음식은 깨끗한 그릇에 담아요.",
     ],
     availableFoodIds: ["roasted-potato"],
@@ -48,7 +48,7 @@ export const stageInfoUiConfig: Record<string, StageInfoUiConfig> = {
       "물 슬라임은 화재를 5초간 진화해요.",
     ],
     availableFoodIds: ["roasted-potato"],
-    nextStep: "PLAY",
+    nextStep: "RECRUIT",
   },
   "1-3": {
     mapPreviewKey: "kitchen-v1",
@@ -57,7 +57,7 @@ export const stageInfoUiConfig: Record<string, StageInfoUiConfig> = {
       "더러운 그릇은 세척해서 다시 써요.",
     ],
     availableFoodIds: ["roasted-potato"],
-    nextStep: "PLAY",
+    nextStep: "RECRUIT",
   },
 };
 

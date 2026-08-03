@@ -42,6 +42,8 @@ import {
   defaultStages,
   isLastStage,
   nextStage,
+  recruitSlime,
+  incineratorConfig,
   stationInstances,
   stationInstancesByType,
   type GameState,
@@ -52,6 +54,9 @@ import {
 
 test("스테이지 정보는 실제 맵·레시피와 검증된 설정만 사용한다", () => {
   assert.deepEqual(validateStageInfoUiConfig(stageInfoUiConfig), []);
+  assert.equal(stageInfoUiConfig["1-1"]!.nextStep, "PLAY");
+  assert.equal(stageInfoUiConfig["1-2"]!.nextStep, "RECRUIT");
+  assert.equal(stageInfoUiConfig["1-3"]!.nextStep, "RECRUIT");
   assert.deepEqual(availableStageFoods(stageInfoUiConfig["1-1"]!), [
     "roasted-potato",
   ]);
@@ -108,11 +113,13 @@ const untilIdle = (state: GameState) =>
   );
 
 const ingredientBoxId = stationInstancesByType["ingredient-box"][0].id;
+const farIngredientBoxId = stationInstancesByType["ingredient-box"][1].id;
 const stoveId = stationInstancesByType.stove[0].id;
 const dishRackId = stationInstancesByType["dish-rack"][0].id;
 const washerId = stationInstancesByType.washer[0].id;
 const tableId = stationInstancesByType.table[0].id;
 const secondTableId = stationInstancesByType.table[1].id;
+const incineratorId = stationInstancesByType.trash[0].id;
 
 test("주방 설비는 인접한 작업 타일을 가진다", () => {
   assert.equal(KITCHEN_ROWS.length, MAP_HEIGHT);
@@ -131,7 +138,22 @@ test("주방 설비는 인접한 작업 타일을 가진다", () => {
     );
     assert.ok(isWalkable(task));
   }
-  assert.deepEqual(taskTiles[secondTableId], { col: 5, row: 4 });
+  assert.deepEqual(taskTiles[secondTableId], { col: 3, row: 2 });
+});
+
+test("여러 설비가 같은 작업 위치를 사용할 수 있다", () => {
+  const cornerTableId = stationInstancesByType.table.find(
+    ({ displayTile }) => displayTile.col === 1 && displayTile.row === 2,
+  )!.id;
+  assert.deepEqual(validateKitchenMap({
+    rows: KITCHEN_ROWS,
+    taskTiles: {
+      ...taskTiles,
+      [tableId]: { col: 2, row: 2 },
+      [cornerTableId]: { col: 2, row: 2 },
+    },
+    spawnTiles,
+  }), []);
 });
 
 test("같은 종류 설비는 좌표 ID별로 내용물을 따로 보관한다", () => {
@@ -147,9 +169,30 @@ test("같은 종류 설비는 좌표 ID별로 내용물을 따로 보관한다",
   assert.deepEqual(state.tables[secondTableId], ["potato"]);
 });
 
+test("테이블의 감자와 빈 접시는 가져오는 순서와 무관하게 합쳐진다", () => {
+  let foodFirst = initialState(1, ["lightning"]);
+  foodFirst = untilIdle(interactActors(foodFirst, ["lightning-1"], ingredientBoxId));
+  foodFirst = untilIdle(interactActors(foodFirst, ["lightning-1"], tableId));
+  foodFirst = untilIdle(interactActors(foodFirst, ["lightning-1"], dishRackId));
+  foodFirst = untilIdle(interactActors(foodFirst, ["lightning-1"], tableId));
+  assert.equal(foodFirst.tables[tableId]!.length, 0);
+  assert.ok(foodFirst.actors["lightning-1"]!.carrying.some(
+    (carried) => isDish(carried) && carried.status === "filled" && carried.content === "potato",
+  ));
+
+  let dishFirst = initialState(1, ["lightning"]);
+  dishFirst = untilIdle(interactActors(dishFirst, ["lightning-1"], dishRackId));
+  dishFirst = untilIdle(interactActors(dishFirst, ["lightning-1"], tableId));
+  dishFirst = untilIdle(interactActors(dishFirst, ["lightning-1"], ingredientBoxId));
+  dishFirst = untilIdle(interactActors(dishFirst, ["lightning-1"], tableId));
+  assert.deepEqual(dishFirst.actors["lightning-1"]!.carrying, []);
+  assert.ok(isDish(dishFirst.tables[tableId]![0]) &&
+    dishFirst.tables[tableId]![0].status === "filled" &&
+    dishFirst.tables[tableId]![0].content === "potato");
+});
+
 test("맵 편집 데이터는 누락 설비와 잘못된 작업·스폰 칸을 거부한다", () => {
-  const rows = [...KITCHEN_ROWS];
-  rows[1] = rows[1].replace("I", ".");
+  const rows = KITCHEN_ROWS.map((row) => row.replaceAll("I", "."));
   const broken: KitchenMapData = {
     rows,
     taskTiles: { ...taskTiles, [stoveId]: displayTiles[stoveId] },
@@ -197,9 +240,9 @@ test("바닥 지시는 순간이동 없이 선택한 슬라임을 이동시킨�
 });
 
 test("슬라임 이동 경로는 맵의 벽 타일을 관통하지 않는다", () => {
-  const destination = tileCenter({ col: 8, row: 8 });
+  const destination = tileCenter({ col: 8, row: 5 });
   let state = moveActors(initialState(1, ["water"]), ["water-1"], destination);
-  assert.ok((state.actors["water-1"]!.intent?.route.length ?? 0) > 1);
+  assert.ok((state.actors["water-1"]!.intent?.route.length ?? 0) >= 1);
   for (let count = 0; count < 20_000 && state.actors["water-1"]!.intent; count += 1) {
     state = tick(state, 50);
     const actor = state.actors["water-1"]!;
@@ -232,7 +275,7 @@ test("효과음은 조리 시작·음식 제출·화재 전환을 구분한다",
         [stoveId]: { ...state.workstations[stoveId]!, status: "WORKING" },
       },
     }),
-    ["grill"],
+    ["chop"],
   );
   assert.deepEqual(
     gameSoundCues(state, {
@@ -339,6 +382,42 @@ test("불이 아닌 슬라임도 조리해서 음식을 완성한다", () => {
   assert.deepEqual(state.stoves[stoveId], ["roasted-potato"]);
 });
 
+test("빈 접시 없이 음식은 꺼내도 제출은 접시에 담아야 한다", () => {
+  let state = initialState(1, ["water"]);
+  state = untilIdle(interactActors(state, ["water-1"], "ingredient-box"));
+  state = untilIdle(interactActors(state, ["water-1"], "stove"));
+  state = untilIdle(interactActors(state, ["water-1"], "stove"));
+  state = untilIdle(interactActors(state, ["water-1"], "stove"));
+  assert.deepEqual(state.actors["water-1"]!.carrying, ["roasted-potato"]);
+  state = untilIdle(interactActors(state, ["water-1"], "submission"));
+  assert.deepEqual(state.actors["water-1"]!.carrying, ["roasted-potato"]);
+  assert.equal(state.orders[0].submittedCount, 0);
+  state = untilIdle(interactActors(state, ["water-1"], tableId));
+  state = untilIdle(interactActors(state, ["water-1"], dishRackId));
+  state = untilIdle(interactActors(state, ["water-1"], tableId));
+  state = untilIdle(interactActors(state, ["water-1"], "submission"));
+  assert.ok(state.actors["water-1"]!.carrying.some(
+    (carried) => isDish(carried) && carried.status === "dirty" && carried.content === null,
+  ));
+  assert.equal(state.orders[0].submittedCount, 1);
+});
+
+test("소각기는 쓰레기 5개를 모으고 불 슬라임 작업으로 비운다", () => {
+  let state = initialState(1, ["lightning", "fire"]);
+  for (let count = 0; count < incineratorConfig.capacity; count += 1) {
+    state = untilIdle(interactActors(state, ["lightning-1"], ingredientBoxId));
+    state = untilIdle(interactActors(state, ["lightning-1"], incineratorId));
+  }
+  assert.equal(state.incinerators[incineratorId]!.count, incineratorConfig.capacity);
+  state = untilIdle(interactActors(state, ["lightning-1"], ingredientBoxId));
+  state = untilIdle(interactActors(state, ["lightning-1"], incineratorId));
+  assert.deepEqual(state.actors["lightning-1"]!.carrying, ["potato"]);
+  assert.equal(state.incinerators[incineratorId]!.count, incineratorConfig.capacity);
+  state = untilIdle(interactActors(state, ["fire-1"], incineratorId));
+  assert.equal(state.incinerators[incineratorId]!.count, 0);
+  assert.ok(state.history.some((entry) => entry.includes("소각기를 비웠습니다")));
+});
+
 test("새 이동 명령은 조리 작업을 취소하고 조리 도구 잠금을 푼다", () => {
   let state = initialState(1, ["lightning", "fire"]);
   state = untilIdle(interactActors(state, ["lightning-1"], "ingredient-box"));
@@ -358,7 +437,7 @@ test("속성 슬라임은 새 ID와 식당 역할별 스탯을 사용한다", ()
   assert.equal(slimeTypes.fire.role.includes("조리"), true);
   assert.equal(
     initialState(1, ["lightning"]).actors["lightning-1"]!.moveSpeed,
-    2.5 * TILE_SIZE,
+    3.2 * TILE_SIZE,
   );
   assert.doesNotThrow(() =>
     initialState(1, ["water", "fire", "lightning", "earth"]),
@@ -658,6 +737,11 @@ test("스테이지를 깨면 골드와 스쿼드를 이어 다음 스테이지�
   assert.equal(second.timeLeftMs, 120_000);
   assert.deepEqual(second.stoves[stoveId], []);
 
+  const recruited = recruitSlime(second, "water");
+  assert.deepEqual(recruited.squad, ["lightning", "fire", "water"]);
+  assert.deepEqual(Object.keys(recruited.actors), ["lightning-1", "fire-1", "water-1"]);
+  assert.equal(recruited.gold, 100);
+
   const cleared = cookAndSubmit(second);
   assert.equal(cleared.phase, "won");
   assert.equal(cleared.gold, 200);
@@ -721,13 +805,13 @@ test("화재는 인접한 화재 대상 설비로만 전파된다", () => {
     fireConfig.spreadIntervalMs = 1_000;
     // 맵 에디터에서 배치가 바뀌어도 현재 두 설비의 거리로 검증한다.
     fireConfig.spreadRange =
-      Math.abs(displayTiles[stoveId].col - displayTiles[ingredientBoxId].col) +
-      Math.abs(displayTiles[stoveId].row - displayTiles[ingredientBoxId].row);
+      Math.abs(displayTiles[stoveId].col - displayTiles[farIngredientBoxId].col) +
+      Math.abs(displayTiles[stoveId].row - displayTiles[farIngredientBoxId].row);
     let state = burnStove(initialState(1, ["water", "fire", "lightning"]));
-    assert.equal(state.fires[ingredientBoxId]!.onFire, false);
+    assert.equal(state.fires[farIngredientBoxId]!.onFire, false);
     state = until(
       state,
-      (current) => current.fires[ingredientBoxId]?.onFire === true,
+      (current) => current.fires[farIngredientBoxId]?.onFire === true,
     );
     assert.ok(state.history.some((entry) => entry.includes("옮겨붙었습니다")));
     // 인접 범위를 좁히면 바닥을 건너 번지지 않는다.
@@ -735,7 +819,7 @@ test("화재는 인접한 화재 대상 설비로만 전파된다", () => {
     let far = burnStove(initialState(1, ["water", "fire", "lightning"]));
     for (let elapsed = 0; elapsed < 20_000; elapsed += 50) far = tick(far, 50);
     assert.equal(far.fires[stoveId]!.onFire, true);
-    assert.equal(far.fires[ingredientBoxId]!.onFire, false);
+    assert.equal(far.fires[farIngredientBoxId]!.onFire, false);
     // 제출대와 쓰레기 처리 공간은 화재 대상이 아니라 상태 자체가 없다.
     assert.equal(Object.keys(far.fires).some((id) => id.startsWith("submission@")), false);
     assert.equal(Object.keys(far.fires).some((id) => id.startsWith("trash@")), false);

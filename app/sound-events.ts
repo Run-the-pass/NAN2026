@@ -6,13 +6,14 @@ export type GameSoundCue =
   | "round-clear"
   | "low-time"
   | "new-item"
-  | "grill"
+  | "chop"
   | "wash"
   | "pick-item"
   | "food-submit"
   | "order-success"
   | "new-order"
   | "trash"
+  | "incinerate"
   | "fire-start"
   | "fire-extinguish"
   | "move";
@@ -48,7 +49,7 @@ export function gameSoundCues(
   if (Object.entries(next.workstations).some(([id, workstation]) =>
     previous.workstations[id as keyof GameState["workstations"]]?.status !== "WORKING" &&
     workstation?.status === "WORKING"
-  )) cues.push("grill");
+  )) cues.push("chop");
   if (Object.entries(next.washers).some(([id, washer]) =>
     !previous.washers[id as keyof GameState["washers"]]?.workerId && washer?.workerId
   )) cues.push("wash");
@@ -68,6 +69,9 @@ export function gameSoundCues(
   if (next.lastEvent !== previous.lastEvent && next.lastEvent.includes("버렸습니다")) {
     cues.push("trash");
   }
+  if (Object.entries(next.incinerators).some(([id, incinerator]) =>
+    !previous.incinerators[id as keyof GameState["incinerators"]]?.workerId && incinerator?.workerId
+  )) cues.push("incinerate");
   if (!burning(previous) && burning(next)) cues.push("fire-start");
   if (burning(previous) && !burning(next)) cues.push("fire-extinguish");
   if (

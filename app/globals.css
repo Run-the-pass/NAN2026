@@ -261,6 +261,7 @@ button, select { font: inherit; }
   --game-top-rail: 190px;
   --game-side-rail: 0px;
   --game-info-rail: clamp(240px, 26vw, 370px);
+  --game-bottom-rail: 112px;
   position: relative;
   width: 100%;
   height: 100%;
@@ -274,7 +275,7 @@ button, select { font: inherit; }
   position: absolute;
   top: var(--game-top-rail);
   right: var(--game-info-rail);
-  bottom: 0;
+  bottom: var(--game-bottom-rail);
   left: var(--game-side-rail);
   overflow: hidden;
   background:
@@ -419,7 +420,6 @@ button, select { font: inherit; }
 .stage-frame .control-keys button[data-type="fire"] { background: #a74435ec; }
 .stage-frame .control-keys button[data-type="lightning"] { background: #9b771fec; }
 .stage-frame .control-keys button[data-type="earth"] { background: #647832ec; }
-.stage-frame .control-keys .control-key-info { background: #4e4940ed; }
 .stage-frame .control-keys button[aria-pressed="true"] { border-color: #fff; box-shadow: 0 0 0 4px var(--gold), 0 7px 18px #0008; }
 .stage-frame .control-keys button:hover { border-color: var(--gold); transform: translateY(-2px); }
 .control-keys b { font-size: clamp(17px, 2vw, 26px); }
@@ -659,6 +659,31 @@ button, select { font: inherit; }
 .select-footer span { color: #f0d8ad; font-weight: 800; }
 .select-start { border-color: #fff0b0 !important; padding: 12px 22px !important; background: var(--gold) !important; color: #21120a !important; font-size: 16px; }
 
+.recruit-overlay {
+  position: fixed;
+  z-index: 45;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: #160c07ed;
+}
+
+.recruit-screen {
+  display: grid;
+  width: min(1050px, 100%);
+  gap: 18px;
+  border: 7px solid #6f431f;
+  padding: clamp(18px, 3vw, 34px);
+  background: repeating-linear-gradient(0deg, #5a351d 0 70px, #351d10 71px 76px);
+  text-align: center;
+}
+
+.recruit-screen h2,
+.recruit-screen p { margin: 0; }
+.recruit-overlay button { cursor: pointer; }
+.recruit-screen .select-start { justify-self: center; min-width: 160px; }
+
 .mic-state { min-height: 20px; color: #7a4a24; font-size: 13px; }
 .eyebrow { margin: 0 0 8px; color: #e4a64d; font-size: 12px; font-weight: 800; letter-spacing: .13em; text-transform: uppercase; }
 .result-actions { display: flex; justify-content: center; gap: 10px; }
@@ -757,9 +782,9 @@ button, select { font: inherit; }
 
 .stage-map-preview {
   display: grid;
-  grid-template-columns: repeat(16, 1fr);
-  width: min(100%, calc((100vh - 290px) * 1.6));
-  aspect-ratio: 16 / 10;
+  grid-template-columns: repeat(14, 1fr);
+  width: min(100%, calc((100vh - 290px) * 1.75));
+  aspect-ratio: 14 / 8;
   overflow: hidden;
   border: 3px solid #f7e3b0;
   border-radius: 10px;
@@ -1107,6 +1132,7 @@ button, select { font: inherit; }
     --game-top-rail: 38px;
     --game-side-rail: 160px;
     --game-info-rail: 220px;
+    --game-bottom-rail: 62px;
   }
   .hud-top { top: 5px; right: 69px; gap: 4px; }
   .hud-chip { padding: 4px 9px; font-size: 12px; }
@@ -1155,7 +1181,7 @@ button, select { font: inherit; }
   .stage-map-column { gap: 4px; }
   .stage-map-card, .available-food-panel { border-radius: 9px; }
   .stage-map-card { min-height: 0; padding: 5px; }
-  .stage-map-preview { width: min(100%, calc((100vh - 145px) * 1.6)); border-width: 2px; border-radius: 5px; }
+  .stage-map-preview { width: min(100%, calc((100vh - 145px) * 1.75)); border-width: 2px; border-radius: 5px; }
   .stage-map-preview > span { font-size: 11px; }
   .stage-tip-list { gap: 1px; min-height: 30px; padding: 0 3px; font-size: 9px; }
   .available-food-panel { grid-template-rows: auto auto minmax(44px, 1fr); gap: 4px; margin: 0; padding: 6px; }
