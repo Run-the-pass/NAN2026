@@ -56,6 +56,7 @@ sources:
 - [불 슬라임·설비 타일·병합 검수 계획](plan-fire-slime-station-hitbox-merge-review.md) — 불 방향·깜빡임, 정사각형 설비 판정과 Claude 병합 회귀 검수 범위.
 - [스테이지 전환 정보 화면 계획](plan-stage-transition-info.md) — 선택·정산과 인게임 사이의 맵 미리보기, 음식 정보, TIP과 다음 전환 완료 조건.
 - [인게임 맵 UI·로컬 맵 에디터 계획](plan-map-ui-local-editor.md) — 주문 카드·우측 정보 패널·선택키 재배치와 배포에서 분리된 16×10 맵 편집 완료 조건.
+- [UI·인게임 시각 에셋 필요 목록](ui-asset-needs.md) — 기존 에셋과 교체가 필요한 설비·아이템·타일·슬라임·공용 아이콘의 우선순위와 전달 규격.
 - [작업 로그](log.md) — ingest, 계획, 구현, 검증의 시간순 기록.
 
 원문: [추가본 정리](../raw/%EC%B6%94%EA%B0%80%EB%B3%B8_%EC%A0%95%EB%A6%AC/) (덱 `raw/추가본.pptx`의 화면별 기획과 2026-08-02 확정·미정), [클로드 담당 작업: 주문과 화재](../raw/%ED%81%B4%EB%A1%9C%EB%93%9C_%EB%8B%B4%EB%8B%B9_%EC%9E%91%EC%97%85_%EC%A3%BC%EB%AC%B8%EA%B3%BC_%ED%99%94%EC%9E%AC.md), [프로젝트 브리프](../raw/project-brief.md), [홈 화면 v2 참고 이미지](../raw/home%20v2/home_reference.png), [홈 화면 v2 에셋](../raw/home%20v2/), [성장 선택 카드 참고 이미지](../raw/references/upgrade-choice-cards.png), [슬라임 스탯·가격·패널티](../raw/slime-stats-pricing-and-penalties.md), [펀테스트 변경 사항](../raw/fun-test-design-changes.md), [음성인식 시스템 논의](../raw/voice-command-discussion-summary-revised.md), [자원·제작 시스템 기획](../raw/slime-workshop-resource-production-design.md)
