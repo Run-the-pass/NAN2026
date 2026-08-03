@@ -332,16 +332,34 @@ button, select { font: inherit; }
   min-width: 0;
   min-height: 88px;
   overflow: hidden;
+  position: relative;
   border: 2px solid #807596;
-  border-top: 5px solid #52c579;
   border-radius: 10px;
+  padding-top: 5px;
   background: #252039f2;
   box-shadow: 0 10px 24px #0007;
   color: #fff;
 }
 
-.order-card[data-urgency="warn"] { border-top-color: #ffd84c; }
-.order-card[data-urgency="danger"] { border-top-color: #ff4b58; }
+/* 카드 위 띠는 남은 영업 시간이 줄면 같이 줄고 색이 바뀐다. */
+.order-gauge {
+  position: absolute;
+  top: 0;
+  right: 0;
+  left: 0;
+  overflow: hidden;
+  height: 5px;
+  border-radius: 8px 8px 0 0;
+  background: #ffffff22;
+}
+.order-gauge i {
+  display: block;
+  height: 100%;
+  background: #52c579;
+  transition: width 0.35s linear, background-color 0.4s ease;
+}
+.order-card[data-urgency="warn"] .order-gauge i { background: #ffd84c; }
+.order-card[data-urgency="danger"] .order-gauge i { background: #ff4b58; }
 .order-card > header,
 .order-card > footer { display: flex; align-items: center; justify-content: space-between; gap: 5px; padding: 3px 7px; }
 .order-card > header { grid-column: 1 / -1; color: #d8cde8; font-size: 10px; line-height: 1; }
@@ -1095,7 +1113,7 @@ button, select { font: inherit; }
   .hud-top { top: 5px; right: 54px; gap: 4px; }
   .hud-chip { padding: 4px 9px; font-size: 12px; }
   .order-cards { top: 5px; left: 5px; gap: 4px; width: min(55vw, 460px); }
-  .order-card { min-height: 72px; border-top-width: 4px; border-radius: 8px; }
+  .order-card { min-height: 72px; border-radius: 8px; }
   .order-card > header { padding: 2px 5px; font-size: 7px; }
   .order-card > footer { padding: 2px 4px; font-size: 7px; }
   .order-card > footer span { font-size: 12px; }

@@ -141,7 +141,8 @@ export const slimeTypes: Record<
 };
 
 export const statTables = {
-  workSpeedMultiplier: [0.7, 0.85, 1, 1.2, 1.45, 1.75],
+  // 작업 속도 레벨별 초당 작업량. 보통(레벨 2)이 100/초라서 비용 100은 1초다.
+  workSpeedPerSecond: [70, 85, 100, 120, 145, 175],
   moveTilesPerSecond: [1.6, 1.9, 2.2, 2.5, 2.8, 3.1],
 } as const;
 
@@ -166,8 +167,6 @@ export const fireConfig = {
   // 설비 배치 타일 거리 기준 인접 판정. 바닥 타일은 대상이 아니다.
   spreadRange: 1,
   spreadDiagonal: false,
-  // 명세가 확정한 값.
-  extinguishMs: 5_000,
   extinguishElement: "water" as SlimeElement,
   keepExtinguishProgress: false,
 };
@@ -177,7 +176,6 @@ export const dishConfig = {
   initialCount: 3,
   rackCapacity: 3,
   washerCapacity: 1,
-  washMs: 4_000,
   earthDishCarry: 2,
   tableCapacity: 1,
   dragThresholdPx: 8,
@@ -204,6 +202,8 @@ export type FireState = {
   onFire: boolean;
   workerId: ActorId | null;
   extinguishMs: number;
+  // 이번에 붙은 슬라임 기준 진화 총 시간. 진행도 표시에 쓴다.
+  extinguishTotalMs: number;
   spreadMs: number;
 };
 
@@ -366,7 +366,14 @@ export const displayTiles = Object.fromEntries(
 export const taskTiles = mapData.taskTiles;
 export const spawnTiles = mapData.spawnTiles.map((tile) => ({ ...tile }));
 
-const workDuration = { interact: 700, cook: 4_000 };
+// 상호작용 비용. 작업량이 초당 작업 속도만큼 쌓여 이 값에 닿으면 끝난다.
+// 보통 속도(100/초) 기준 100 = 1초. 소각기를 비롯한 기본 상호작용이 100이다.
+export const workCost = {
+  interact: 100,
+  cook: 570,
+  wash: 400,
+  extinguish: 500,
+};
 
 export const tileCenter = ({ col, row }: TilePosition) => ({
   x: col * TILE_SIZE + TILE_SIZE / 2,
@@ -536,7 +543,14 @@ const newFires = (): Partial<Record<StationId, FireState>> =>
   Object.fromEntries(
     fireConfig.flammableStations.map((station) => [
       station,
-      { neglectMs: 0, onFire: false, workerId: null, extinguishMs: 0, spreadMs: 0 },
+      {
+        neglectMs: 0,
+        onFire: false,
+        workerId: null,
+        extinguishMs: 0,
+        extinguishTotalMs: 0,
+        spreadMs: 0,
+      },
     ]),
   );
 
@@ -643,13 +657,13 @@ export function initialState(
       dish: null,
       workerId: null,
       progressMs: 0,
-      totalMs: dishConfig.washMs,
+      totalMs: 0,
     },
     workstation: {
       status: "MISSING_MATERIAL",
       workerId: null,
       progressMs: 0,
-      totalMs: workDuration.cook,
+      totalMs: 0,
     },
     orders: roundOrders,
     fires: newFires(),
@@ -905,8 +919,9 @@ export function interactActors(
     : state;
 }
 
-function workDurationFor(actor: ActorState, base: number) {
-  return base / statTables.workSpeedMultiplier[actor.statLevels.workSpeed];
+// 비용 ÷ 초당 작업량 = 걸리는 시간(ms).
+export function workDurationFor(actor: ActorState, cost: number) {
+  return (cost / statTables.workSpeedPerSecond[actor.statLevels.workSpeed]) * 1000;
 }
 
 function waitAtStation(actor: ActorState, keepIntent = false): ActorState {
@@ -1085,7 +1100,7 @@ function moveActor(state: GameState, actorId: ActorId, deltaMs: number) {
       actor = {
         ...actor,
         status: "WORKING",
-        workLeftMs: workDurationFor(actor, workDuration.interact),
+        workLeftMs: workDurationFor(actor, workCost.interact),
       };
       continue;
     }
@@ -1100,7 +1115,7 @@ function moveActor(state: GameState, actorId: ActorId, deltaMs: number) {
       const fire = next.fires[station]!;
       const spent = Math.min(actor.workLeftMs, remaining);
       const extinguishMs = Math.min(
-        fireConfig.extinguishMs,
+        fire.extinguishTotalMs,
         fire.extinguishMs + spent,
       );
       if (actor.workLeftMs > remaining) {
@@ -1249,11 +1264,14 @@ function moveActor(state: GameState, actorId: ActorId, deltaMs: number) {
         actor = next.actors[actorId]!;
         continue;
       }
-      const from = fireConfig.keepExtinguishProgress ? fire.extinguishMs : 0;
+      const extinguishTotalMs = workDurationFor(actor, workCost.extinguish);
+      const from = fireConfig.keepExtinguishProgress
+        ? Math.min(fire.extinguishMs, extinguishTotalMs)
+        : 0;
       actor = {
         ...actor,
         status: "WORKING",
-        workLeftMs: fireConfig.extinguishMs - from,
+        workLeftMs: extinguishTotalMs - from,
         alert: null,
         alertMs: 0,
       };
@@ -1264,7 +1282,12 @@ function moveActor(state: GameState, actorId: ActorId, deltaMs: number) {
           actors: patchActor(next, actorId, actor),
           fires: {
             ...next.fires,
-            [station]: { ...fire, workerId: actorId, extinguishMs: from },
+            [station]: {
+              ...fire,
+              workerId: actorId,
+              extinguishMs: from,
+              extinguishTotalMs,
+            },
           },
         },
       );
@@ -1355,12 +1378,13 @@ function moveActor(state: GameState, actorId: ActorId, deltaMs: number) {
         }
         const dish = actor.carrying[dirty] as Dish;
         const starts = actor.typeId === "water";
+        const washMs = workDurationFor(actor, workCost.wash);
         actor = {
           ...actor,
           carrying: actor.carrying.filter((_, index) => index !== dirty),
           intent: starts ? actor.intent : null,
           status: starts ? "WORKING" : "IDLE",
-          workLeftMs: starts ? dishConfig.washMs : 0,
+          workLeftMs: starts ? washMs : 0,
         };
         next = event(next, starts ? `${actor.name}이(가) 그릇을 씻기 시작했습니다.` : `${actor.name}이(가) 더러운 그릇을 세척기에 놓았습니다.`, {
           actors: patchActor(next, actorId, actor),
@@ -1368,7 +1392,7 @@ function moveActor(state: GameState, actorId: ActorId, deltaMs: number) {
             dish,
             workerId: starts ? actorId : null,
             progressMs: 0,
-            totalMs: dishConfig.washMs,
+            totalMs: washMs,
           },
         });
         continue;
@@ -1379,10 +1403,16 @@ function moveActor(state: GameState, actorId: ActorId, deltaMs: number) {
           actor = next.actors[actorId]!;
           continue;
         }
-        actor = { ...actor, status: "WORKING", workLeftMs: dishConfig.washMs };
+        const restartMs = workDurationFor(actor, workCost.wash);
+        actor = { ...actor, status: "WORKING", workLeftMs: restartMs };
         next = event(next, `${actor.name}이(가) 그릇을 씻기 시작했습니다.`, {
           actors: patchActor(next, actorId, actor),
-          washer: { ...next.washer, workerId: actorId, progressMs: 0 },
+          washer: {
+            ...next.washer,
+            workerId: actorId,
+            progressMs: 0,
+            totalMs: restartMs,
+          },
         });
         continue;
       }
@@ -1551,7 +1581,7 @@ function moveActor(state: GameState, actorId: ActorId, deltaMs: number) {
         remaining = 0;
         break;
       }
-      const totalMs = workDurationFor(actor, workDuration.cook);
+      const totalMs = workDurationFor(actor, workCost.cook);
       actor = {
         ...actor,
         status: "WORKING",

@@ -32,6 +32,9 @@ import {
   tileCenter,
   activeOrders,
   dishConfig,
+  workCost,
+  statTables,
+  workDurationFor,
   fireConfig,
   isDish,
   orderConfig,
@@ -710,4 +713,43 @@ test("플레이테스트 세션은 위조된 요약을 저장 전에 거부한�
     parseSession({ ...valid, result: "won", goal: 7, booksSubmitted: 3 }).ok,
     false,
   );
+});
+
+// 작업량이 초당 작업 속도만큼 쌓여 비용에 닿으면 끝난다.
+// 소각기를 비롯한 기본 상호작용 비용이 100, 보통 속도가 100/초라 1초다.
+test("상호작용은 비용 ÷ 작업 속도만큼 걸린다", () => {
+  // 소각기를 비롯한 기본 상호작용 비용이 100, 보통 속도가 100/초라 1초다.
+  assert.equal(workCost.interact, 100);
+  assert.equal(statTables.workSpeedPerSecond[2], 100);
+
+  const actorOf = (typeId: "water" | "fire" | "lightning") =>
+    initialState(1, [typeId]).actors[`${typeId}-1`]!;
+
+  // 물·땅은 레벨 2(100/초), 불은 3(120/초), 번개는 1(85/초)
+  assert.equal(workDurationFor(actorOf("water"), workCost.interact), 1_000);
+  assert.equal(Math.round(workDurationFor(actorOf("fire"), workCost.interact)), 833);
+  assert.equal(Math.round(workDurationFor(actorOf("lightning"), workCost.interact)), 1_176);
+
+  // 비용이 커지면 그만큼 비례해 오래 걸린다.
+  assert.equal(
+    workDurationFor(actorOf("water"), workCost.cook),
+    workDurationFor(actorOf("water"), workCost.interact) * (workCost.cook / workCost.interact),
+  );
+});
+
+// 세척도 같은 규칙을 탄다. 예전에는 고정 4초였다.
+test("세척도 작업 속도를 탄다", () => {
+  let state = initialState(1, ["water", "fire", "lightning", "earth"]);
+  state = untilIdle(interactActors(state, ["earth-1"], "dish-rack"));
+  state = untilIdle(interactActors(state, ["earth-1"], "ingredient-box"));
+  state = untilIdle(interactActors(state, ["earth-1"], "stove"));
+  state = untilIdle(interactActors(state, ["fire-1"], "stove"));
+  state = untilIdle(interactActors(state, ["earth-1"], "stove"));
+  state = untilIdle(interactActors(state, ["earth-1"], "submission"));
+  state = untilIdle(interactActors(state, ["earth-1"], "table"));
+  state = untilIdle(interactActors(state, ["water-1"], "table"));
+  state = interactActors(state, ["water-1"], "washer");
+  state = until(state, (current) => current.washer.workerId === "water-1");
+  // 물(100/초) × 세척 비용 400 = 4초
+  assert.equal(state.washer.totalMs, (workCost.wash / 100) * 1000);
 });
