@@ -123,6 +123,15 @@ const foodImages: Partial<Record<ItemId, string>> = {
   "roasted-potato": "/food/gamja.png",
 };
 
+// 소지품은 머리 위가 아니라 슬라임이 앞으로 든 것처럼 놓는다. 등을 돌리면
+// 몸 뒤로 넘겨 위쪽만 살짝 보이게 한다. 경고 말풍선은 그대로 머리 위다.
+const carryOffsets: Record<Facing, { x: number; y: number; behind?: boolean }> = {
+  down: { x: 0, y: 17 },
+  left: { x: -23, y: 9 },
+  right: { x: 23, y: 9 },
+  up: { x: 0, y: -20, behind: true },
+};
+
 const carriedIcon = (carried: Carried) =>
   isDish(carried)
     ? carried.status === "dirty"
@@ -584,15 +593,22 @@ export default function Game() {
       }
 
       // 젓기: 팔이 없으니 몸을 좌우로 기울여 젓는다.
+      // 도마질: 빠르게 내리찍고 잠깐 멈췄다 돌아온 뒤 한 박 쉰다.
+      // 같은 폭으로 좌우로만 흔들면 단조로워서 리듬을 준다.
       stir(visual: Phaser.GameObjects.Container, scale = SLIME_SCALE) {
-        visual.setScale(scale).setAngle(-12);
+        visual.setScale(scale).setAngle(0);
         return this.tweens.add({
           targets: visual,
-          angle: 12,
-          duration: 260,
+          scaleX: scale * 1.14,
+          scaleY: scale * 0.8,
+          y: 10,
+          angle: -8,
+          duration: 120,
+          ease: "Quad.easeIn",
           yoyo: true,
+          hold: 40,
+          repeatDelay: 150,
           repeat: -1,
-          ease: "Sine.easeInOut",
         });
       }
 
@@ -1096,13 +1112,19 @@ export default function Game() {
                 .setPosition(actor.x, actor.y + 14)
                 .setDepth(actor.y - 1)
                 .setVisible(selectedActorsRef.current.includes(actorId));
-              const icon = actor.alert
-                ? alertIcons[actor.alert]
+              const alerting = Boolean(actor.alert);
+              const icon = alerting
+                ? alertIcons[actor.alert!]
                 : actor.carrying.map(carriedIcon).join(" ");
+              const hold = carryOffsets[sprite.facing];
               sprite.carried
                 .setText(icon ?? "")
-                .setPosition(actor.x, actor.y - 52)
-                .setDepth(actor.y + 2);
+                .setPosition(
+                  actor.x + (alerting ? 0 : hold.x),
+                  actor.y + (alerting ? -52 : hold.y),
+                )
+                // 등을 돌렸을 때만 몸보다 뒤에 그린다. 선택 링(-1)보다는 앞이다.
+                .setDepth(actor.y + (!alerting && hold.behind ? -0.5 : 2));
             }
             for (const { id, type } of stationInstances) {
               const fire = current.fires[id];
