@@ -54,6 +54,48 @@ export default function Music({ src }: { src: string }) {
   return <audio ref={audioRef} src={src} loop preload="auto" hidden />;
 }
 
+// 왼쪽 스피커 아이콘이 켜기·끄기를 겸하고 오른쪽에 음량 슬라이더가 온다.
+function SoundRow({
+  label,
+  on,
+  volume,
+  onToggle,
+  onVolume,
+}: {
+  label: string;
+  on: boolean;
+  volume: number;
+  onToggle: () => void;
+  onVolume: (volume: number) => void;
+}) {
+  return (
+    <div className="sound-row" data-off={on ? undefined : ""}>
+      <button
+        className="sound-toggle"
+        type="button"
+        aria-pressed={on}
+        aria-label={`${label} ${on ? "끄기" : "켜기"}`}
+        onClick={onToggle}
+      >
+        <span aria-hidden>{on ? "🔊" : "🔇"}</span>
+      </button>
+      <label>
+        <span>{label} {Math.round(volume * 100)}%</span>
+        <input
+          type="range"
+          min="0"
+          max="1"
+          step="0.05"
+          value={volume}
+          disabled={!on}
+          aria-label={`${label} 음량`}
+          onChange={(event) => onVolume(Number(event.target.value))}
+        />
+      </label>
+    </div>
+  );
+}
+
 export function MusicSettings({
   variant,
   open: controlledOpen,
@@ -131,46 +173,20 @@ export function MusicSettings({
             <strong id={`${variant}-music-settings-title`}>소리 설정</strong>
             <button type="button" onClick={() => changeOpen(false)} aria-label="소리 설정 닫기">×</button>
           </header>
-          <button
-            className="music-toggle"
-            type="button"
-            aria-pressed={settings.enabled}
-            onClick={() => saveSettings({ ...settings, enabled: !settings.enabled })}
-          >
-            음악 {settings.enabled ? "켜짐" : "꺼짐"}
-          </button>
-          <label>
-            <span>음악 음량 {Math.round(settings.volume * 100)}%</span>
-            <input
-              type="range"
-              min="0"
-              max="1"
-              step="0.05"
-              value={settings.volume}
-              disabled={!settings.enabled}
-              onChange={(event) => saveSettings({ ...settings, volume: Number(event.target.value) })}
-            />
-          </label>
-          <button
-            className="music-toggle"
-            type="button"
-            aria-pressed={settings.sfxEnabled}
-            onClick={() => saveSettings({ ...settings, sfxEnabled: !settings.sfxEnabled })}
-          >
-            효과음 {settings.sfxEnabled ? "켜짐" : "꺼짐"}
-          </button>
-          <label>
-            <span>효과음 음량 {Math.round(settings.sfxVolume * 100)}%</span>
-            <input
-              type="range"
-              min="0"
-              max="1"
-              step="0.05"
-              value={settings.sfxVolume}
-              disabled={!settings.sfxEnabled}
-              onChange={(event) => saveSettings({ ...settings, sfxVolume: Number(event.target.value) })}
-            />
-          </label>
+          <SoundRow
+            label="음악"
+            on={settings.enabled}
+            volume={settings.volume}
+            onToggle={() => saveSettings({ ...settings, enabled: !settings.enabled })}
+            onVolume={(volume) => saveSettings({ ...settings, volume })}
+          />
+          <SoundRow
+            label="효과음"
+            on={settings.sfxEnabled}
+            volume={settings.sfxVolume}
+            onToggle={() => saveSettings({ ...settings, sfxEnabled: !settings.sfxEnabled })}
+            onVolume={(sfxVolume) => saveSettings({ ...settings, sfxVolume })}
+          />
           {variant === "game" && (
             <Link className="settings-home-link" href="/">
               ← 홈 화면으로
