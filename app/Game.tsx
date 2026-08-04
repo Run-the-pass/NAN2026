@@ -626,7 +626,7 @@ export default function Game() {
           sprite.art
             .setTexture(`slime-${sprite.typeId}-art`)
             .setFlipX(sprite.facing === "left");
-          const face = authoredFaceLayout(sprite.facing, sprite.blinking);
+          const face = authoredFaceLayout(sprite.facing, sprite.blinking, sprite.typeId);
           sprite.faceLayer.clear();
           if (face) {
             const eyeY = face.y + face.eyeY;
@@ -650,7 +650,7 @@ export default function Game() {
                 );
             } else if (sprite.typeId === "fire") {
               // 각 눈은 원호와 사선 한 개로 닫아, 원의 윗부분만 잘라낸다.
-              const fireEyeRadius = face.eyeRadius * 1.2;
+              const fireEyeRadius = face.eyeRadius;
               sprite.faceLayer
                 .beginPath()
                 .arc(
