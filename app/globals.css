@@ -333,16 +333,34 @@ button, select { font: inherit; }
   min-width: 0;
   min-height: 158px;
   overflow: hidden;
+  position: relative;
   border: 2px solid #815329;
-  border-top: 8px solid #52c579;
   border-radius: 4px;
+  padding-top: 8px;
   background: linear-gradient(#f0ddb3, #d7b77e);
   box-shadow: inset 0 0 0 2px #fff3ce66, 0 7px 0 #221208, 0 10px 18px #0006;
   color: #2c1a0e;
 }
 
-.order-card[data-urgency="warn"] { border-top-color: #ffd84c; }
-.order-card[data-urgency="danger"] { border-top-color: #ff4b58; }
+/* 카드 위 띠는 남은 영업 시간이 줄면 같이 줄고 색이 바뀐다. */
+.order-gauge {
+  position: absolute;
+  top: 0;
+  right: 0;
+  left: 0;
+  overflow: hidden;
+  height: 8px;
+  border-radius: 2px 2px 0 0;
+  background: #00000026;
+}
+.order-gauge i {
+  display: block;
+  height: 100%;
+  background: #52c579;
+  transition: width 0.35s linear, background-color 0.4s ease;
+}
+.order-card[data-urgency="warn"] .order-gauge i { background: #ffd84c; }
+.order-card[data-urgency="danger"] .order-gauge i { background: #ff4b58; }
 .order-card > header,
 .order-card > footer { display: flex; align-items: center; justify-content: space-between; gap: 6px; padding: 6px 9px; }
 .order-card > header { color: #5b371c; font-size: 10px; }
@@ -1137,7 +1155,7 @@ button, select { font: inherit; }
   .hud-top { top: 5px; right: 69px; gap: 4px; }
   .hud-chip { padding: 4px 9px; font-size: 12px; }
   .order-cards { top: 5px; left: 5px; grid-template-columns: 1fr; gap: 4px; width: 150px; }
-  .order-card { min-height: 104px; border-top-width: 4px; border-radius: 8px; }
+  .order-card { min-height: 104px; border-radius: 8px; padding-top: 6px; }
   .order-card > header { padding: 2px 5px; font-size: 7px; }
   .order-card > footer { padding: 2px 4px; font-size: 7px; }
   .order-card > footer span { font-size: 12px; }

@@ -11,22 +11,8 @@ export default {
     "##############"
   ],
   "taskTiles": {},
-  "spawnTiles": [
-    {
-      "col": 2,
-      "row": 3
-    },
-    {
-      "col": 3,
-      "row": 3
-    },
-    {
-      "col": 4,
-      "row": 3
-    },
-    {
-      "col": 5,
-      "row": 3
-    }
-  ]
+  "startTile": {
+    "col": 2,
+    "row": 3
+  }
 } as const;

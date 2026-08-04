@@ -100,11 +100,29 @@ const authoredFaceGeometry = {
   mouthRadius: 14,
 } as const;
 
+// 불은 원본 아트의 눈·입이 다른 슬라임보다 크고 넓다. 아래 값은 fire.svg에서
+// 눈·입 도형을 재서 텍스처 픽셀로 환산한 것이다(간격 49, 눈 반지름 18,
+// 입 반지름 17). 눈을 감을 때 쓰는 막대도 같은 비율로 키운다.
+const fireFaceGeometry = {
+  eyeOffsetX: 49,
+  eyeY: 12,
+  eyeRadius: 18,
+  blinkY: 8,
+  blinkWidth: 36,
+  blinkHeight: 9,
+  mouthY: 23,
+  mouthRadius: 17,
+} as const;
+
 // 원본 슬라임 몸통 위에 그릴 얼굴 위치. 위를 볼 때는 얼굴을 숨긴다.
-export function authoredFaceLayout(facing: Facing, blink = false) {
+export function authoredFaceLayout(
+  facing: Facing,
+  blink = false,
+  typeId?: SlimeTypeId,
+) {
   if (facing === "up") return null;
   return {
-    ...authoredFaceGeometry,
+    ...(typeId === "fire" ? fireFaceGeometry : authoredFaceGeometry),
     x: facing === "left" ? -30 : facing === "right" ? 29 : -1,
     y: facing === "down" ? 0 : 2,
     blink,

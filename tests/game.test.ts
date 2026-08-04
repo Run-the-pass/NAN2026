@@ -27,11 +27,16 @@ import {
   stationHitboxes,
   wallHitboxes,
   taskTiles,
-  spawnTiles,
+  startTile,
+  spawnTilesFrom,
+  canPlaceSquad,
   tick,
   tileCenter,
   activeOrders,
   dishConfig,
+  workCost,
+  statTables,
+  workDurationFor,
   fireConfig,
   isDish,
   orderConfig,
@@ -43,6 +48,8 @@ import {
   isLastStage,
   nextStage,
   recruitSlime,
+  squadActorIds,
+  pixelToTile,
   incineratorConfig,
   stationInstances,
   stationInstancesByType,
@@ -121,13 +128,41 @@ const tableId = stationInstancesByType.table[0].id;
 const secondTableId = stationInstancesByType.table[1].id;
 const incineratorId = stationInstancesByType.trash[0].id;
 
+// 스폰 칸을 맵에 하나씩 찍는 방식은 5마리째부터 자리가 없었다. 이제 시작
+// 지점에서 빈 바닥으로 퍼진다.
+test("슬라임은 시작 지점 주변 빈 바닥으로 퍼져 선다", () => {
+  const squad = ["water", "fire", "lightning", "earth", "water", "fire"] as const;
+  const state = initialState(1, [...squad]);
+  const spots = squadActorIds([...squad]).map((id) => {
+    const actor = state.actors[id]!;
+    return pixelToTile(actor.x, actor.y);
+  });
+
+  assert.equal(spots.length, squad.length);
+  // 첫 마리는 시작 지점에 선다.
+  assert.deepEqual(spots[0], startTile);
+  // 벽과 설비 칸은 바닥이 아니라 후보에 오르지 않는다.
+  for (const tile of spots) assert.ok(isWalkable(tile));
+  // 서로 겹치지 않는다.
+  assert.equal(new Set(spots.map((t) => `${t.col},${t.row}`)).size, squad.length);
+  // 같은 맵이면 항상 같은 자리다.
+  assert.deepEqual(spawnTilesFrom(startTile, squad.length), spots);
+});
+
+test("빈 바닥보다 많은 인원은 세우지 않는다", () => {
+  const floors = KITCHEN_ROWS.join("").split("").filter((tile) => tile === ".").length;
+  assert.ok(canPlaceSquad(floors));
+  assert.ok(!canPlaceSquad(floors + 1));
+  assert.throws(() => initialState(1, Array<"water">(floors + 1).fill("water")));
+});
+
 test("주방 설비는 인접한 작업 타일을 가진다", () => {
   assert.equal(KITCHEN_ROWS.length, MAP_HEIGHT);
   assert.ok(KITCHEN_ROWS.every((row) => row.length === MAP_WIDTH));
   assert.deepEqual(validateKitchenMap({
     rows: KITCHEN_ROWS,
     taskTiles,
-    spawnTiles,
+    startTile,
   }), []);
   for (const { id } of stationInstances) {
     const task = taskTiles[id];
@@ -152,7 +187,7 @@ test("여러 설비가 같은 작업 위치를 사용할 수 있다", () => {
       [tableId]: { col: 2, row: 2 },
       [cornerTableId]: { col: 2, row: 2 },
     },
-    spawnTiles,
+    startTile,
   }), []);
 });
 
@@ -196,12 +231,12 @@ test("맵 편집 데이터는 누락 설비와 잘못된 작업·스폰 칸을 �
   const broken: KitchenMapData = {
     rows,
     taskTiles: { ...taskTiles, [stoveId]: displayTiles[stoveId] },
-    spawnTiles: [spawnTiles[0], spawnTiles[0], spawnTiles[2], spawnTiles[3]],
+    startTile: { col: 0, row: 0 },
   };
   const errors = validateKitchenMap(broken);
   assert.ok(errors.some((error) => error.includes("재료 상자")));
   assert.ok(errors.some((error) => error.includes(stoveId)));
-  assert.ok(errors.some((error) => error.includes("스폰")));
+  assert.ok(errors.some((error) => error.includes("시작 지점")));
 });
 
 test("재료 상자는 감자를 최대치까지 채운다", () => {
@@ -400,6 +435,44 @@ test("빈 접시 없이 음식은 꺼내도 제출은 접시에 담아야 한다
     (carried) => isDish(carried) && carried.status === "dirty" && carried.content === null,
   ));
   assert.equal(state.orders[0].submittedCount, 1);
+});
+
+// 소각기가 왜 안 되는지 알려 줘야 한다. 경로 판정이 같은 조건을 중복
+// 검사하면 슬라임이 가지도 않아 안내가 통째로 죽는다.
+test("소각기는 거절 이유를 구체적으로 알려 준다", () => {
+  let state = initialState(1, ["fire", "lightning"]);
+  for (let count = 0; count < incineratorConfig.capacity; count += 1) {
+    state = untilIdle(interactActors(state, ["lightning-1"], ingredientBoxId));
+    state = untilIdle(interactActors(state, ["lightning-1"], incineratorId));
+  }
+  assert.equal(state.incinerators[incineratorId]!.count, incineratorConfig.capacity);
+
+  // 가득 찬 소각기
+  let full = untilIdle(interactActors(state, ["lightning-1"], ingredientBoxId));
+  full = untilIdle(interactActors(full, ["lightning-1"], incineratorId));
+  assert.match(full.lastEvent, /가득 찼습니다/);
+
+  // 가득 찬 소각기 앞에서는 물건을 든 불 슬라임도 소각부터 한다.
+  let busy = untilIdle(interactActors(state, ["fire-1"], ingredientBoxId));
+  assert.deepEqual(busy.actors["fire-1"]!.carrying, ["potato"]);
+  busy = untilIdle(interactActors(busy, ["fire-1"], incineratorId));
+  assert.equal(busy.incinerators[incineratorId]!.count, 0);
+  // 손에 든 물건은 그대로 남고, 비워진 뒤에는 다시 넣을 수 있다.
+  assert.deepEqual(busy.actors["fire-1"]!.carrying, ["potato"]);
+  busy = untilIdle(interactActors(busy, ["fire-1"], incineratorId));
+  assert.equal(busy.incinerators[incineratorId]!.count, 1);
+
+  // 가득 차지 않았으면 소각이 아니라 평소대로 넣는다.
+  let spare = initialState(1, ["fire"]);
+  spare = untilIdle(interactActors(spare, ["fire-1"], ingredientBoxId));
+  spare = untilIdle(interactActors(spare, ["fire-1"], incineratorId));
+  assert.equal(spare.incinerators[incineratorId]!.count, 1);
+
+  // 비운 뒤 다시 비우려 할 때
+  let emptied = untilIdle(interactActors(state, ["fire-1"], incineratorId));
+  assert.equal(emptied.incinerators[incineratorId]!.count, 0);
+  emptied = untilIdle(interactActors(emptied, ["fire-1"], incineratorId));
+  assert.match(emptied.lastEvent, /소각할 쓰레기가 없습니다/);
 });
 
 test("소각기는 쓰레기 5개를 모으고 불 슬라임 작업으로 비운다", () => {
@@ -856,5 +929,58 @@ test("플레이테스트 세션은 위조된 요약을 저장 전에 거부한�
   assert.equal(
     parseSession({ ...valid, result: "won", goal: 7, booksSubmitted: 3 }).ok,
     false,
+  );
+});
+
+// 작업량이 초당 작업 속도만큼 쌓여 비용에 닿으면 끝난다.
+// 소각기를 비롯한 기본 상호작용 비용이 100, 보통 속도가 100/초라 1초다.
+test("상호작용은 비용 ÷ 작업 속도만큼 걸린다", () => {
+  // 소각기를 비롯한 기본 상호작용 비용이 100이고, 기준 속도 100/초에서 1초다.
+  assert.equal(workCost.interact, 100);
+  const baseLevel = statTables.workSpeedPerSecond.indexOf(100);
+  assert.ok(baseLevel >= 0);
+
+  for (const typeId of ["water", "fire", "lightning", "earth"] as const) {
+    const actor = initialState(1, [typeId]).actors[`${typeId}-1`]!;
+    const speed = statTables.workSpeedPerSecond[actor.statLevels.workSpeed]!;
+    // 걸리는 시간 = 비용 ÷ 초당 작업량
+    assert.equal(
+      workDurationFor(actor, workCost.interact),
+      (workCost.interact / speed) * 1000,
+    );
+    // 비용이 커지면 그만큼 비례해 오래 걸린다. (부동소수점이라 오차 허용)
+    const scaled =
+      workDurationFor(actor, workCost.interact) * (workCost.cook / workCost.interact);
+    assert.ok(Math.abs(workDurationFor(actor, workCost.cook) - scaled) < 1e-6);
+  }
+
+  // 작업 속도가 빠른 슬라임이 같은 일을 더 빨리 끝낸다.
+  const fire = initialState(1, ["fire"]).actors["fire-1"]!;
+  const lightning = initialState(1, ["lightning"]).actors["lightning-1"]!;
+  assert.ok(
+    workDurationFor(fire, workCost.interact) <
+      workDurationFor(lightning, workCost.interact),
+  );
+});
+
+// 세척도 같은 규칙을 탄다. 예전에는 고정 4초였다.
+test("세척도 작업 속도를 탄다", () => {
+  let state = initialState(1, ["water", "fire", "lightning", "earth"]);
+  state = untilIdle(interactActors(state, ["lightning-1"], "dish-rack"));
+  state = untilIdle(interactActors(state, ["lightning-1"], "table"));
+  state = untilIdle(interactActors(state, ["earth-1"], "table"));
+  state = untilIdle(interactActors(state, ["earth-1"], "ingredient-box"));
+  state = untilIdle(interactActors(state, ["earth-1"], "stove"));
+  state = untilIdle(interactActors(state, ["fire-1"], "stove"));
+  state = untilIdle(interactActors(state, ["earth-1"], "stove"));
+  state = untilIdle(interactActors(state, ["earth-1"], "submission"));
+  state = untilIdle(interactActors(state, ["earth-1"], "table"));
+  state = untilIdle(interactActors(state, ["water-1"], "table"));
+  state = interactActors(state, ["water-1"], "washer");
+  state = until(state, (current) => current.washers[washerId]!.workerId === "water-1");
+  // 고정 시간이 아니라 물 슬라임의 작업 속도로 계산한 값이어야 한다.
+  assert.equal(
+    state.washers[washerId]!.totalMs,
+    workDurationFor(state.actors["water-1"]!, workCost.wash),
   );
 });

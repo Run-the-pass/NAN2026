@@ -148,7 +148,8 @@ export const slimeTypes: Record<
 };
 
 export const statTables = {
-  workSpeedMultiplier: [0.85, 1, 1.2, 1.45, 1.75, 2.1],
+  // 작업 속도 레벨별 초당 작업량. 기준(레벨 1)이 100/초라 비용 100은 1초다.
+  workSpeedPerSecond: [85, 100, 120, 145, 175, 210],
   moveTilesPerSecond: [2, 2.4, 2.8, 3.2, 3.6, 4],
 } as const;
 
@@ -173,8 +174,6 @@ export const fireConfig = {
   // 설비 배치 타일 거리 기준 인접 판정. 바닥 타일은 대상이 아니다.
   spreadRange: 1,
   spreadDiagonal: false,
-  // 명세가 확정한 값.
-  extinguishMs: 5_000,
   extinguishElement: "water" as SlimeElement,
   keepExtinguishProgress: false,
 };
@@ -184,7 +183,6 @@ export const dishConfig = {
   initialCount: 3,
   rackCapacity: 3,
   washerCapacity: 1,
-  washMs: 4_000,
   earthDishCarry: 2,
   tableCapacity: 1,
   dragThresholdPx: 8,
@@ -192,7 +190,8 @@ export const dishConfig = {
 
 export const incineratorConfig = {
   capacity: 5,
-  burnMs: 3_000,
+  // 비용이라 기준 속도(100/초)에서 3초다. 시간이 아니라 작업량이다.
+  burnCost: 300,
 };
 
 export type Order = {
@@ -216,6 +215,8 @@ export type FireState = {
   onFire: boolean;
   workerId: ActorId | null;
   extinguishMs: number;
+  // 이번에 붙은 슬라임 기준 진화 총 시간. 진행도 표시에 쓴다.
+  extinguishTotalMs: number;
   spreadMs: number;
 };
 
@@ -306,7 +307,8 @@ export const stationTileCodes: Record<StationId, string> = {
 export type KitchenMapData = {
   rows: readonly string[];
   taskTiles: Partial<Record<StationInstanceId, TilePosition>>;
-  spawnTiles: readonly TilePosition[];
+  // 영업 시작 지점. 슬라임은 여기서부터 가까운 빈 바닥으로 퍼진다.
+  startTile: TilePosition;
 };
 
 export const stationInstanceId = (
@@ -325,13 +327,16 @@ const stationDisplays = (data: KitchenMapData) =>
     }),
   );
 
+// 인접 칸을 보는 고정 순서. 위·왼쪽·오른쪽·아래라 같은 맵이면 늘 같은 결과다.
+const neighboursOf = ({ col, row }: TilePosition): TilePosition[] => [
+  { col, row: row - 1 },
+  { col: col - 1, row },
+  { col: col + 1, row },
+  { col, row: row + 1 },
+];
+
 const automaticTaskTile = (data: KitchenMapData, display: TilePosition) =>
-  [
-    { col: display.col, row: display.row - 1 },
-    { col: display.col - 1, row: display.row },
-    { col: display.col + 1, row: display.row },
-    { col: display.col, row: display.row + 1 },
-  ].find((tile) => data.rows[tile.row]?.[tile.col] === ".");
+  neighboursOf(display).find((tile) => data.rows[tile.row]?.[tile.col] === ".");
 
 export function stationInstancesForMap(data: KitchenMapData): StationInstance[] {
   return stationDisplays(data).flatMap(({ type, displayTile }) => {
@@ -394,11 +399,11 @@ export function validateKitchenMap(data: KitchenMapData) {
     }
   }
   if (
-    data.spawnTiles.length !== 4 ||
-    new Set(data.spawnTiles.map((tile) => `${tile.col},${tile.row}`)).size !== 4 ||
-    data.spawnTiles.some((tile) => !inMap(tile) || data.rows[tile.row]?.[tile.col] !== ".")
+    !data.startTile ||
+    !inMap(data.startTile) ||
+    data.rows[data.startTile.row]?.[data.startTile.col] !== "."
   ) {
-    errors.push("스폰 4칸은 서로 다른 바닥이어야 합니다.");
+    errors.push("영업 시작 지점은 빈 바닥 한 칸이어야 합니다.");
   }
   return errors;
 }
@@ -421,9 +426,40 @@ export const displayTiles = Object.fromEntries(
 export const taskTiles = Object.fromEntries(
   stationInstances.map((station) => [station.id, station.taskTile]),
 ) as Record<StationInstanceId, TilePosition>;
-export const spawnTiles = mapData.spawnTiles.map((tile) => ({ ...tile }));
+export const startTile = { ...mapData.startTile };
 
-const workDuration = { interact: 700, cook: 4_000 };
+// 시작 지점에서 가까운 빈 바닥부터 차례로 자리를 잡는다. 벽과 설비 칸은
+// 바닥이 아니라 애초에 후보에 오르지 않는다.
+export function spawnTilesFrom(start: TilePosition, count: number) {
+  const seen = new Set([`${start.col},${start.row}`]);
+  const queue = [start];
+  const tiles: TilePosition[] = [];
+  while (queue.length > 0 && tiles.length < count) {
+    const tile = queue.shift()!;
+    if (!isWalkable(tile)) continue;
+    tiles.push(tile);
+    for (const next of neighboursOf(tile)) {
+      const key = `${next.col},${next.row}`;
+      if (seen.has(key) || !inMap(next)) continue;
+      seen.add(key);
+      queue.push(next);
+    }
+  }
+  return tiles;
+}
+
+// 지금 맵에서 이 인원을 세울 수 있는지.
+export const canPlaceSquad = (count: number) =>
+  spawnTilesFrom(startTile, count).length >= count;
+
+// 상호작용 비용. 작업량이 초당 작업 속도만큼 쌓여 이 값에 닿으면 끝난다.
+// 보통 속도(100/초) 기준 100 = 1초. 소각기를 비롯한 기본 상호작용이 100이다.
+export const workCost = {
+  interact: 100,
+  cook: 570,
+  wash: 400,
+  extinguish: 500,
+};
 
 export const tileCenter = ({ col, row }: TilePosition) => ({
   x: col * TILE_SIZE + TILE_SIZE / 2,
@@ -616,7 +652,14 @@ const newFires = (): Partial<Record<StationInstanceId, FireState>> =>
   Object.fromEntries(
     stationInstances.filter(({ type }) => fireConfig.flammableStations.includes(type)).map(({ id }) => [
       id,
-      { neglectMs: 0, onFire: false, workerId: null, extinguishMs: 0, spreadMs: 0 },
+      {
+        neglectMs: 0,
+        onFire: false,
+        workerId: null,
+        extinguishMs: 0,
+        extinguishTotalMs: 0,
+        spreadMs: 0,
+      },
     ]),
   );
 
@@ -645,13 +688,13 @@ const initialStationState = () => ({
   incinerators: Object.fromEntries(
     stationInstancesByType.trash.map(({ id }) => [
       id,
-      { count: 0, workerId: null, progressMs: 0, totalMs: incineratorConfig.burnMs },
+      { count: 0, workerId: null, progressMs: 0, totalMs: 0 },
     ]),
   ),
   washers: Object.fromEntries(
     stationInstancesByType.washer.map(({ id }) => [
       id,
-      { dish: null, workerId: null, progressMs: 0, totalMs: dishConfig.washMs },
+      { dish: null, workerId: null, progressMs: 0, totalMs: 0 },
     ]),
   ),
   workstations: Object.fromEntries(
@@ -661,7 +704,7 @@ const initialStationState = () => ({
         status: "MISSING_MATERIAL" as WorkstationStatus,
         workerId: null,
         progressMs: 0,
-        totalMs: workDuration.cook,
+        totalMs: 0,
       },
     ]),
   ),
@@ -720,13 +763,15 @@ export function initialState(
   stages: Stage[] = defaultStages(),
   stageIndex = 0,
 ): GameState {
-  // 같은 속성을 여러 마리 데려올 수 있다. 스폰 자리 수만 제한한다.
-  if (
-    squad.length < 1 ||
-    squad.length > spawnTiles.length ||
-    squad.some((typeId) => !(typeId in slimeTypes))
-  ) {
-    throw new Error(`스쿼드는 속성 슬라임 1~${spawnTiles.length}마리여야 합니다.`);
+  // 같은 속성을 여러 마리 데려올 수 있다. 인원 상한은 맵의 빈 바닥이 정한다.
+  if (squad.length < 1 || squad.some((typeId) => !(typeId in slimeTypes))) {
+    throw new Error("스쿼드는 속성 슬라임 1마리 이상이어야 합니다.");
+  }
+  const placements = spawnTilesFrom(startTile, squad.length);
+  if (placements.length < squad.length) {
+    throw new Error(
+      `영업 시작 지점 주변 빈 바닥이 ${squad.length}칸 필요한데 ${placements.length}칸뿐입니다.`,
+    );
   }
   const roundStages = checkStages(stages, stageIndex);
   const stage = roundStages[stageIndex];
@@ -742,7 +787,7 @@ export function initialState(
     const label = `${slimeTypes[typeId].name} 슬라임`;
     actors[ids[index]] = makeActor(
       typeId,
-      spawnTiles[index],
+      placements[index],
       total[typeId]! > 1 ? `${label} ${ids[index].split("-")[1]}호` : label,
     );
   });
@@ -782,7 +827,7 @@ export function recruitSlime(state: GameState, typeId: SlimeTypeId): GameState {
   if (
     state.phase !== "playing" ||
     !slimeTypes[typeId] ||
-    state.squad.length >= spawnTiles.length
+    !canPlaceSquad(state.squad.length + 1)
   ) return state;
   return {
     ...initialState(
@@ -976,10 +1021,9 @@ function canUseStation(
     return actor.carrying.length > 0;
   }
   if (type === "trash") {
-    const incinerator = state.incinerators[station]!;
-    return actor.carrying.length > 0
-      ? incinerator.count < incineratorConfig.capacity
-      : actor.typeId === "fire" && incinerator.count > 0 && !incinerator.workerId;
+    // 가득 찼는지·소각할 게 있는지는 소각기가 판정한다. 경로에서 미리 막으면
+    // 슬라임이 가지도 않아 "왜 안 되는지" 안내가 나올 수 없다.
+    return actor.carrying.length > 0 || actor.typeId === "fire";
   }
   if (type === "ingredient-box") {
     const clean = dishIndex(actor, (dish) => dish.status === "clean") >= 0;
@@ -1055,8 +1099,9 @@ export function interactActors(
     : state;
 }
 
-function workDurationFor(actor: ActorState, base: number) {
-  return base / statTables.workSpeedMultiplier[actor.statLevels.workSpeed];
+// 비용 ÷ 초당 작업량 = 걸리는 시간(ms).
+export function workDurationFor(actor: ActorState, cost: number) {
+  return (cost / statTables.workSpeedPerSecond[actor.statLevels.workSpeed]) * 1000;
 }
 
 function waitAtStation(actor: ActorState, keepIntent = false): ActorState {
@@ -1239,7 +1284,7 @@ function moveActor(state: GameState, actorId: ActorId, deltaMs: number) {
       actor = {
         ...actor,
         status: "WORKING",
-        workLeftMs: workDurationFor(actor, workDuration.interact),
+        workLeftMs: workDurationFor(actor, workCost.interact),
       };
       continue;
     }
@@ -1254,7 +1299,7 @@ function moveActor(state: GameState, actorId: ActorId, deltaMs: number) {
       const fire = next.fires[station]!;
       const spent = Math.min(actor.workLeftMs, remaining);
       const extinguishMs = Math.min(
-        fireConfig.extinguishMs,
+        fire.extinguishTotalMs,
         fire.extinguishMs + spent,
       );
       if (actor.workLeftMs > remaining) {
@@ -1443,11 +1488,14 @@ function moveActor(state: GameState, actorId: ActorId, deltaMs: number) {
         actor = next.actors[actorId]!;
         continue;
       }
-      const from = fireConfig.keepExtinguishProgress ? fire.extinguishMs : 0;
+      const extinguishTotalMs = workDurationFor(actor, workCost.extinguish);
+      const from = fireConfig.keepExtinguishProgress
+        ? Math.min(fire.extinguishMs, extinguishTotalMs)
+        : 0;
       actor = {
         ...actor,
         status: "WORKING",
-        workLeftMs: fireConfig.extinguishMs - from,
+        workLeftMs: extinguishTotalMs - from,
         alert: null,
         alertMs: 0,
       };
@@ -1458,7 +1506,12 @@ function moveActor(state: GameState, actorId: ActorId, deltaMs: number) {
           actors: patchActor(next, actorId, actor),
           fires: {
             ...next.fires,
-            [station]: { ...fire, workerId: actorId, extinguishMs: from },
+            [station]: {
+              ...fire,
+              workerId: actorId,
+              extinguishMs: from,
+              extinguishTotalMs,
+            },
           },
         },
       );
@@ -1586,12 +1639,13 @@ function moveActor(state: GameState, actorId: ActorId, deltaMs: number) {
         }
         const dish = actor.carrying[dirty] as Dish;
         const starts = actor.typeId === "water";
+        const washMs = workDurationFor(actor, workCost.wash);
         actor = {
           ...actor,
           carrying: actor.carrying.filter((_, index) => index !== dirty),
           intent: starts ? actor.intent : null,
           status: starts ? "WORKING" : "IDLE",
-          workLeftMs: starts ? dishConfig.washMs : 0,
+          workLeftMs: starts ? washMs : 0,
         };
         next = event(next, starts ? `${actor.name}이(가) 그릇을 씻기 시작했습니다.` : `${actor.name}이(가) 더러운 그릇을 세척기에 놓았습니다.`, {
           actors: patchActor(next, actorId, actor),
@@ -1599,7 +1653,7 @@ function moveActor(state: GameState, actorId: ActorId, deltaMs: number) {
             dish,
             workerId: starts ? actorId : null,
             progressMs: 0,
-            totalMs: dishConfig.washMs,
+            totalMs: washMs,
           } },
         });
         continue;
@@ -1610,10 +1664,16 @@ function moveActor(state: GameState, actorId: ActorId, deltaMs: number) {
           actor = next.actors[actorId]!;
           continue;
         }
-        actor = { ...actor, status: "WORKING", workLeftMs: dishConfig.washMs };
+        const restartMs = workDurationFor(actor, workCost.wash);
+        actor = { ...actor, status: "WORKING", workLeftMs: restartMs };
         next = event(next, `${actor.name}이(가) 그릇을 씻기 시작했습니다.`, {
           actors: patchActor(next, actorId, actor),
-          washers: { ...next.washers, [station]: { ...washer, workerId: actorId, progressMs: 0 } },
+          washers: { ...next.washers, [station]: {
+            ...washer,
+            workerId: actorId,
+            progressMs: 0,
+            totalMs: restartMs,
+          } },
         });
         continue;
       }
@@ -1786,7 +1846,7 @@ function moveActor(state: GameState, actorId: ActorId, deltaMs: number) {
         remaining = 0;
         break;
       }
-      const totalMs = workDurationFor(actor, workDuration.cook);
+      const totalMs = workDurationFor(actor, workCost.cook);
       actor = {
         ...actor,
         status: "WORKING",
@@ -1825,8 +1885,12 @@ function moveActor(state: GameState, actorId: ActorId, deltaMs: number) {
     if (type === "trash") {
       const incinerator = next.incinerators[station]!;
       const carried = actor.carrying[0];
-      if (carried) {
-        if (incinerator.count >= incineratorConfig.capacity) {
+      const full = incinerator.count >= incineratorConfig.capacity;
+      // 가득 찬 소각기 앞에서는 물건을 든 불 슬라임도 넣기 대신 소각부터 한다.
+      // 그러지 않으면 넣지도 비우지도 못하고 손을 비우러 다녀와야 한다.
+      const burnsInstead = full && actor.typeId === "fire" && !incinerator.workerId;
+      if (carried && !burnsInstead) {
+        if (full) {
           next = refuse(next, actorId, actor, "소각기가 가득 찼습니다.", "TARGET_FULL");
           actor = next.actors[actorId]!;
           continue;
@@ -1864,7 +1928,7 @@ function moveActor(state: GameState, actorId: ActorId, deltaMs: number) {
         actor = next.actors[actorId]!;
         continue;
       }
-      const totalMs = workDurationFor(actor, incineratorConfig.burnMs);
+      const totalMs = workDurationFor(actor, incineratorConfig.burnCost);
       actor = { ...actor, status: "WORKING", workLeftMs: totalMs, alert: null, alertMs: 0 };
       next = event(next, `${actor.name}이(가) 소각을 시작했습니다.`, {
         actors: patchActor(next, actorId, actor),

@@ -22,7 +22,6 @@ import {
   activeOrders,
   itemLabel,
   recipes,
-  fireConfig,
   squadActorIds,
   currentStage,
   isLastStage,
@@ -281,6 +280,12 @@ function OrderDish({ foodId }: { foodId: ItemId }) {
 function OrderCards({ state }: { state: GameState }) {
   const orders = activeOrders(state);
   const urgency = state.timeLeft <= 20 ? "danger" : state.timeLeft <= 40 ? "warn" : "ready";
+  // 카드 위 띠는 남은 영업 시간 게이지다. 주문별 제한 시간이 생기면
+  // 이 비율만 주문 기준으로 바꾸면 된다.
+  const left = Math.max(
+    0,
+    Math.min(100, (state.timeLeftMs / currentStage(state).timeLimitMs) * 100),
+  );
   return (
     <section className="order-cards" aria-label="진행 중인 주문">
       {[0, 1, 2].map((index) => {
@@ -289,6 +294,9 @@ function OrderCards({ state }: { state: GameState }) {
         const recipe = recipes[order.foodId as keyof typeof recipes];
         return (
           <article className="order-card" data-urgency={urgency} key={order.id}>
+            <span className="order-gauge" aria-hidden>
+              <i style={{ width: `${left}%` }} />
+            </span>
             <header>
               <b>주문 {index + 1}</b>
               <span>영업 {state.timeLeft}초</span>
@@ -618,7 +626,7 @@ export default function Game() {
           sprite.art
             .setTexture(`slime-${sprite.typeId}-art`)
             .setFlipX(sprite.facing === "left");
-          const face = authoredFaceLayout(sprite.facing, sprite.blinking);
+          const face = authoredFaceLayout(sprite.facing, sprite.blinking, sprite.typeId);
           sprite.faceLayer.clear();
           if (face) {
             const eyeY = face.y + face.eyeY;
@@ -642,7 +650,7 @@ export default function Game() {
                 );
             } else if (sprite.typeId === "fire") {
               // 각 눈은 원호와 사선 한 개로 닫아, 원의 윗부분만 잘라낸다.
-              const fireEyeRadius = face.eyeRadius * 1.2;
+              const fireEyeRadius = face.eyeRadius;
               sprite.faceLayer
                 .beginPath()
                 .arc(
@@ -964,9 +972,13 @@ export default function Game() {
           screenY: number;
           additive: boolean;
         } | null = null;
+        // 커서가 브라우저 밖에서 놓이면 Phaser는 pointerup을 못 받는다.
+        // 마지막 지점을 들고 있다가 window 이벤트로 마무리한다.
+        let dragPoint: { x: number; y: number } | null = null;
         this.input.on("pointerdown", (pointer: Phaser.Input.Pointer) => {
           if (!fromCanvas(pointer)) return;
           if (pointer.leftButtonDown()) {
+            dragPoint = null;
             dragStart = {
               world: this.cameras.main.getWorldPoint(pointer.x, pointer.y),
               screenX: pointer.x,
@@ -993,6 +1005,7 @@ export default function Game() {
             dishConfig.dragThresholdPx
           ) return;
           const point = this.cameras.main.getWorldPoint(pointer.x, pointer.y);
+          dragPoint = { x: point.x, y: point.y };
           const left = Math.min(dragStart.world.x, point.x);
           const top = Math.min(dragStart.world.y, point.y);
           selectionBox
@@ -1000,20 +1013,17 @@ export default function Game() {
             .setSize(Math.abs(point.x - dragStart.world.x), Math.abs(point.y - dragStart.world.y))
             .setVisible(true);
         });
-        this.input.on("pointerup", (pointer: Phaser.Input.Pointer) => {
+        // 캔버스 안에서 놓든 밖에서 놓든 같은 마무리를 탄다.
+        const endDrag = (point: { x: number; y: number } | null) => {
           if (!dragStart) return;
           const start = dragStart;
           dragStart = null;
           selectionBox.setVisible(false);
-          if (
-            Math.hypot(pointer.x - start.screenX, pointer.y - start.screenY) <
-            dishConfig.dragThresholdPx
-          ) {
+          if (!point) {
             setSelectedActors([]);
             setInspected(null);
             return;
           }
-          const point = this.cameras.main.getWorldPoint(pointer.x, pointer.y);
           const left = Math.min(start.world.x, point.x);
           const right = Math.max(start.world.x, point.x);
           const top = Math.min(start.world.y, point.y);
@@ -1032,6 +1042,23 @@ export default function Game() {
           setSelectedActors((selected) =>
             start.additive ? [...new Set([...selected, ...inside])] : inside,
           );
+        };
+        this.input.on("pointerup", (pointer: Phaser.Input.Pointer) => {
+          const dragged =
+            dragStart &&
+            Math.hypot(pointer.x - dragStart.screenX, pointer.y - dragStart.screenY) >=
+              dishConfig.dragThresholdPx;
+          endDrag(
+            dragged ? this.cameras.main.getWorldPoint(pointer.x, pointer.y) : null,
+          );
+        });
+        // 브라우저 밖에서 버튼을 놓거나 창이 포커스를 잃어도 네모를 정리한다.
+        const finishOutside = () => endDrag(dragPoint);
+        window.addEventListener("pointerup", finishOutside);
+        window.addEventListener("blur", finishOutside);
+        this.events.once("shutdown", () => {
+          window.removeEventListener("pointerup", finishOutside);
+          window.removeEventListener("blur", finishOutside);
         });
 
         view.current = {
@@ -1080,8 +1107,9 @@ export default function Game() {
             for (const { id, type } of stationInstances) {
               const fire = current.fires[id];
               const label = fire?.onFire
-                ? // 불이 난 설비는 진화 진행도를 대신 보여 준다.
-                  `🔥 ${Math.round((fire.extinguishMs / fireConfig.extinguishMs) * 100)}%`
+                ? // 불이 난 설비는 진화 진행도를 대신 보여 준다. 총 시간은
+                  // 붙은 슬라임의 작업 속도에 따라 달라져 화재 상태에 들어 있다.
+                  `🔥 ${fire.extinguishTotalMs ? Math.round((fire.extinguishMs / fire.extinguishTotalMs) * 100) : 0}%`
                 : type === "ingredient-box"
                   ? `${current.ingredients[id]!.stock}/${INGREDIENT_MAX}`
                   : type === "stove"
