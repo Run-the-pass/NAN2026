@@ -59,7 +59,7 @@
     const tools = [
       ["타일", [["tile",".","바닥"],["tile","#","조리대/벽"]]],
       ["설비", stations.map(([id,code,icon,label]) => ["station",code,`${icon} ${label}`])],
-      ["스폰", [0,1,2,3].map((index) => ["spawn",String(index),`스폰 ${index + 1}`])],
+      ["영업 시작 지점", [["start","0","🏠 시작 지점"]]],
     ];
     for (const [title, items] of tools) {
       const section = document.createElement("section"), heading = document.createElement("h2"), group = document.createElement("div");
@@ -111,7 +111,7 @@
         setRow(row,col,brush.value); cleanTasks();
       }
       if (brush.kind === "task") data.taskTiles[brush.value] = { col,row };
-      if (brush.kind === "spawn") data.spawnTiles[Number(brush.value)] = { col,row };
+      if (brush.kind === "start") data.startTile = { col,row };
       dirty = true; status.textContent = "저장되지 않은 변경 사항이 있습니다."; status.removeAttribute("data-error");
       render();
     }
@@ -126,9 +126,9 @@
           const task = data.taskTiles[entry.id] ?? automaticTask(entry);
           return task?.col === col && task?.row === row;
         });
-        const spawn = data.spawnTiles.findIndex((position) => position.col === col && position.row === row);
+        const isStart = data.startTile.col === col && data.startTile.row === row;
         for (const task of tasks) { const badge = document.createElement("span"); badge.className = "marker task"; badge.textContent = `${data.taskTiles[task.id] ? "고정" : "자동"}:${task.icon}`; cell.append(badge); }
-        if (spawn >= 0) { const badge = document.createElement("span"); badge.className = "marker spawn"; badge.textContent = `S${spawn + 1}`; cell.append(badge); }
+        if (isStart) { const badge = document.createElement("span"); badge.className = "marker spawn"; badge.textContent = "시작"; cell.append(badge); }
         board.append(cell);
       }));
       renderTaskOptions();

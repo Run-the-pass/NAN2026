@@ -307,7 +307,8 @@ export const stationTileCodes: Record<StationId, string> = {
 export type KitchenMapData = {
   rows: readonly string[];
   taskTiles: Partial<Record<StationInstanceId, TilePosition>>;
-  spawnTiles: readonly TilePosition[];
+  // 영업 시작 지점. 슬라임은 여기서부터 가까운 빈 바닥으로 퍼진다.
+  startTile: TilePosition;
 };
 
 export const stationInstanceId = (
@@ -326,13 +327,16 @@ const stationDisplays = (data: KitchenMapData) =>
     }),
   );
 
+// 인접 칸을 보는 고정 순서. 위·왼쪽·오른쪽·아래라 같은 맵이면 늘 같은 결과다.
+const neighboursOf = ({ col, row }: TilePosition): TilePosition[] => [
+  { col, row: row - 1 },
+  { col: col - 1, row },
+  { col: col + 1, row },
+  { col, row: row + 1 },
+];
+
 const automaticTaskTile = (data: KitchenMapData, display: TilePosition) =>
-  [
-    { col: display.col, row: display.row - 1 },
-    { col: display.col - 1, row: display.row },
-    { col: display.col + 1, row: display.row },
-    { col: display.col, row: display.row + 1 },
-  ].find((tile) => data.rows[tile.row]?.[tile.col] === ".");
+  neighboursOf(display).find((tile) => data.rows[tile.row]?.[tile.col] === ".");
 
 export function stationInstancesForMap(data: KitchenMapData): StationInstance[] {
   return stationDisplays(data).flatMap(({ type, displayTile }) => {
@@ -395,11 +399,11 @@ export function validateKitchenMap(data: KitchenMapData) {
     }
   }
   if (
-    data.spawnTiles.length !== 4 ||
-    new Set(data.spawnTiles.map((tile) => `${tile.col},${tile.row}`)).size !== 4 ||
-    data.spawnTiles.some((tile) => !inMap(tile) || data.rows[tile.row]?.[tile.col] !== ".")
+    !data.startTile ||
+    !inMap(data.startTile) ||
+    data.rows[data.startTile.row]?.[data.startTile.col] !== "."
   ) {
-    errors.push("스폰 4칸은 서로 다른 바닥이어야 합니다.");
+    errors.push("영업 시작 지점은 빈 바닥 한 칸이어야 합니다.");
   }
   return errors;
 }
@@ -422,7 +426,31 @@ export const displayTiles = Object.fromEntries(
 export const taskTiles = Object.fromEntries(
   stationInstances.map((station) => [station.id, station.taskTile]),
 ) as Record<StationInstanceId, TilePosition>;
-export const spawnTiles = mapData.spawnTiles.map((tile) => ({ ...tile }));
+export const startTile = { ...mapData.startTile };
+
+// 시작 지점에서 가까운 빈 바닥부터 차례로 자리를 잡는다. 벽과 설비 칸은
+// 바닥이 아니라 애초에 후보에 오르지 않는다.
+export function spawnTilesFrom(start: TilePosition, count: number) {
+  const seen = new Set([`${start.col},${start.row}`]);
+  const queue = [start];
+  const tiles: TilePosition[] = [];
+  while (queue.length > 0 && tiles.length < count) {
+    const tile = queue.shift()!;
+    if (!isWalkable(tile)) continue;
+    tiles.push(tile);
+    for (const next of neighboursOf(tile)) {
+      const key = `${next.col},${next.row}`;
+      if (seen.has(key) || !inMap(next)) continue;
+      seen.add(key);
+      queue.push(next);
+    }
+  }
+  return tiles;
+}
+
+// 지금 맵에서 이 인원을 세울 수 있는지.
+export const canPlaceSquad = (count: number) =>
+  spawnTilesFrom(startTile, count).length >= count;
 
 // 상호작용 비용. 작업량이 초당 작업 속도만큼 쌓여 이 값에 닿으면 끝난다.
 // 보통 속도(100/초) 기준 100 = 1초. 소각기를 비롯한 기본 상호작용이 100이다.
@@ -735,13 +763,15 @@ export function initialState(
   stages: Stage[] = defaultStages(),
   stageIndex = 0,
 ): GameState {
-  // 같은 속성을 여러 마리 데려올 수 있다. 스폰 자리 수만 제한한다.
-  if (
-    squad.length < 1 ||
-    squad.length > spawnTiles.length ||
-    squad.some((typeId) => !(typeId in slimeTypes))
-  ) {
-    throw new Error(`스쿼드는 속성 슬라임 1~${spawnTiles.length}마리여야 합니다.`);
+  // 같은 속성을 여러 마리 데려올 수 있다. 인원 상한은 맵의 빈 바닥이 정한다.
+  if (squad.length < 1 || squad.some((typeId) => !(typeId in slimeTypes))) {
+    throw new Error("스쿼드는 속성 슬라임 1마리 이상이어야 합니다.");
+  }
+  const placements = spawnTilesFrom(startTile, squad.length);
+  if (placements.length < squad.length) {
+    throw new Error(
+      `영업 시작 지점 주변 빈 바닥이 ${squad.length}칸 필요한데 ${placements.length}칸뿐입니다.`,
+    );
   }
   const roundStages = checkStages(stages, stageIndex);
   const stage = roundStages[stageIndex];
@@ -757,7 +787,7 @@ export function initialState(
     const label = `${slimeTypes[typeId].name} 슬라임`;
     actors[ids[index]] = makeActor(
       typeId,
-      spawnTiles[index],
+      placements[index],
       total[typeId]! > 1 ? `${label} ${ids[index].split("-")[1]}호` : label,
     );
   });
@@ -797,7 +827,7 @@ export function recruitSlime(state: GameState, typeId: SlimeTypeId): GameState {
   if (
     state.phase !== "playing" ||
     !slimeTypes[typeId] ||
-    state.squad.length >= spawnTiles.length
+    !canPlaceSquad(state.squad.length + 1)
   ) return state;
   return {
     ...initialState(

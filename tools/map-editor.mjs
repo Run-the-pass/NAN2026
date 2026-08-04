@@ -85,8 +85,8 @@ function validateMap(data) {
       errors.push(`${display.instanceId}: 작업 위치는 설비에 인접해야 합니다.`);
     }
   }
-  if (!Array.isArray(data.spawnTiles) || data.spawnTiles.length !== 4 || data.spawnTiles.some((tile) => !position(tile) || data.rows[tile.row]?.[tile.col] !== ".") || new Set(data.spawnTiles.map((tile) => `${tile.col},${tile.row}`)).size !== 4) {
-    errors.push("스폰 4칸은 서로 다른 바닥이어야 합니다.");
+  if (!position(data.startTile) || data.rows[data.startTile.row]?.[data.startTile.col] !== ".") {
+    errors.push("영업 시작 지점은 빈 바닥 한 칸이어야 합니다.");
   }
   return errors;
 }

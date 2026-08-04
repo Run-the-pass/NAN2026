@@ -27,7 +27,9 @@ import {
   stationHitboxes,
   wallHitboxes,
   taskTiles,
-  spawnTiles,
+  startTile,
+  spawnTilesFrom,
+  canPlaceSquad,
   tick,
   tileCenter,
   activeOrders,
@@ -46,6 +48,8 @@ import {
   isLastStage,
   nextStage,
   recruitSlime,
+  squadActorIds,
+  pixelToTile,
   incineratorConfig,
   stationInstances,
   stationInstancesByType,
@@ -124,13 +128,41 @@ const tableId = stationInstancesByType.table[0].id;
 const secondTableId = stationInstancesByType.table[1].id;
 const incineratorId = stationInstancesByType.trash[0].id;
 
+// 스폰 칸을 맵에 하나씩 찍는 방식은 5마리째부터 자리가 없었다. 이제 시작
+// 지점에서 빈 바닥으로 퍼진다.
+test("슬라임은 시작 지점 주변 빈 바닥으로 퍼져 선다", () => {
+  const squad = ["water", "fire", "lightning", "earth", "water", "fire"] as const;
+  const state = initialState(1, [...squad]);
+  const spots = squadActorIds([...squad]).map((id) => {
+    const actor = state.actors[id]!;
+    return pixelToTile(actor.x, actor.y);
+  });
+
+  assert.equal(spots.length, squad.length);
+  // 첫 마리는 시작 지점에 선다.
+  assert.deepEqual(spots[0], startTile);
+  // 벽과 설비 칸은 바닥이 아니라 후보에 오르지 않는다.
+  for (const tile of spots) assert.ok(isWalkable(tile));
+  // 서로 겹치지 않는다.
+  assert.equal(new Set(spots.map((t) => `${t.col},${t.row}`)).size, squad.length);
+  // 같은 맵이면 항상 같은 자리다.
+  assert.deepEqual(spawnTilesFrom(startTile, squad.length), spots);
+});
+
+test("빈 바닥보다 많은 인원은 세우지 않는다", () => {
+  const floors = KITCHEN_ROWS.join("").split("").filter((tile) => tile === ".").length;
+  assert.ok(canPlaceSquad(floors));
+  assert.ok(!canPlaceSquad(floors + 1));
+  assert.throws(() => initialState(1, Array<"water">(floors + 1).fill("water")));
+});
+
 test("주방 설비는 인접한 작업 타일을 가진다", () => {
   assert.equal(KITCHEN_ROWS.length, MAP_HEIGHT);
   assert.ok(KITCHEN_ROWS.every((row) => row.length === MAP_WIDTH));
   assert.deepEqual(validateKitchenMap({
     rows: KITCHEN_ROWS,
     taskTiles,
-    spawnTiles,
+    startTile,
   }), []);
   for (const { id } of stationInstances) {
     const task = taskTiles[id];
@@ -155,7 +187,7 @@ test("여러 설비가 같은 작업 위치를 사용할 수 있다", () => {
       [tableId]: { col: 2, row: 2 },
       [cornerTableId]: { col: 2, row: 2 },
     },
-    spawnTiles,
+    startTile,
   }), []);
 });
 
@@ -199,12 +231,12 @@ test("맵 편집 데이터는 누락 설비와 잘못된 작업·스폰 칸을 �
   const broken: KitchenMapData = {
     rows,
     taskTiles: { ...taskTiles, [stoveId]: displayTiles[stoveId] },
-    spawnTiles: [spawnTiles[0], spawnTiles[0], spawnTiles[2], spawnTiles[3]],
+    startTile: { col: 0, row: 0 },
   };
   const errors = validateKitchenMap(broken);
   assert.ok(errors.some((error) => error.includes("재료 상자")));
   assert.ok(errors.some((error) => error.includes(stoveId)));
-  assert.ok(errors.some((error) => error.includes("스폰")));
+  assert.ok(errors.some((error) => error.includes("시작 지점")));
 });
 
 test("재료 상자는 감자를 최대치까지 채운다", () => {
