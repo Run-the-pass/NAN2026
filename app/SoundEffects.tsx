@@ -46,11 +46,14 @@ const slimeSounds: Record<SlimeTypeId, string[]> = {
   earth: ["S13_earth_0.mp3", "S14_earth_1.mp3", "S15_earth_2.mp3", "S16_earth_3.mp3"],
 };
 
+// 효과음은 음악과 따로 켜고 조절한다. 저장은 같은 항목을 쓴다.
+const sfxDefaults = { sfxEnabled: true, sfxVolume: 0.35 };
+
 function settings() {
   try {
-    return { enabled: true, volume: 0.35, ...JSON.parse(localStorage.getItem(settingsKey) ?? "{}") };
+    return { ...sfxDefaults, ...JSON.parse(localStorage.getItem(settingsKey) ?? "{}") };
   } catch {
-    return { enabled: true, volume: 0.35 };
+    return sfxDefaults;
   }
 }
 
@@ -59,9 +62,9 @@ const choose = (value: string | string[]) =>
 
 function play(file: string, gain = 0.8) {
   const current = settings();
-  if (!current.enabled) return;
+  if (!current.sfxEnabled) return;
   const audio = new Audio(root + file);
-  audio.volume = Math.min(1, Math.max(0, current.volume * 1.6 * gain));
+  audio.volume = Math.min(1, Math.max(0, current.sfxVolume * 1.6 * gain));
   void audio.play().catch(() => undefined);
 }
 
@@ -134,8 +137,8 @@ export function GameSoundEffects({
     audio.loop = true;
     const apply = () => {
       const current = settings();
-      audio.volume = Math.min(1, Math.max(0, current.volume * 0.35));
-      if (current.enabled) void audio.play().catch(() => undefined);
+      audio.volume = Math.min(1, Math.max(0, current.sfxVolume * 0.35));
+      if (current.sfxEnabled) void audio.play().catch(() => undefined);
       else audio.pause();
     };
     apply();

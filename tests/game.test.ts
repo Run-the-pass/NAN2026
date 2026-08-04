@@ -439,6 +439,35 @@ test("빈 접시 없이 음식은 꺼내도 제출은 접시에 담아야 한다
 
 // 소각기가 왜 안 되는지 알려 줘야 한다. 경로 판정이 같은 조건을 중복
 // 검사하면 슬라임이 가지도 않아 안내가 통째로 죽는다.
+// 손이 차 있으면 예전에는 지시가 거절됐다. 이제 테이블에 내려놓고 이어서 한다.
+test("물건을 들고 있으면 테이블에 내려놓고 원래 작업을 이어서 한다", () => {
+  let state = initialState(1, ["water"]);
+  state = untilIdle(interactActors(state, ["water-1"], ingredientBoxId));
+  assert.deepEqual(state.actors["water-1"]!.carrying, ["potato"]);
+
+  // 손이 찬 상태로 재료 상자를 다시 지시한다. 예전에는 거절됐다.
+  const before = Object.values(state.tables).flat().length;
+  state = untilIdle(interactActors(state, ["water-1"], ingredientBoxId));
+
+  // 들고 있던 감자는 테이블에 내려두고, 새 감자를 들고 있어야 한다.
+  assert.equal(Object.values(state.tables).flat().length, before + 1);
+  assert.deepEqual(state.actors["water-1"]!.carrying, ["potato"]);
+});
+
+// 음식을 들고 그릇 생성대에 가면 빈 접시를 꺼내 그 자리에서 담는다.
+test("음식을 들고 그릇 생성대에 가면 접시에 담는다", () => {
+  let state = initialState(1, ["water"]);
+  state = untilIdle(interactActors(state, ["water-1"], ingredientBoxId));
+  state = untilIdle(interactActors(state, ["water-1"], dishRackId));
+  const carrying = state.actors["water-1"]!.carrying;
+  assert.equal(carrying.length, 1);
+  assert.ok(
+    isDish(carrying[0]!) &&
+      carrying[0].status === "filled" &&
+      carrying[0].content === "potato",
+  );
+});
+
 test("소각기는 거절 이유를 구체적으로 알려 준다", () => {
   let state = initialState(1, ["fire", "lightning"]);
   for (let count = 0; count < incineratorConfig.capacity; count += 1) {

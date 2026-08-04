@@ -5,7 +5,8 @@ import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 
 const storageKey = "slime-restaurant-music";
 const changeEvent = "slime-restaurant-music-change";
-const defaults = { enabled: true, volume: 0.35 };
+// 음악과 효과음을 따로 끄고 조절한다. 한 벌로 저장해 이벤트도 하나만 쓴다.
+const defaults = { enabled: true, volume: 0.35, sfxEnabled: true, sfxVolume: 0.35 };
 const defaultJson = JSON.stringify(defaults);
 type Settings = typeof defaults;
 
@@ -127,8 +128,8 @@ export function MusicSettings({
           aria-labelledby={`${variant}-music-settings-title`}
         >
           <header>
-            <strong id={`${variant}-music-settings-title`}>음악 설정</strong>
-            <button type="button" onClick={() => changeOpen(false)} aria-label="설정 닫기">×</button>
+            <strong id={`${variant}-music-settings-title`}>소리 설정</strong>
+            <button type="button" onClick={() => changeOpen(false)} aria-label="소리 설정 닫기">×</button>
           </header>
           <button
             className="music-toggle"
@@ -139,14 +140,35 @@ export function MusicSettings({
             음악 {settings.enabled ? "켜짐" : "꺼짐"}
           </button>
           <label>
-            <span>음량 {Math.round(settings.volume * 100)}%</span>
+            <span>음악 음량 {Math.round(settings.volume * 100)}%</span>
             <input
               type="range"
               min="0"
               max="1"
               step="0.05"
               value={settings.volume}
+              disabled={!settings.enabled}
               onChange={(event) => saveSettings({ ...settings, volume: Number(event.target.value) })}
+            />
+          </label>
+          <button
+            className="music-toggle"
+            type="button"
+            aria-pressed={settings.sfxEnabled}
+            onClick={() => saveSettings({ ...settings, sfxEnabled: !settings.sfxEnabled })}
+          >
+            효과음 {settings.sfxEnabled ? "켜짐" : "꺼짐"}
+          </button>
+          <label>
+            <span>효과음 음량 {Math.round(settings.sfxVolume * 100)}%</span>
+            <input
+              type="range"
+              min="0"
+              max="1"
+              step="0.05"
+              value={settings.sfxVolume}
+              disabled={!settings.sfxEnabled}
+              onChange={(event) => saveSettings({ ...settings, sfxVolume: Number(event.target.value) })}
             />
           </label>
           {variant === "game" && (

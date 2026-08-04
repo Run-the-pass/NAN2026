@@ -229,7 +229,15 @@ export type IncineratorState = {
 
 export type ActorIntent =
   | { kind: "MOVE"; destination: Position; route: Position[] }
-  | { kind: "INTERACT"; station: StationInstanceId; leader: ActorId | null; route: Position[] };
+  | {
+      kind: "INTERACT";
+      station: StationInstanceId;
+      leader: ActorId | null;
+      route: Position[];
+      // 물건을 내려놓은 뒤 이어서 할 작업. 손이 차 있어 바로 못 하는 지시를
+      // 받았을 때 테이블에 들르게 하고 여기에 원래 목적지를 담아 둔다.
+      then?: StationInstanceId;
+    };
 
 export type ActorState = {
   typeId: SlimeTypeId;
@@ -1003,6 +1011,12 @@ function canUseStation(
   if (type === "dish-rack") {
     const dishRack = state.dishRacks[station]!;
     const nextDish = dishRack[0];
+    // 낱개 음식을 들고 오면 빈 접시를 꺼내 그 자리에서 담는다. 손이 꽉 차
+    // 있어도 되므로 canCarry와 별개로 허용한다.
+    if (
+      nextDish?.status === "clean" &&
+      actor.carrying.some((carried) => !isDish(carried))
+    ) return true;
     return nextDish && canCarry(actor, nextDish)
       ? true
       : dishIndex(actor, (dish) => dish.status === "clean") >= 0 &&
@@ -1047,6 +1061,18 @@ function canUseStation(
   return false;
 }
 
+// 물건을 잠시 내려놓을 수 있는 가장 가까운 테이블. 자리가 없으면 없다.
+function nearestFreeTable(state: GameState, actor: ActorState) {
+  return stationInstancesByType.table
+    .filter((table) => (state.tables[table.id]?.length ?? 0) < dishConfig.tableCapacity)
+    .map((table) => ({
+      table,
+      cost: routeLength(actor, routeBetween(actor, tileCenter(table.taskTile))),
+    }))
+    .filter(({ cost }) => Number.isFinite(cost))
+    .sort((a, b) => a.cost - b.cost)[0]?.table ?? null;
+}
+
 export function resolveStationTarget(target: StationInstanceId | StationId) {
   return stationsById[target as StationInstanceId] ?? stationInstancesByType[target as StationId]?.[0];
 }
@@ -1079,11 +1105,23 @@ export function interactActors(
       })[0]?.actorId ?? null;
   let actors = base.actors;
   for (const { actorId, actor } of orders) {
-    const route = routeBetween(actor, tileCenter(station.taskTile));
+    // 손이 차서 지금은 못 하는 지시면 가까운 빈 테이블에 먼저 내려놓는다.
+    const detour =
+      !canUseStation(base, actor, station.id) && actor.carrying.length > 0
+        ? nearestFreeTable(base, actor)
+        : null;
+    const goal = detour ?? station;
+    const route = routeBetween(actor, tileCenter(goal.taskTile));
     if (!route.length) continue;
     actors = patchActor({ ...base, actors }, actorId, {
       ...actor,
-      intent: { kind: "INTERACT", station: station.id, leader, route },
+      intent: {
+        kind: "INTERACT",
+        station: goal.id,
+        leader: detour ? actorId : leader,
+        route,
+        ...(detour ? { then: station.id } : {}),
+      },
       status: "MOVING",
       workLeftMs: 0,
       alert: null,
@@ -1215,6 +1253,9 @@ function moveActor(state: GameState, actorId: ActorId, deltaMs: number) {
   let next = state;
   let remaining = deltaMs;
   let actor = next.actors[actorId]!;
+  // 테이블에 들렀다 가는 중이면 원래 목적지를 기억해 둔다.
+  const followUp =
+    actor.intent?.kind === "INTERACT" ? actor.intent.then : undefined;
   while (remaining > 0 && next.phase === "playing" && actor.intent) {
     // actor를 재할당하면 intent 좁히기가 풀리므로 먼저 붙잡아 둔다.
     const intent = actor.intent;
@@ -1595,6 +1636,31 @@ function moveActor(state: GameState, actorId: ActorId, deltaMs: number) {
     if (type === "dish-rack") {
       const dishRack = next.dishRacks[station]!;
       const ready = dishRack[0];
+      // 음식을 들고 왔으면 빈 접시를 꺼내 담는다. 들고 있던 낱개 음식이
+      // 담긴 접시로 바뀌므로 손에 든 개수는 그대로다.
+      const looseFood = actor.carrying.findIndex((carried) => !isDish(carried));
+      if (ready?.status === "clean" && looseFood >= 0) {
+        const food = actor.carrying[looseFood] as ItemId;
+        actor = {
+          ...actor,
+          carrying: actor.carrying.map((carried, index) =>
+            index === looseFood
+              ? { ...ready, status: "filled" as const, content: food }
+              : carried,
+          ),
+          intent: null,
+          status: "IDLE",
+        };
+        next = event(
+          next,
+          `${actor.name}이(가) 빈 접시에 ${withParticle(itemLabel(food))} 담았습니다.`,
+          {
+            actors: patchActor(next, actorId, actor),
+            dishRacks: { ...next.dishRacks, [station]: dishRack.slice(1) },
+          },
+        );
+        continue;
+      }
       if (ready && canCarry(actor, ready)) {
         actor = {
           ...actor,
@@ -1938,6 +2004,18 @@ function moveActor(state: GameState, actorId: ActorId, deltaMs: number) {
         },
       });
       continue;
+    }
+  }
+  // 내려놓기가 끝났으면 원래 지시를 이어서 수행한다.
+  if (followUp && !actor.intent && actor.status === "IDLE") {
+    const target = stationsById[followUp];
+    const route = target ? routeBetween(actor, tileCenter(target.taskTile)) : [];
+    if (target && route.length) {
+      actor = {
+        ...actor,
+        intent: { kind: "INTERACT", station: target.id, leader: actorId, route },
+        status: "MOVING",
+      };
     }
   }
   return { ...next, actors: patchActor(next, actorId, actor) };
