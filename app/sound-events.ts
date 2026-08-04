@@ -6,13 +6,14 @@ export type GameSoundCue =
   | "round-clear"
   | "low-time"
   | "new-item"
-  | "grill"
+  | "chop"
   | "wash"
   | "pick-item"
   | "food-submit"
   | "order-success"
   | "new-order"
   | "trash"
+  | "incinerate"
   | "fire-start"
   | "fire-extinguish"
   | "move";
@@ -42,12 +43,16 @@ export function gameSoundCues(
     return cues;
   }
   if (previous.timeLeft > 30 && next.timeLeft <= 30) cues.push("low-time");
-  if (next.ingredients.stock > previous.ingredients.stock) cues.push("new-item");
-  if (
-    previous.workstation.status !== "WORKING" &&
-    next.workstation.status === "WORKING"
-  ) cues.push("grill");
-  if (!previous.washer.workerId && next.washer.workerId) cues.push("wash");
+  if (Object.entries(next.ingredients).some(([id, box]) =>
+    box!.stock > (previous.ingredients[id as keyof GameState["ingredients"]]?.stock ?? 0)
+  )) cues.push("new-item");
+  if (Object.entries(next.workstations).some(([id, workstation]) =>
+    previous.workstations[id as keyof GameState["workstations"]]?.status !== "WORKING" &&
+    workstation?.status === "WORKING"
+  )) cues.push("chop");
+  if (Object.entries(next.washers).some(([id, washer]) =>
+    !previous.washers[id as keyof GameState["washers"]]?.workerId && washer?.workerId
+  )) cues.push("wash");
   if (
     Object.keys(next.actors).some((id) => {
       const actorId = id as keyof GameState["actors"];
@@ -64,6 +69,9 @@ export function gameSoundCues(
   if (next.lastEvent !== previous.lastEvent && next.lastEvent.includes("버렸습니다")) {
     cues.push("trash");
   }
+  if (Object.entries(next.incinerators).some(([id, incinerator]) =>
+    !previous.incinerators[id as keyof GameState["incinerators"]]?.workerId && incinerator?.workerId
+  )) cues.push("incinerate");
   if (!burning(previous) && burning(next)) cues.push("fire-start");
   if (burning(previous) && !burning(next)) cues.push("fire-extinguish");
   if (

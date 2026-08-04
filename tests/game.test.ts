@@ -18,7 +18,6 @@ import {
   MAP_HEIGHT,
   MAP_WIDTH,
   TILE_SIZE,
-  allStations,
   displayTiles,
   initialState,
   interactActors,
@@ -26,6 +25,7 @@ import {
   moveActors,
   slimeTypes,
   stationHitboxes,
+  wallHitboxes,
   taskTiles,
   spawnTiles,
   tick,
@@ -45,6 +45,10 @@ import {
   defaultStages,
   isLastStage,
   nextStage,
+  recruitSlime,
+  incineratorConfig,
+  stationInstances,
+  stationInstancesByType,
   type GameState,
   type Order,
   type Stage,
@@ -53,6 +57,9 @@ import {
 
 test("스테이지 정보는 실제 맵·레시피와 검증된 설정만 사용한다", () => {
   assert.deepEqual(validateStageInfoUiConfig(stageInfoUiConfig), []);
+  assert.equal(stageInfoUiConfig["1-1"]!.nextStep, "PLAY");
+  assert.equal(stageInfoUiConfig["1-2"]!.nextStep, "RECRUIT");
+  assert.equal(stageInfoUiConfig["1-3"]!.nextStep, "RECRUIT");
   assert.deepEqual(availableStageFoods(stageInfoUiConfig["1-1"]!), [
     "roasted-potato",
   ]);
@@ -108,6 +115,15 @@ const untilIdle = (state: GameState) =>
     Object.values(current.actors).every((actor) => !actor?.intent),
   );
 
+const ingredientBoxId = stationInstancesByType["ingredient-box"][0].id;
+const farIngredientBoxId = stationInstancesByType["ingredient-box"][1].id;
+const stoveId = stationInstancesByType.stove[0].id;
+const dishRackId = stationInstancesByType["dish-rack"][0].id;
+const washerId = stationInstancesByType.washer[0].id;
+const tableId = stationInstancesByType.table[0].id;
+const secondTableId = stationInstancesByType.table[1].id;
+const incineratorId = stationInstancesByType.trash[0].id;
+
 test("주방 설비는 인접한 작업 타일을 가진다", () => {
   assert.equal(KITCHEN_ROWS.length, MAP_HEIGHT);
   assert.ok(KITCHEN_ROWS.every((row) => row.length === MAP_WIDTH));
@@ -116,7 +132,7 @@ test("주방 설비는 인접한 작업 타일을 가진다", () => {
     taskTiles,
     spawnTiles,
   }), []);
-  for (const id of allStations) {
+  for (const { id } of stationInstances) {
     const task = taskTiles[id];
     const display = displayTiles[id];
     assert.equal(
@@ -125,19 +141,69 @@ test("주방 설비는 인접한 작업 타일을 가진다", () => {
     );
     assert.ok(isWalkable(task));
   }
+  assert.deepEqual(taskTiles[secondTableId], { col: 3, row: 2 });
+});
+
+test("여러 설비가 같은 작업 위치를 사용할 수 있다", () => {
+  const cornerTableId = stationInstancesByType.table.find(
+    ({ displayTile }) => displayTile.col === 1 && displayTile.row === 2,
+  )!.id;
+  assert.deepEqual(validateKitchenMap({
+    rows: KITCHEN_ROWS,
+    taskTiles: {
+      ...taskTiles,
+      [tableId]: { col: 2, row: 2 },
+      [cornerTableId]: { col: 2, row: 2 },
+    },
+    spawnTiles,
+  }), []);
+});
+
+test("같은 종류 설비는 좌표 ID별로 내용물을 따로 보관한다", () => {
+  let state = initialState(1, ["lightning"]);
+  state = untilIdle(interactActors(state, ["lightning-1"], dishRackId));
+  state = untilIdle(interactActors(state, ["lightning-1"], tableId));
+  assert.equal(state.tables[tableId]!.length, 1);
+  assert.equal(state.tables[secondTableId]!.length, 0);
+
+  state = untilIdle(interactActors(state, ["lightning-1"], ingredientBoxId));
+  state = untilIdle(interactActors(state, ["lightning-1"], secondTableId));
+  assert.equal(state.tables[tableId]!.length, 1);
+  assert.deepEqual(state.tables[secondTableId], ["potato"]);
+});
+
+test("테이블의 감자와 빈 접시는 가져오는 순서와 무관하게 합쳐진다", () => {
+  let foodFirst = initialState(1, ["lightning"]);
+  foodFirst = untilIdle(interactActors(foodFirst, ["lightning-1"], ingredientBoxId));
+  foodFirst = untilIdle(interactActors(foodFirst, ["lightning-1"], tableId));
+  foodFirst = untilIdle(interactActors(foodFirst, ["lightning-1"], dishRackId));
+  foodFirst = untilIdle(interactActors(foodFirst, ["lightning-1"], tableId));
+  assert.equal(foodFirst.tables[tableId]!.length, 0);
+  assert.ok(foodFirst.actors["lightning-1"]!.carrying.some(
+    (carried) => isDish(carried) && carried.status === "filled" && carried.content === "potato",
+  ));
+
+  let dishFirst = initialState(1, ["lightning"]);
+  dishFirst = untilIdle(interactActors(dishFirst, ["lightning-1"], dishRackId));
+  dishFirst = untilIdle(interactActors(dishFirst, ["lightning-1"], tableId));
+  dishFirst = untilIdle(interactActors(dishFirst, ["lightning-1"], ingredientBoxId));
+  dishFirst = untilIdle(interactActors(dishFirst, ["lightning-1"], tableId));
+  assert.deepEqual(dishFirst.actors["lightning-1"]!.carrying, []);
+  assert.ok(isDish(dishFirst.tables[tableId]![0]) &&
+    dishFirst.tables[tableId]![0].status === "filled" &&
+    dishFirst.tables[tableId]![0].content === "potato");
 });
 
 test("맵 편집 데이터는 누락 설비와 잘못된 작업·스폰 칸을 거부한다", () => {
-  const rows = [...KITCHEN_ROWS];
-  rows[1] = rows[1].replace("I", ".");
+  const rows = KITCHEN_ROWS.map((row) => row.replaceAll("I", "."));
   const broken: KitchenMapData = {
     rows,
-    taskTiles: { ...taskTiles, stove: displayTiles.stove },
+    taskTiles: { ...taskTiles, [stoveId]: displayTiles[stoveId] },
     spawnTiles: [spawnTiles[0], spawnTiles[0], spawnTiles[2], spawnTiles[3]],
   };
   const errors = validateKitchenMap(broken);
   assert.ok(errors.some((error) => error.includes("재료 상자")));
-  assert.ok(errors.some((error) => error.includes("조리 도구")));
+  assert.ok(errors.some((error) => error.includes(stoveId)));
   assert.ok(errors.some((error) => error.includes("스폰")));
 });
 
@@ -146,7 +212,7 @@ test("재료 상자는 감자를 최대치까지 채운다", () => {
   for (let elapsed = 0; elapsed < INGREDIENT_INTERVAL_MS * 5; elapsed += 50) {
     state = tick(state, 50);
   }
-  assert.equal(state.ingredients.stock, INGREDIENT_MAX);
+  assert.equal(state.ingredients[ingredientBoxId]!.stock, INGREDIENT_MAX);
 });
 
 test("바닥 지시는 순간이동 없이 선택한 슬라임을 이동시킨다", () => {
@@ -176,6 +242,24 @@ test("바닥 지시는 순간이동 없이 선택한 슬라임을 이동시킨�
   );
 });
 
+test("슬라임 이동 경로는 맵의 벽 타일을 관통하지 않는다", () => {
+  const destination = tileCenter({ col: 8, row: 5 });
+  let state = moveActors(initialState(1, ["water"]), ["water-1"], destination);
+  assert.ok((state.actors["water-1"]!.intent?.route.length ?? 0) >= 1);
+  for (let count = 0; count < 20_000 && state.actors["water-1"]!.intent; count += 1) {
+    state = tick(state, 50);
+    const actor = state.actors["water-1"]!;
+    assert.ok(wallHitboxes.every((box) =>
+      Math.abs(actor.x - box.centerX) >= box.halfWidth ||
+      Math.abs(actor.y - box.centerY) >= box.halfHeight,
+    ));
+  }
+  assert.deepEqual(
+    { x: state.actors["water-1"]!.x, y: state.actors["water-1"]!.y },
+    destination,
+  );
+});
+
 test("남은 시간 30초부터 러쉬 음악을 사용한다", () => {
   assert.equal(gameMusicSource(31, "playing"), "/music/main.mp3");
   assert.equal(gameMusicSource(30, "playing"), "/music/rush.mp3");
@@ -189,21 +273,30 @@ test("효과음은 조리 시작·음식 제출·화재 전환을 구분한다",
   assert.deepEqual(
     gameSoundCues(state, {
       ...state,
-      workstation: { ...state.workstation, status: "WORKING" },
+      workstations: {
+        ...state.workstations,
+        [stoveId]: { ...state.workstations[stoveId]!, status: "WORKING" },
+      },
     }),
-    ["grill"],
+    ["chop"],
   );
   assert.deepEqual(
     gameSoundCues(state, {
       ...state,
-      washer: { ...state.washer, workerId: "water" },
+      washers: {
+        ...state.washers,
+        [washerId]: { ...state.washers[washerId]!, workerId: "water-1" },
+      },
     }),
     ["wash"],
   );
   assert.equal(
     gameSoundCues(state, {
       ...state,
-      workstation: { ...state.workstation, status: "COMPLETE" },
+      workstations: {
+        ...state.workstations,
+        [stoveId]: { ...state.workstations[stoveId]!, status: "COMPLETE" },
+      },
     }).includes("food-submit"),
     false,
   );
@@ -217,7 +310,7 @@ test("효과음은 조리 시작·음식 제출·화재 전환을 구분한다",
   assert.ok(gameSoundCues(state, submitted).includes("food-submit"));
   const burning = {
     ...state,
-    fires: { ...state.fires, stove: { ...state.fires.stove!, onFire: true } },
+    fires: { ...state.fires, [stoveId]: { ...state.fires[stoveId]!, onFire: true } },
   };
   assert.ok(gameSoundCues(state, burning).includes("fire-start"));
   assert.ok(gameSoundCues(burning, state).includes("fire-extinguish"));
@@ -228,10 +321,10 @@ test("감자를 조리해 제출하면 주문 수가 오른다", () => {
   state = untilIdle(interactActors(state, ["lightning-1"], "ingredient-box"));
   assert.deepEqual(state.actors["lightning-1"]!.carrying, ["potato"]);
   state = untilIdle(interactActors(state, ["lightning-1"], "stove"));
-  assert.deepEqual(state.stove, ["potato"]);
+  assert.deepEqual(state.stoves[stoveId], ["potato"]);
   state = untilIdle(interactActors(state, ["fire-1"], "stove"));
-  assert.deepEqual(state.stove, ["roasted-potato"]);
-  assert.equal(state.workstation.status, "COMPLETE");
+  assert.deepEqual(state.stoves[stoveId], ["roasted-potato"]);
+  assert.equal(state.workstations[stoveId]!.status, "COMPLETE");
   state = untilIdle(interactActors(state, ["lightning-1"], "dish-rack"));
   state = untilIdle(interactActors(state, ["lightning-1"], "stove"));
   state = untilIdle(interactActors(state, ["lightning-1"], "submission"));
@@ -251,16 +344,16 @@ test("식재료가 들어오면 기다리던 슬라임이 자동으로 조리한
   state = until(
     state,
     (current) =>
-      current.workstation.status === "MISSING_MATERIAL" &&
+      current.workstations[stoveId]!.status === "MISSING_MATERIAL" &&
       current.actors["fire-1"]!.status === "WAITING",
   );
   state = interactActors(state, ["lightning-1"], "stove");
-  state = until(state, (current) => current.workstation.status === "WORKING");
-  assert.equal(state.workstation.workerId, "fire-1");
-  const before = state.workstation.progressMs;
+  state = until(state, (current) => current.workstations[stoveId]!.status === "WORKING");
+  assert.equal(state.workstations[stoveId]!.workerId, "fire-1");
+  const before = state.workstations[stoveId]!.progressMs;
   state = tick(state, 500);
-  assert.ok(state.workstation.progressMs > before);
-  assert.ok(state.workstation.progressMs < state.workstation.totalMs);
+  assert.ok(state.workstations[stoveId]!.progressMs > before);
+  assert.ok(state.workstations[stoveId]!.progressMs < state.workstations[stoveId]!.totalMs);
 });
 
 // 조리 도구는 속성을 가리지 않는다. 다만 한 번에 한 마리만 작업한다.
@@ -273,8 +366,8 @@ test("복수 명령에도 조리 도구는 속성과 무관하게 한 마리만 
     ["water-1", "fire-1", "lightning-1", "earth-1"],
     "stove",
   );
-  state = until(state, (current) => current.workstation.status === "WORKING");
-  assert.ok(state.workstation.workerId);
+  state = until(state, (current) => current.workstations[stoveId]!.status === "WORKING");
+  assert.ok(state.workstations[stoveId]!.workerId);
   assert.equal(
     Object.values(state.actors).filter((actor) => actor?.status === "WORKING")
       .length,
@@ -289,7 +382,43 @@ test("불이 아닌 슬라임도 조리해서 음식을 완성한다", () => {
   state = untilIdle(interactActors(state, ["water-1"], "ingredient-box"));
   state = untilIdle(interactActors(state, ["water-1"], "stove"));
   state = untilIdle(interactActors(state, ["water-1"], "stove"));
-  assert.deepEqual(state.stove, ["roasted-potato"]);
+  assert.deepEqual(state.stoves[stoveId], ["roasted-potato"]);
+});
+
+test("빈 접시 없이 음식은 꺼내도 제출은 접시에 담아야 한다", () => {
+  let state = initialState(1, ["water"]);
+  state = untilIdle(interactActors(state, ["water-1"], "ingredient-box"));
+  state = untilIdle(interactActors(state, ["water-1"], "stove"));
+  state = untilIdle(interactActors(state, ["water-1"], "stove"));
+  state = untilIdle(interactActors(state, ["water-1"], "stove"));
+  assert.deepEqual(state.actors["water-1"]!.carrying, ["roasted-potato"]);
+  state = untilIdle(interactActors(state, ["water-1"], "submission"));
+  assert.deepEqual(state.actors["water-1"]!.carrying, ["roasted-potato"]);
+  assert.equal(state.orders[0].submittedCount, 0);
+  state = untilIdle(interactActors(state, ["water-1"], tableId));
+  state = untilIdle(interactActors(state, ["water-1"], dishRackId));
+  state = untilIdle(interactActors(state, ["water-1"], tableId));
+  state = untilIdle(interactActors(state, ["water-1"], "submission"));
+  assert.ok(state.actors["water-1"]!.carrying.some(
+    (carried) => isDish(carried) && carried.status === "dirty" && carried.content === null,
+  ));
+  assert.equal(state.orders[0].submittedCount, 1);
+});
+
+test("소각기는 쓰레기 5개를 모으고 불 슬라임 작업으로 비운다", () => {
+  let state = initialState(1, ["lightning", "fire"]);
+  for (let count = 0; count < incineratorConfig.capacity; count += 1) {
+    state = untilIdle(interactActors(state, ["lightning-1"], ingredientBoxId));
+    state = untilIdle(interactActors(state, ["lightning-1"], incineratorId));
+  }
+  assert.equal(state.incinerators[incineratorId]!.count, incineratorConfig.capacity);
+  state = untilIdle(interactActors(state, ["lightning-1"], ingredientBoxId));
+  state = untilIdle(interactActors(state, ["lightning-1"], incineratorId));
+  assert.deepEqual(state.actors["lightning-1"]!.carrying, ["potato"]);
+  assert.equal(state.incinerators[incineratorId]!.count, incineratorConfig.capacity);
+  state = untilIdle(interactActors(state, ["fire-1"], incineratorId));
+  assert.equal(state.incinerators[incineratorId]!.count, 0);
+  assert.ok(state.history.some((entry) => entry.includes("소각기를 비웠습니다")));
 });
 
 test("새 이동 명령은 조리 작업을 취소하고 조리 도구 잠금을 푼다", () => {
@@ -298,11 +427,11 @@ test("새 이동 명령은 조리 작업을 취소하고 조리 도구 잠금을
   state = untilIdle(interactActors(state, ["lightning-1"], "stove"));
   state = until(
     interactActors(state, ["fire-1"], "stove"),
-    (current) => current.workstation.status === "WORKING",
+    (current) => current.workstations[stoveId]!.status === "WORKING",
   );
   state = moveActors(state, ["fire-1"], tileCenter({ col: 2, row: 2 }));
-  assert.equal(state.workstation.workerId, null);
-  assert.equal(state.workstation.status, "IDLE");
+  assert.equal(state.workstations[stoveId]!.workerId, null);
+  assert.equal(state.workstations[stoveId]!.status, "IDLE");
   assert.equal(state.actors["fire-1"]!.intent?.kind, "MOVE");
 });
 
@@ -311,7 +440,7 @@ test("속성 슬라임은 새 ID와 식당 역할별 스탯을 사용한다", ()
   assert.equal(slimeTypes.fire.role.includes("조리"), true);
   assert.equal(
     initialState(1, ["lightning"]).actors["lightning-1"]!.moveSpeed,
-    2.5 * TILE_SIZE,
+    3.2 * TILE_SIZE,
   );
   assert.doesNotThrow(() =>
     initialState(1, ["water", "fire", "lightning", "earth"]),
@@ -393,16 +522,29 @@ test("슬라임 아트는 네 속성색과 방향별 얼굴을 만든다", () =>
   assert.equal(Number(face("water", "left")) < 0, true);
   assert.equal(Number(face("water", "right")) > 0, true);
   assert.equal(facingFromDelta(9, -2, "down"), "right");
-  assert.equal(authoredFaceLayout("left")!.x < 0, true);
-  assert.equal(authoredFaceLayout("right")!.x > 0, true);
+  assert.deepEqual(authoredFaceLayout("down"), {
+    eyeOffsetX: 31,
+    eyeY: 18,
+    eyeRadius: 10,
+    blinkY: 16,
+    blinkWidth: 20,
+    blinkHeight: 5,
+    mouthY: 30,
+    mouthRadius: 14,
+    x: -1,
+    y: 0,
+    blink: false,
+  });
+  assert.equal(authoredFaceLayout("left")!.x, -30);
+  assert.equal(authoredFaceLayout("right")!.x, 29);
   assert.equal(authoredFaceLayout("down", true)!.blink, true);
   assert.equal(authoredFaceLayout("up"), null);
 });
 
 test("그릇은 고유 ID로 생성되고 땅 슬라임만 두 개를 나른다", () => {
   let state = initialState(1, ["earth", "water"]);
-  assert.equal(state.dishRack.length, dishConfig.initialCount);
-  assert.equal(new Set(state.dishRack.map((dish) => dish.id)).size, state.dishRack.length);
+  assert.equal(state.dishRacks[dishRackId]!.length, dishConfig.initialCount);
+  assert.equal(new Set(state.dishRacks[dishRackId]!.map((dish) => dish.id)).size, state.dishRacks[dishRackId]!.length);
   state = untilIdle(interactActors(state, ["earth-1"], "dish-rack"));
   state = untilIdle(interactActors(state, ["earth-1"], "dish-rack"));
   assert.equal(state.actors["earth-1"]!.carrying.length, dishConfig.earthDishCarry);
@@ -418,7 +560,7 @@ test("그릇과 테이블은 조리·제출·오염·세척 동안 ID와 내용�
   state = untilIdle(interactActors(state, ["lightning-1"], "dish-rack"));
   const id = (state.actors["lightning-1"]!.carrying[0] as { id: string }).id;
   state = untilIdle(interactActors(state, ["lightning-1"], "table"));
-  assert.equal((state.table[0] as { id: string }).id, id);
+  assert.equal((state.tables[tableId]![0] as { id: string }).id, id);
   state = untilIdle(interactActors(state, ["earth-1"], "table"));
   assert.equal((state.actors["earth-1"]!.carrying[0] as { id: string }).id, id);
   state = untilIdle(interactActors(state, ["earth-1"], "ingredient-box"));
@@ -442,8 +584,8 @@ test("그릇과 테이블은 조리·제출·오염·세척 동안 ID와 내용�
   state = untilIdle(interactActors(state, ["earth-1"], "table"));
   state = untilIdle(interactActors(state, ["water-1"], "table"));
   state = untilIdle(interactActors(state, ["water-1"], "washer"));
-  assert.equal(state.washer.dish?.id, id);
-  assert.equal(state.washer.dish?.status, "clean");
+  assert.equal(state.washers[washerId]!.dish?.id, id);
+  assert.equal(state.washers[washerId]!.dish?.status, "clean");
   state = untilIdle(interactActors(state, ["water-1"], "washer"));
   assert.equal(
     state.actors["water-1"]!.carrying.some(
@@ -480,7 +622,7 @@ function burnStove(start: GameState) {
   let state = untilIdle(interactActors(start, ["lightning-1"], "ingredient-box"));
   state = untilIdle(interactActors(state, ["lightning-1"], "stove"));
   state = untilIdle(interactActors(state, ["fire-1"], "stove"));
-  return until(state, (current) => current.fires.stove?.onFire === true);
+  return until(state, (current) => current.fires[stoveId]?.onFire === true);
 }
 
 const oneStage = (orders: Order[], timeLimitMs = 180_000): Stage[] => [
@@ -596,7 +738,12 @@ test("스테이지를 깨면 골드와 스쿼드를 이어 다음 스테이지�
   assert.deepEqual(Object.keys(second.actors), ["lightning-1", "fire-1"]);
   assert.equal(second.filled, 0);
   assert.equal(second.timeLeftMs, 120_000);
-  assert.deepEqual(second.stove, []);
+  assert.deepEqual(second.stoves[stoveId], []);
+
+  const recruited = recruitSlime(second, "water");
+  assert.deepEqual(recruited.squad, ["lightning", "fire", "water"]);
+  assert.deepEqual(Object.keys(recruited.actors), ["lightning-1", "fire-1", "water-1"]);
+  assert.equal(recruited.gold, 100);
 
   const cleared = cookAndSubmit(second);
   assert.equal(cleared.phase, "won");
@@ -622,27 +769,27 @@ test("주문에 없는 음식 제출은 실수로 세고 골드는 깎지 않는
 
 test("조리를 끝낸 조리 도구를 방치하면 불이 나고 사용할 수 없다", () => {
   let state = burnStove(initialState(1, ["water", "fire", "lightning"]));
-  assert.equal(state.fires.stove!.onFire, true);
+  assert.equal(state.fires[stoveId]!.onFire, true);
   assert.ok(state.history.some((entry) => entry.includes("불이 났습니다")));
   // 물 속성이 아닌 슬라임은 작업 불가 처리한다.
   state = untilIdle(interactActors(state, ["lightning-1"], "stove"));
   assert.deepEqual(state.actors["lightning-1"]!.carrying, []);
   assert.ok(state.history.some((entry) => entry.includes("물 슬라임만")));
-  assert.equal(state.fires.stove!.onFire, true);
+  assert.equal(state.fires[stoveId]!.onFire, true);
 });
 
 test("물 슬라임이 5초 상호작용하면 불을 끄고 설비를 되돌린다", () => {
   let state = burnStove(initialState(1, ["water", "fire", "lightning"]));
   state = until(
     interactActors(state, ["water-1"], "stove"),
-    (current) => current.fires.stove!.workerId === "water-1",
+    (current) => current.fires[stoveId]!.workerId === "water-1",
   );
   const partial = tick(state, 2_000);
-  assert.ok(partial.fires.stove!.extinguishMs >= 2_000);
-  assert.equal(partial.fires.stove!.onFire, true);
+  assert.ok(partial.fires[stoveId]!.extinguishMs >= 2_000);
+  assert.equal(partial.fires[stoveId]!.onFire, true);
   state = untilIdle(partial);
-  assert.equal(state.fires.stove!.onFire, false);
-  assert.equal(state.fires.stove!.extinguishMs, 0);
+  assert.equal(state.fires[stoveId]!.onFire, false);
+  assert.equal(state.fires[stoveId]!.extinguishMs, 0);
   // 진화 뒤에는 깨끗한 그릇에 다시 구운 감자를 담을 수 있다.
   state = untilIdle(interactActors(state, ["lightning-1"], "dish-rack"));
   state = untilIdle(interactActors(state, ["lightning-1"], "stove"));
@@ -661,24 +808,24 @@ test("화재는 인접한 화재 대상 설비로만 전파된다", () => {
     fireConfig.spreadIntervalMs = 1_000;
     // 맵 에디터에서 배치가 바뀌어도 현재 두 설비의 거리로 검증한다.
     fireConfig.spreadRange =
-      Math.abs(displayTiles.stove.col - displayTiles["ingredient-box"].col) +
-      Math.abs(displayTiles.stove.row - displayTiles["ingredient-box"].row);
+      Math.abs(displayTiles[stoveId].col - displayTiles[farIngredientBoxId].col) +
+      Math.abs(displayTiles[stoveId].row - displayTiles[farIngredientBoxId].row);
     let state = burnStove(initialState(1, ["water", "fire", "lightning"]));
-    assert.equal(state.fires["ingredient-box"]!.onFire, false);
+    assert.equal(state.fires[farIngredientBoxId]!.onFire, false);
     state = until(
       state,
-      (current) => current.fires["ingredient-box"]?.onFire === true,
+      (current) => current.fires[farIngredientBoxId]?.onFire === true,
     );
     assert.ok(state.history.some((entry) => entry.includes("옮겨붙었습니다")));
     // 인접 범위를 좁히면 바닥을 건너 번지지 않는다.
     fireConfig.spreadRange = 1;
     let far = burnStove(initialState(1, ["water", "fire", "lightning"]));
     for (let elapsed = 0; elapsed < 20_000; elapsed += 50) far = tick(far, 50);
-    assert.equal(far.fires.stove!.onFire, true);
-    assert.equal(far.fires["ingredient-box"]!.onFire, false);
+    assert.equal(far.fires[stoveId]!.onFire, true);
+    assert.equal(far.fires[farIngredientBoxId]!.onFire, false);
     // 제출대와 쓰레기 처리 공간은 화재 대상이 아니라 상태 자체가 없다.
-    assert.equal(far.fires.submission, undefined);
-    assert.equal(far.fires.trash, undefined);
+    assert.equal(Object.keys(far.fires).some((id) => id.startsWith("submission@")), false);
+    assert.equal(Object.keys(far.fires).some((id) => id.startsWith("trash@")), false);
   } finally {
     Object.assign(fireConfig, saved);
   }
@@ -718,29 +865,40 @@ test("플레이테스트 세션은 위조된 요약을 저장 전에 거부한�
 // 작업량이 초당 작업 속도만큼 쌓여 비용에 닿으면 끝난다.
 // 소각기를 비롯한 기본 상호작용 비용이 100, 보통 속도가 100/초라 1초다.
 test("상호작용은 비용 ÷ 작업 속도만큼 걸린다", () => {
-  // 소각기를 비롯한 기본 상호작용 비용이 100, 보통 속도가 100/초라 1초다.
+  // 소각기를 비롯한 기본 상호작용 비용이 100이고, 기준 속도 100/초에서 1초다.
   assert.equal(workCost.interact, 100);
-  assert.equal(statTables.workSpeedPerSecond[2], 100);
+  const baseLevel = statTables.workSpeedPerSecond.indexOf(100);
+  assert.ok(baseLevel >= 0);
 
-  const actorOf = (typeId: "water" | "fire" | "lightning") =>
-    initialState(1, [typeId]).actors[`${typeId}-1`]!;
+  for (const typeId of ["water", "fire", "lightning", "earth"] as const) {
+    const actor = initialState(1, [typeId]).actors[`${typeId}-1`]!;
+    const speed = statTables.workSpeedPerSecond[actor.statLevels.workSpeed]!;
+    // 걸리는 시간 = 비용 ÷ 초당 작업량
+    assert.equal(
+      workDurationFor(actor, workCost.interact),
+      (workCost.interact / speed) * 1000,
+    );
+    // 비용이 커지면 그만큼 비례해 오래 걸린다. (부동소수점이라 오차 허용)
+    const scaled =
+      workDurationFor(actor, workCost.interact) * (workCost.cook / workCost.interact);
+    assert.ok(Math.abs(workDurationFor(actor, workCost.cook) - scaled) < 1e-6);
+  }
 
-  // 물·땅은 레벨 2(100/초), 불은 3(120/초), 번개는 1(85/초)
-  assert.equal(workDurationFor(actorOf("water"), workCost.interact), 1_000);
-  assert.equal(Math.round(workDurationFor(actorOf("fire"), workCost.interact)), 833);
-  assert.equal(Math.round(workDurationFor(actorOf("lightning"), workCost.interact)), 1_176);
-
-  // 비용이 커지면 그만큼 비례해 오래 걸린다.
-  assert.equal(
-    workDurationFor(actorOf("water"), workCost.cook),
-    workDurationFor(actorOf("water"), workCost.interact) * (workCost.cook / workCost.interact),
+  // 작업 속도가 빠른 슬라임이 같은 일을 더 빨리 끝낸다.
+  const fire = initialState(1, ["fire"]).actors["fire-1"]!;
+  const lightning = initialState(1, ["lightning"]).actors["lightning-1"]!;
+  assert.ok(
+    workDurationFor(fire, workCost.interact) <
+      workDurationFor(lightning, workCost.interact),
   );
 });
 
 // 세척도 같은 규칙을 탄다. 예전에는 고정 4초였다.
 test("세척도 작업 속도를 탄다", () => {
   let state = initialState(1, ["water", "fire", "lightning", "earth"]);
-  state = untilIdle(interactActors(state, ["earth-1"], "dish-rack"));
+  state = untilIdle(interactActors(state, ["lightning-1"], "dish-rack"));
+  state = untilIdle(interactActors(state, ["lightning-1"], "table"));
+  state = untilIdle(interactActors(state, ["earth-1"], "table"));
   state = untilIdle(interactActors(state, ["earth-1"], "ingredient-box"));
   state = untilIdle(interactActors(state, ["earth-1"], "stove"));
   state = untilIdle(interactActors(state, ["fire-1"], "stove"));
@@ -749,7 +907,10 @@ test("세척도 작업 속도를 탄다", () => {
   state = untilIdle(interactActors(state, ["earth-1"], "table"));
   state = untilIdle(interactActors(state, ["water-1"], "table"));
   state = interactActors(state, ["water-1"], "washer");
-  state = until(state, (current) => current.washer.workerId === "water-1");
-  // 물(100/초) × 세척 비용 400 = 4초
-  assert.equal(state.washer.totalMs, (workCost.wash / 100) * 1000);
+  state = until(state, (current) => current.washers[washerId]!.workerId === "water-1");
+  // 고정 시간이 아니라 물 슬라임의 작업 속도로 계산한 값이어야 한다.
+  assert.equal(
+    state.washers[washerId]!.totalMs,
+    workDurationFor(state.actors["water-1"]!, workCost.wash),
+  );
 });

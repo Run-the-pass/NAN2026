@@ -96,8 +96,8 @@ export function simulate(args: string[]) {
       elapsedMs,
       event: state.lastEvent,
       ingredients: state.ingredients,
-      stove: state.stove,
-      workstation: state.workstation,
+      stoves: state.stoves,
+      workstations: state.workstations,
       filled: state.filled,
     };
   });

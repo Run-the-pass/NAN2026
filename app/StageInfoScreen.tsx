@@ -3,7 +3,7 @@
 import { useRef, useState } from "react";
 import {
   KITCHEN_ROWS,
-  displayTiles,
+  stationInstances,
   itemLabel,
   recipes,
   stationLabels,
@@ -20,9 +20,9 @@ import {
 } from "./stage-info";
 
 const stationByTile = new Map(
-  Object.entries(displayTiles).map(([station, tile]) => [
-    `${tile.col},${tile.row}`,
-    station as StationId,
+  stationInstances.map(({ type, displayTile }) => [
+    `${displayTile.col},${displayTile.row}`,
+    type as StationId,
   ]),
 );
 
@@ -44,7 +44,7 @@ function StageMapPreview({ mapPreviewKey }: { mapPreviewKey: string }) {
         className="stage-map-preview"
         data-map-preview={mapPreviewKey}
         role="img"
-        aria-label="16×10 식당 맵과 설비 배치 미리보기"
+        aria-label="14×8 식당 맵과 설비 배치 미리보기"
       >
         {KITCHEN_ROWS.flatMap((row, rowIndex) =>
           [...row].map((tile, colIndex) => {
