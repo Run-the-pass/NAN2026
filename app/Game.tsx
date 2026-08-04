@@ -1160,6 +1160,11 @@ export default function Game() {
     };
   }, [squad]);
 
+  // 선택 화면이 없으므로 들어오자마자 네 마리로 판을 연다.
+  useEffect(() => {
+    startRound(allTypeIds);
+  }, []);
+
   function startRound(list: SlimeTypeId[]) {
     const next = initialState(2026, list);
     metrics.current = emptyMetrics();
@@ -1237,55 +1242,12 @@ export default function Game() {
     // 핸들러는 ref만 보므로 squad가 바뀔 때만 다시 건다.
   }, [helpStation, recruitOpen, selectElement, selectEveryone, settingsOpen, squad, stageInfoOpen]);
 
-  // 슬라임 선택 화면
+  // 첫 판은 네 속성을 모두 데리고 시작한다. 고르는 화면은 두지 않는다.
   if (!squad || !state) {
     return (
       <main className="select-shell">
         <Music src="/music/main.mp3" />
-        <section className="select-screen" aria-label="슬라임 선택">
-          <p className="select-guide">
-            식당의 첫 직원 슬라임을 1마리 고르세요. 게임에서
-            슬라임을 좌클릭하고, 바닥이나 설비를 우클릭해 지시합니다.
-            스테이지마다 주문을 다 채우면 다음 스테이지로 넘어갑니다.
-          </p>
-          <div className="select-grid">
-            {allTypeIds.map((typeId) => {
-              const kind = slimeTypes[typeId];
-              const active = picked === typeId;
-              return (
-                <button
-                  key={typeId}
-                  className="slime-select-card"
-                  data-slime-type={typeId}
-                  data-active={active ? "" : undefined}
-                  aria-pressed={active}
-                  onClick={() => setPicked(typeId)}
-                >
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    className="slime-portrait"
-                    data-water={typeId === "water" ? "" : undefined}
-                    data-authored={authoredSlimeAssets[typeId] ? "" : undefined}
-                    src={slimePortrait(typeId)}
-                    alt=""
-                  />
-                  <strong>{kind.name} 슬라임 · {kind.elementLabel}</strong>
-                  <small>{kind.trait}</small>
-                  <StatGauges levels={kind.statLevels} />
-                </button>
-              );
-            })}
-          </div>
-          <footer className="select-footer">
-            <span>첫 직원: {slimeTypes[picked].name} 슬라임</span>
-            <button className="select-start" onClick={() => startRound([picked])}>
-              식당 영업 시작
-            </button>
-            <button className="select-start" onClick={() => startRound(allTypeIds)}>
-              4마리 상호작용 테스트
-            </button>
-          </footer>
-        </section>
+        <p className="loading">영업 준비 중…</p>
       </main>
     );
   }
