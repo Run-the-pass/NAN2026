@@ -405,6 +405,28 @@ test("빈 접시 없이 음식은 꺼내도 제출은 접시에 담아야 한다
   assert.equal(state.orders[0].submittedCount, 1);
 });
 
+// 소각기가 왜 안 되는지 알려 줘야 한다. 경로 판정이 같은 조건을 중복
+// 검사하면 슬라임이 가지도 않아 안내가 통째로 죽는다.
+test("소각기는 거절 이유를 구체적으로 알려 준다", () => {
+  let state = initialState(1, ["fire", "lightning"]);
+  for (let count = 0; count < incineratorConfig.capacity; count += 1) {
+    state = untilIdle(interactActors(state, ["lightning-1"], ingredientBoxId));
+    state = untilIdle(interactActors(state, ["lightning-1"], incineratorId));
+  }
+  assert.equal(state.incinerators[incineratorId]!.count, incineratorConfig.capacity);
+
+  // 가득 찬 소각기
+  let full = untilIdle(interactActors(state, ["lightning-1"], ingredientBoxId));
+  full = untilIdle(interactActors(full, ["lightning-1"], incineratorId));
+  assert.match(full.lastEvent, /가득 찼습니다/);
+
+  // 비운 뒤 다시 비우려 할 때
+  let emptied = untilIdle(interactActors(state, ["fire-1"], incineratorId));
+  assert.equal(emptied.incinerators[incineratorId]!.count, 0);
+  emptied = untilIdle(interactActors(emptied, ["fire-1"], incineratorId));
+  assert.match(emptied.lastEvent, /소각할 쓰레기가 없습니다/);
+});
+
 test("소각기는 쓰레기 5개를 모으고 불 슬라임 작업으로 비운다", () => {
   let state = initialState(1, ["lightning", "fire"]);
   for (let count = 0; count < incineratorConfig.capacity; count += 1) {

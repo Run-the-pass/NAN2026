@@ -991,10 +991,9 @@ function canUseStation(
     return actor.carrying.length > 0;
   }
   if (type === "trash") {
-    const incinerator = state.incinerators[station]!;
-    return actor.carrying.length > 0
-      ? incinerator.count < incineratorConfig.capacity
-      : actor.typeId === "fire" && incinerator.count > 0 && !incinerator.workerId;
+    // 가득 찼는지·소각할 게 있는지는 소각기가 판정한다. 경로에서 미리 막으면
+    // 슬라임이 가지도 않아 "왜 안 되는지" 안내가 나올 수 없다.
+    return actor.carrying.length > 0 || actor.typeId === "fire";
   }
   if (type === "ingredient-box") {
     const clean = dishIndex(actor, (dish) => dish.status === "clean") >= 0;
