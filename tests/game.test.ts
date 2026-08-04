@@ -420,6 +420,22 @@ test("소각기는 거절 이유를 구체적으로 알려 준다", () => {
   full = untilIdle(interactActors(full, ["lightning-1"], incineratorId));
   assert.match(full.lastEvent, /가득 찼습니다/);
 
+  // 가득 찬 소각기 앞에서는 물건을 든 불 슬라임도 소각부터 한다.
+  let busy = untilIdle(interactActors(state, ["fire-1"], ingredientBoxId));
+  assert.deepEqual(busy.actors["fire-1"]!.carrying, ["potato"]);
+  busy = untilIdle(interactActors(busy, ["fire-1"], incineratorId));
+  assert.equal(busy.incinerators[incineratorId]!.count, 0);
+  // 손에 든 물건은 그대로 남고, 비워진 뒤에는 다시 넣을 수 있다.
+  assert.deepEqual(busy.actors["fire-1"]!.carrying, ["potato"]);
+  busy = untilIdle(interactActors(busy, ["fire-1"], incineratorId));
+  assert.equal(busy.incinerators[incineratorId]!.count, 1);
+
+  // 가득 차지 않았으면 소각이 아니라 평소대로 넣는다.
+  let spare = initialState(1, ["fire"]);
+  spare = untilIdle(interactActors(spare, ["fire-1"], ingredientBoxId));
+  spare = untilIdle(interactActors(spare, ["fire-1"], incineratorId));
+  assert.equal(spare.incinerators[incineratorId]!.count, 1);
+
   // 비운 뒤 다시 비우려 할 때
   let emptied = untilIdle(interactActors(state, ["fire-1"], incineratorId));
   assert.equal(emptied.incinerators[incineratorId]!.count, 0);

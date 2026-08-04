@@ -1855,8 +1855,12 @@ function moveActor(state: GameState, actorId: ActorId, deltaMs: number) {
     if (type === "trash") {
       const incinerator = next.incinerators[station]!;
       const carried = actor.carrying[0];
-      if (carried) {
-        if (incinerator.count >= incineratorConfig.capacity) {
+      const full = incinerator.count >= incineratorConfig.capacity;
+      // 가득 찬 소각기 앞에서는 물건을 든 불 슬라임도 넣기 대신 소각부터 한다.
+      // 그러지 않으면 넣지도 비우지도 못하고 손을 비우러 다녀와야 한다.
+      const burnsInstead = full && actor.typeId === "fire" && !incinerator.workerId;
+      if (carried && !burnsInstead) {
+        if (full) {
           next = refuse(next, actorId, actor, "소각기가 가득 찼습니다.", "TARGET_FULL");
           actor = next.actors[actorId]!;
           continue;
