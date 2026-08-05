@@ -83,6 +83,9 @@ export type Recipe = {
   foodId: ItemId;
   ingredient: { itemId: ItemId; count: number };
   station: StationId;
+  // 도마에서 실제로 썰 수 있는 속성. 재료를 올리고 완성품을 가져가는 것은
+  // 누구나 할 수 있고, 이 속성만 썰기 작업을 시작한다.
+  choppedBy: SlimeElement;
   requiresCleanDish: boolean;
   submissionStation: StationId;
 };
@@ -93,6 +96,7 @@ export const recipes = {
     foodId: "roasted-potato",
     ingredient: { itemId: "potato", count: 1 },
     station: "stove",
+    choppedBy: "earth",
     requiresCleanDish: true,
     submissionStation: "submission",
   },
@@ -148,8 +152,9 @@ export const slimeTypes: Record<
 };
 
 export const statTables = {
-  // 작업 속도 레벨별 초당 작업량. 기준(레벨 1)이 100/초라 비용 100은 1초다.
-  workSpeedPerSecond: [85, 100, 120, 145, 175, 210],
+  // 작업 속도 레벨별 초당 작업량. 기준(레벨 1)이 20/초라 비용 100은 5초다.
+  // 레벨 간 비율은 그대로 두고 전체를 1/5로 낮춘 값이다.
+  workSpeedPerSecond: [17, 20, 24, 29, 35, 42],
   moveTilesPerSecond: [2, 2.4, 2.8, 3.2, 3.6, 4],
 } as const;
 
@@ -190,8 +195,8 @@ export const dishConfig = {
 
 export const incineratorConfig = {
   capacity: 5,
-  // 비용이라 기준 속도(100/초)에서 3초다. 시간이 아니라 작업량이다.
-  burnCost: 300,
+  // 비용이라 기준 속도(20/초)에서 7.5초다. 시간이 아니라 작업량이다.
+  burnCost: 150,
 };
 
 export type Order = {
@@ -464,9 +469,9 @@ export const canPlaceSquad = (count: number) =>
 // 보통 속도(100/초) 기준 100 = 1초. 소각기를 비롯한 기본 상호작용이 100이다.
 export const workCost = {
   interact: 100,
-  cook: 570,
-  wash: 400,
-  extinguish: 500,
+  cook: 200,
+  wash: 150,
+  extinguish: 200,
 };
 
 export const tileCenter = ({ col, row }: TilePosition) => ({
@@ -1054,8 +1059,8 @@ function canUseStation(
       (stove.includes(potatoRecipe.foodId) &&
         dishIndex(actor, (dish) => dish.status === "clean") >= 0) ||
       stove.includes(potatoRecipe.foodId) ||
-      // 속성 제한이 없으므로 빈손인 슬라임은 누구나 조리할 수 있다.
-      actor.carrying.length === 0
+      // 빈손으로 도마에 갈 이유는 써는 것뿐이라 손질 속성만 보낸다.
+      (actor.carrying.length === 0 && actor.typeId === potatoRecipe.choppedBy)
     );
   }
   return false;
@@ -1300,6 +1305,20 @@ function moveActor(state: GameState, actorId: ActorId, deltaMs: number) {
             actorId,
             actor,
             "물 슬라임만 불을 끌 수 있습니다.",
+            "WRONG_ELEMENT",
+          );
+          actor = next.actors[actorId]!;
+        } else if (
+          // 빈손으로 도마에 온 이유는 써는 것뿐이라 속성을 짚어 준다.
+          stationType(actor.intent.station) === "stove" &&
+          actor.carrying.length === 0 &&
+          actor.typeId !== potatoRecipe.choppedBy
+        ) {
+          next = refuse(
+            next,
+            actorId,
+            actor,
+            `${slimeTypes[potatoRecipe.choppedBy].name} 슬라임만 도마를 쓸 수 있습니다.`,
             "WRONG_ELEMENT",
           );
           actor = next.actors[actorId]!;
@@ -1912,6 +1931,17 @@ function moveActor(state: GameState, actorId: ActorId, deltaMs: number) {
         remaining = 0;
         break;
       }
+      if (actor.typeId !== potatoRecipe.choppedBy) {
+        next = refuse(
+          next,
+          actorId,
+          actor,
+          `${slimeTypes[potatoRecipe.choppedBy].name} 슬라임만 도마를 쓸 수 있습니다.`,
+          "WRONG_ELEMENT",
+        );
+        actor = next.actors[actorId]!;
+        continue;
+      }
       const totalMs = workDurationFor(actor, workCost.cook);
       actor = {
         ...actor,
@@ -1920,7 +1950,7 @@ function moveActor(state: GameState, actorId: ActorId, deltaMs: number) {
         alert: null,
         alertMs: 0,
       };
-      next = event(next, `${actor.name}이(가) 감자를 굽기 시작했습니다.`, {
+      next = event(next, `${actor.name}이(가) 감자를 썰기 시작했습니다.`, {
         actors: patchActor(next, actorId, actor),
         workstations: { ...next.workstations, [station]: {
           status: "WORKING",

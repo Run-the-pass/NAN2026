@@ -71,6 +71,7 @@ test("스테이지 정보는 실제 맵·레시피와 검증된 설정만 사용
     foodId: "roasted-potato",
     ingredient: { itemId: "potato", count: 1 },
     station: "stove",
+    choppedBy: "earth",
     requiresCleanDish: true,
     submissionStation: "submission",
   });
@@ -349,12 +350,12 @@ test("효과음은 조리 시작·음식 제출·화재 전환을 구분한다",
 });
 
 test("감자를 조리해 제출하면 주문 수가 오른다", () => {
-  let state = initialState(1, ["lightning", "fire"]);
+  let state = initialState(1, ["lightning", "earth"]);
   state = untilIdle(interactActors(state, ["lightning-1"], "ingredient-box"));
   assert.deepEqual(state.actors["lightning-1"]!.carrying, ["potato"]);
   state = untilIdle(interactActors(state, ["lightning-1"], "stove"));
   assert.deepEqual(state.stoves[stoveId], ["potato"]);
-  state = untilIdle(interactActors(state, ["fire-1"], "stove"));
+  state = untilIdle(interactActors(state, ["earth-1"], "stove"));
   assert.deepEqual(state.stoves[stoveId], ["roasted-potato"]);
   assert.equal(state.workstations[stoveId]!.status, "COMPLETE");
   state = untilIdle(interactActors(state, ["lightning-1"], "dish-rack"));
@@ -370,26 +371,26 @@ test("감자를 조리해 제출하면 주문 수가 오른다", () => {
 });
 
 test("식재료가 들어오면 기다리던 슬라임이 자동으로 조리한다", () => {
-  let state = initialState(1, ["fire", "lightning"]);
+  let state = initialState(1, ["earth", "lightning"]);
   state = untilIdle(interactActors(state, ["lightning-1"], "ingredient-box"));
-  state = interactActors(state, ["fire-1"], "stove");
+  state = interactActors(state, ["earth-1"], "stove");
   state = until(
     state,
     (current) =>
       current.workstations[stoveId]!.status === "MISSING_MATERIAL" &&
-      current.actors["fire-1"]!.status === "WAITING",
+      current.actors["earth-1"]!.status === "WAITING",
   );
   state = interactActors(state, ["lightning-1"], "stove");
   state = until(state, (current) => current.workstations[stoveId]!.status === "WORKING");
-  assert.equal(state.workstations[stoveId]!.workerId, "fire-1");
+  assert.equal(state.workstations[stoveId]!.workerId, "earth-1");
   const before = state.workstations[stoveId]!.progressMs;
   state = tick(state, 500);
   assert.ok(state.workstations[stoveId]!.progressMs > before);
   assert.ok(state.workstations[stoveId]!.progressMs < state.workstations[stoveId]!.totalMs);
 });
 
-// 조리 도구는 속성을 가리지 않는다. 다만 한 번에 한 마리만 작업한다.
-test("복수 명령에도 조리 도구는 속성과 무관하게 한 마리만 쓴다", () => {
+// 도마는 땅만 썰 수 있고, 여럿을 보내도 한 마리만 작업한다.
+test("복수 명령에도 도마는 한 마리만 쓴다", () => {
   let state = initialState(1, ["water", "fire", "lightning", "earth"]);
   state = untilIdle(interactActors(state, ["lightning-1"], "ingredient-box"));
   state = untilIdle(interactActors(state, ["lightning-1"], "stove"));
@@ -405,33 +406,42 @@ test("복수 명령에도 조리 도구는 속성과 무관하게 한 마리만 
       .length,
     1,
   );
-  assert.ok(!state.history.some((entry) => entry.includes("불 슬라임만")));
+  assert.equal(state.workstations[stoveId]!.workerId, "earth-1");
 });
 
-// 불 속성이 아니어도 조리가 끝까지 진행된다.
-test("불이 아닌 슬라임도 조리해서 음식을 완성한다", () => {
-  let state = initialState(1, ["water"]);
+// 도마 썰기는 땅만 한다. 재료를 올리고 완성품을 가져가는 것은 누구나 한다.
+test("도마 썰기는 땅 슬라임만 할 수 있다", () => {
+  let state = initialState(1, ["water", "earth"]);
   state = untilIdle(interactActors(state, ["water-1"], "ingredient-box"));
+  // 재료를 올리는 것은 물도 된다.
   state = untilIdle(interactActors(state, ["water-1"], "stove"));
-  state = untilIdle(interactActors(state, ["water-1"], "stove"));
+  assert.deepEqual(state.stoves[stoveId], ["potato"]);
+
+  // 물이 빈손으로 썰려 하면 거절하고 이유를 알려 준다.
+  const refused = untilIdle(interactActors(state, ["water-1"], "stove"));
+  assert.deepEqual(refused.stoves[stoveId], ["potato"]);
+  assert.match(refused.lastEvent, /땅 슬라임만 도마를 쓸 수 있습니다/);
+
+  // 땅이 오면 썰린다.
+  state = untilIdle(interactActors(state, ["earth-1"], "stove"));
   assert.deepEqual(state.stoves[stoveId], ["roasted-potato"]);
 });
 
 test("빈 접시 없이 음식은 꺼내도 제출은 접시에 담아야 한다", () => {
-  let state = initialState(1, ["water"]);
-  state = untilIdle(interactActors(state, ["water-1"], "ingredient-box"));
-  state = untilIdle(interactActors(state, ["water-1"], "stove"));
-  state = untilIdle(interactActors(state, ["water-1"], "stove"));
-  state = untilIdle(interactActors(state, ["water-1"], "stove"));
-  assert.deepEqual(state.actors["water-1"]!.carrying, ["roasted-potato"]);
-  state = untilIdle(interactActors(state, ["water-1"], "submission"));
-  assert.deepEqual(state.actors["water-1"]!.carrying, ["roasted-potato"]);
+  let state = initialState(1, ["earth"]);
+  state = untilIdle(interactActors(state, ["earth-1"], "ingredient-box"));
+  state = untilIdle(interactActors(state, ["earth-1"], "stove"));
+  state = untilIdle(interactActors(state, ["earth-1"], "stove"));
+  state = untilIdle(interactActors(state, ["earth-1"], "stove"));
+  assert.deepEqual(state.actors["earth-1"]!.carrying, ["roasted-potato"]);
+  state = untilIdle(interactActors(state, ["earth-1"], "submission"));
+  assert.deepEqual(state.actors["earth-1"]!.carrying, ["roasted-potato"]);
   assert.equal(state.orders[0].submittedCount, 0);
-  state = untilIdle(interactActors(state, ["water-1"], tableId));
-  state = untilIdle(interactActors(state, ["water-1"], dishRackId));
-  state = untilIdle(interactActors(state, ["water-1"], tableId));
-  state = untilIdle(interactActors(state, ["water-1"], "submission"));
-  assert.ok(state.actors["water-1"]!.carrying.some(
+  state = untilIdle(interactActors(state, ["earth-1"], tableId));
+  state = untilIdle(interactActors(state, ["earth-1"], dishRackId));
+  state = untilIdle(interactActors(state, ["earth-1"], tableId));
+  state = untilIdle(interactActors(state, ["earth-1"], "submission"));
+  assert.ok(state.actors["earth-1"]!.carrying.some(
     (carried) => isDish(carried) && carried.status === "dirty" && carried.content === null,
   ));
   assert.equal(state.orders[0].submittedCount, 1);
@@ -521,17 +531,17 @@ test("소각기는 쓰레기 5개를 모으고 불 슬라임 작업으로 비운
 });
 
 test("새 이동 명령은 조리 작업을 취소하고 조리 도구 잠금을 푼다", () => {
-  let state = initialState(1, ["lightning", "fire"]);
+  let state = initialState(1, ["lightning", "earth"]);
   state = untilIdle(interactActors(state, ["lightning-1"], "ingredient-box"));
   state = untilIdle(interactActors(state, ["lightning-1"], "stove"));
   state = until(
-    interactActors(state, ["fire-1"], "stove"),
+    interactActors(state, ["earth-1"], "stove"),
     (current) => current.workstations[stoveId]!.status === "WORKING",
   );
-  state = moveActors(state, ["fire-1"], tileCenter({ col: 2, row: 2 }));
+  state = moveActors(state, ["earth-1"], tileCenter({ col: 2, row: 2 }));
   assert.equal(state.workstations[stoveId]!.workerId, null);
   assert.equal(state.workstations[stoveId]!.status, "IDLE");
-  assert.equal(state.actors["fire-1"]!.intent?.kind, "MOVE");
+  assert.equal(state.actors["earth-1"]!.intent?.kind, "MOVE");
 });
 
 test("속성 슬라임은 새 ID와 식당 역할별 스탯을 사용한다", () => {
@@ -594,10 +604,10 @@ test("같은 seed와 입력은 같은 식당 상태를 만든다", () => {
 test("CLI는 식당 상호작용을 결정론적으로 재현한다", () => {
   const args = [
     "--seed=7",
-    "--slimes=lightning,fire",
+    "--slimes=lightning,earth",
     "lightning:ingredient-box",
     "lightning:stove",
-    "fire:stove",
+    "earth:stove",
     "lightning:dish-rack",
     "lightning:stove",
     "lightning:submission",
@@ -660,27 +670,28 @@ test("그릇과 테이블은 조리·제출·오염·세척 동안 ID와 내용�
   const id = (state.actors["lightning-1"]!.carrying[0] as { id: string }).id;
   state = untilIdle(interactActors(state, ["lightning-1"], "table"));
   assert.equal((state.tables[tableId]![0] as { id: string }).id, id);
-  state = untilIdle(interactActors(state, ["earth-1"], "table"));
-  assert.equal((state.actors["earth-1"]!.carrying[0] as { id: string }).id, id);
-  state = untilIdle(interactActors(state, ["earth-1"], "ingredient-box"));
+  state = untilIdle(interactActors(state, ["lightning-1"], "table"));
+  assert.equal((state.actors["lightning-1"]!.carrying[0] as { id: string }).id, id);
+  state = untilIdle(interactActors(state, ["lightning-1"], "ingredient-box"));
   assert.equal(
-    state.actors["earth-1"]!.carrying.some(
+    state.actors["lightning-1"]!.carrying.some(
       (carried) => isDish(carried) && carried.content === "potato",
     ),
     true,
   );
+  // 감자를 도마에 올리고, 손이 빈 땅 슬라임이 썬다. 접시는 번개가 계속 든다.
+  state = untilIdle(interactActors(state, ["lightning-1"], "stove"));
   state = untilIdle(interactActors(state, ["earth-1"], "stove"));
-  state = untilIdle(interactActors(state, ["fire-1"], "stove"));
-  state = untilIdle(interactActors(state, ["earth-1"], "stove"));
-  state = untilIdle(interactActors(state, ["earth-1"], "submission"));
+  state = untilIdle(interactActors(state, ["lightning-1"], "stove"));
+  state = untilIdle(interactActors(state, ["lightning-1"], "submission"));
   assert.equal(state.filled, 1);
   assert.equal(
-    state.actors["earth-1"]!.carrying.some(
+    state.actors["lightning-1"]!.carrying.some(
       (carried) => isDish(carried) && carried.id === id && carried.status === "dirty",
     ),
     true,
   );
-  state = untilIdle(interactActors(state, ["earth-1"], "table"));
+  state = untilIdle(interactActors(state, ["lightning-1"], "table"));
   state = untilIdle(interactActors(state, ["water-1"], "table"));
   state = untilIdle(interactActors(state, ["water-1"], "washer"));
   assert.equal(state.washers[washerId]!.dish?.id, id);
@@ -708,7 +719,7 @@ function cookAndSubmit(start: GameState) {
   }
   state = untilIdle(interactActors(state, ["lightning-1"], "ingredient-box"));
   state = untilIdle(interactActors(state, ["lightning-1"], "stove"));
-  state = untilIdle(interactActors(state, ["fire-1"], "stove"));
+  state = untilIdle(interactActors(state, ["earth-1"], "stove"));
   if (!state.actors["lightning-1"]!.carrying.some(isDish)) {
     state = untilIdle(interactActors(state, ["lightning-1"], "dish-rack"));
   }
@@ -720,7 +731,7 @@ function cookAndSubmit(start: GameState) {
 function burnStove(start: GameState) {
   let state = untilIdle(interactActors(start, ["lightning-1"], "ingredient-box"));
   state = untilIdle(interactActors(state, ["lightning-1"], "stove"));
-  state = untilIdle(interactActors(state, ["fire-1"], "stove"));
+  state = untilIdle(interactActors(state, ["earth-1"], "stove"));
   return until(state, (current) => current.fires[stoveId]?.onFire === true);
 }
 
@@ -733,7 +744,7 @@ test("라운드 주문 목록을 주입하고 제출마다 진행도가 오른�
     { id: "a", foodId: "roasted-potato", targetCount: 2, submittedCount: 0 },
     { id: "b", foodId: "roasted-potato", targetCount: 1, submittedCount: 0 },
   ];
-  let state = initialState(1, ["water", "lightning", "fire"], oneStage(orders));
+  let state = initialState(1, ["water", "lightning", "earth"], oneStage(orders));
   assert.equal(state.goal, 2);
   assert.deepEqual(
     activeOrders(state).map((order) => order.id),
@@ -819,7 +830,7 @@ test("스테이지를 깨면 골드와 스쿼드를 이어 다음 스테이지�
     { id: "1-1", name: "첫 판", orders: [{ id: "a", foodId: "roasted-potato", targetCount: 1, submittedCount: 0 }], timeLimitMs: 180_000 },
     { id: "1-2", name: "둘째 판", orders: [{ id: "b", foodId: "roasted-potato", targetCount: 1, submittedCount: 0 }], timeLimitMs: 120_000 },
   ];
-  let state = initialState(1, ["lightning", "fire"], stages);
+  let state = initialState(1, ["lightning", "earth"], stages);
   assert.equal(currentStage(state).id, "1-1");
   assert.equal(isLastStage(state), false);
 
@@ -833,15 +844,15 @@ test("스테이지를 깨면 골드와 스쿼드를 이어 다음 스테이지�
   assert.equal(isLastStage(second), true);
   // 골드와 스쿼드는 잇고 주문·시간·설비는 새로 시작한다.
   assert.equal(second.gold, 100);
-  assert.deepEqual(second.squad, ["lightning", "fire"]);
-  assert.deepEqual(Object.keys(second.actors), ["lightning-1", "fire-1"]);
+  assert.deepEqual(second.squad, ["lightning", "earth"]);
+  assert.deepEqual(Object.keys(second.actors), ["lightning-1", "earth-1"]);
   assert.equal(second.filled, 0);
   assert.equal(second.timeLeftMs, 120_000);
   assert.deepEqual(second.stoves[stoveId], []);
 
   const recruited = recruitSlime(second, "water");
-  assert.deepEqual(recruited.squad, ["lightning", "fire", "water"]);
-  assert.deepEqual(Object.keys(recruited.actors), ["lightning-1", "fire-1", "water-1"]);
+  assert.deepEqual(recruited.squad, ["lightning", "earth", "water"]);
+  assert.deepEqual(Object.keys(recruited.actors), ["lightning-1", "earth-1", "water-1"]);
   assert.equal(recruited.gold, 100);
 
   const cleared = cookAndSubmit(second);
@@ -852,7 +863,7 @@ test("스테이지를 깨면 골드와 스쿼드를 이어 다음 스테이지�
 });
 
 test("주문에 없는 음식 제출은 실수로 세고 골드는 깎지 않는다", () => {
-  let state = initialState(1, ["water", "lightning", "fire"]);
+  let state = initialState(1, ["water", "lightning", "earth"]);
   assert.equal(state.misses, 0);
   state = untilIdle(interactActors(state, ["lightning-1"], "dish-rack"));
   state = untilIdle(interactActors(state, ["lightning-1"], "ingredient-box"));
@@ -867,7 +878,7 @@ test("주문에 없는 음식 제출은 실수로 세고 골드는 깎지 않는
 });
 
 test("조리를 끝낸 조리 도구를 방치하면 불이 나고 사용할 수 없다", () => {
-  let state = burnStove(initialState(1, ["water", "fire", "lightning"]));
+  let state = burnStove(initialState(1, ["water", "earth", "lightning"]));
   assert.equal(state.fires[stoveId]!.onFire, true);
   assert.ok(state.history.some((entry) => entry.includes("불이 났습니다")));
   // 물 속성이 아닌 슬라임은 작업 불가 처리한다.
@@ -878,7 +889,7 @@ test("조리를 끝낸 조리 도구를 방치하면 불이 나고 사용할 수
 });
 
 test("물 슬라임이 5초 상호작용하면 불을 끄고 설비를 되돌린다", () => {
-  let state = burnStove(initialState(1, ["water", "fire", "lightning"]));
+  let state = burnStove(initialState(1, ["water", "earth", "lightning"]));
   state = until(
     interactActors(state, ["water-1"], "stove"),
     (current) => current.fires[stoveId]!.workerId === "water-1",
@@ -909,7 +920,7 @@ test("화재는 인접한 화재 대상 설비로만 전파된다", () => {
     fireConfig.spreadRange =
       Math.abs(displayTiles[stoveId].col - displayTiles[farIngredientBoxId].col) +
       Math.abs(displayTiles[stoveId].row - displayTiles[farIngredientBoxId].row);
-    let state = burnStove(initialState(1, ["water", "fire", "lightning"]));
+    let state = burnStove(initialState(1, ["water", "earth", "lightning"]));
     assert.equal(state.fires[farIngredientBoxId]!.onFire, false);
     state = until(
       state,
@@ -918,7 +929,7 @@ test("화재는 인접한 화재 대상 설비로만 전파된다", () => {
     assert.ok(state.history.some((entry) => entry.includes("옮겨붙었습니다")));
     // 인접 범위를 좁히면 바닥을 건너 번지지 않는다.
     fireConfig.spreadRange = 1;
-    let far = burnStove(initialState(1, ["water", "fire", "lightning"]));
+    let far = burnStove(initialState(1, ["water", "earth", "lightning"]));
     for (let elapsed = 0; elapsed < 20_000; elapsed += 50) far = tick(far, 50);
     assert.equal(far.fires[stoveId]!.onFire, true);
     assert.equal(far.fires[farIngredientBoxId]!.onFire, false);
@@ -964,10 +975,11 @@ test("플레이테스트 세션은 위조된 요약을 저장 전에 거부한�
 // 작업량이 초당 작업 속도만큼 쌓여 비용에 닿으면 끝난다.
 // 소각기를 비롯한 기본 상호작용 비용이 100, 보통 속도가 100/초라 1초다.
 test("상호작용은 비용 ÷ 작업 속도만큼 걸린다", () => {
-  // 소각기를 비롯한 기본 상호작용 비용이 100이고, 기준 속도 100/초에서 1초다.
+  // 소각기를 비롯한 기본 상호작용 비용이 100이고, 기준 속도 20/초에서 5초다.
   assert.equal(workCost.interact, 100);
-  const baseLevel = statTables.workSpeedPerSecond.indexOf(100);
-  assert.ok(baseLevel >= 0);
+  const baseSpeed = statTables.workSpeedPerSecond[1]!;
+  assert.equal(baseSpeed, 20);
+  assert.equal((workCost.interact / baseSpeed) * 1000, 5_000);
 
   for (const typeId of ["water", "fire", "lightning", "earth"] as const) {
     const actor = initialState(1, [typeId]).actors[`${typeId}-1`]!;
@@ -996,14 +1008,12 @@ test("상호작용은 비용 ÷ 작업 속도만큼 걸린다", () => {
 test("세척도 작업 속도를 탄다", () => {
   let state = initialState(1, ["water", "fire", "lightning", "earth"]);
   state = untilIdle(interactActors(state, ["lightning-1"], "dish-rack"));
+  state = untilIdle(interactActors(state, ["lightning-1"], "ingredient-box"));
+  state = untilIdle(interactActors(state, ["lightning-1"], "stove"));
+  state = untilIdle(interactActors(state, ["earth-1"], "stove"));
+  state = untilIdle(interactActors(state, ["lightning-1"], "stove"));
+  state = untilIdle(interactActors(state, ["lightning-1"], "submission"));
   state = untilIdle(interactActors(state, ["lightning-1"], "table"));
-  state = untilIdle(interactActors(state, ["earth-1"], "table"));
-  state = untilIdle(interactActors(state, ["earth-1"], "ingredient-box"));
-  state = untilIdle(interactActors(state, ["earth-1"], "stove"));
-  state = untilIdle(interactActors(state, ["fire-1"], "stove"));
-  state = untilIdle(interactActors(state, ["earth-1"], "stove"));
-  state = untilIdle(interactActors(state, ["earth-1"], "submission"));
-  state = untilIdle(interactActors(state, ["earth-1"], "table"));
   state = untilIdle(interactActors(state, ["water-1"], "table"));
   state = interactActors(state, ["water-1"], "washer");
   state = until(state, (current) => current.washers[washerId]!.workerId === "water-1");

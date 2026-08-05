@@ -168,9 +168,9 @@ const stationPanelInfo: Record<
     steps: ["🥔 감자 받기"],
   },
   stove: {
-    description: ["감자를 넣고 손질하면 요리가 됩니다.", "완성 음식은 깨끗한 그릇에 담습니다."],
-    required: [],
-    steps: ["🥔 감자", "🔪 손질", "🍽️ 그릇"],
+    description: ["감자를 올리면 땅 슬라임이 썰어 줍니다.", "완성 음식은 깨끗한 그릇에 담습니다."],
+    required: ["earth"],
+    steps: ["🥔 감자", "🔪 땅 슬라임이 썰기", "🍽️ 그릇"],
   },
   submission: {
     description: ["주문 음식이 담긴 그릇을 제출합니다.", "제출한 그릇은 더러워집니다."],
