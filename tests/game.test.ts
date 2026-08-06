@@ -110,6 +110,7 @@ test("스테이지 정보는 실제 맵·레시피와 검증된 설정만 사용
     foodId: "roasted-potato",
     ingredient: { itemId: "potato", count: 1 },
     station: "stove",
+    choppedBy: "earth",
     requiresCleanDish: true,
     submissionStation: "submission",
   });

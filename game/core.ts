@@ -84,6 +84,9 @@ export type Recipe = {
   foodId: ItemId;
   ingredient: { itemId: ItemId; count: number };
   station: StationId;
+  // 도마에서 실제로 썰 수 있는 속성. 재료를 올리고 완성품을 가져가는 것은
+  // 누구나 할 수 있고, 이 속성만 썰기 작업을 시작한다.
+  choppedBy: SlimeElement;
   requiresCleanDish: boolean;
   submissionStation: StationId;
 };
@@ -94,6 +97,7 @@ export const recipes = {
     foodId: "roasted-potato",
     ingredient: { itemId: "potato", count: 1 },
     station: "stove",
+    choppedBy: "earth",
     requiresCleanDish: true,
     submissionStation: "submission",
   },
@@ -162,10 +166,10 @@ export const actionCost = {
   burn: 2,
 };
 
-// 기구별 사용 가능한 속성. 여기 없는 기구는 모든 슬라임이 쓴다. 물건을
-// 집고 놓는 것은 "물건" 분류라 속성 제한을 받지 않는다.
+// 레시피와 무관하게 설비가 고정으로 요구하는 속성. 썰기는 레시피마다
+// 다를 수 있어 `Recipe.choppedBy`가 정한다. 여기 없는 기구는 모든
+// 슬라임이 쓰고, 물건을 집고 놓는 것은 "물건" 분류라 제한을 받지 않는다.
 export const stationElements = {
-  chop: "earth" as SlimeElement,
   wash: "water" as SlimeElement,
   burn: "fire" as SlimeElement,
 };
@@ -996,11 +1000,11 @@ function atStove(
   if (!stove.includes(ingredient)) {
     return refuse(state, actor, "도마에 썰 재료가 없습니다.");
   }
-  if (actor.typeId !== stationElements.chop) {
+  if (actor.typeId !== potatoRecipe.choppedBy) {
     return refuse(
       state,
       actor,
-      `${slimeTypes[stationElements.chop].name} 슬라임만 도마를 쓸 수 있습니다.`,
+      `${slimeTypes[potatoRecipe.choppedBy].name} 슬라임만 도마를 쓸 수 있습니다.`,
     );
   }
   const step = progressStep(actor, actionCost.chop, workstation.progress);

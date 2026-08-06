@@ -164,7 +164,7 @@ const stationPanelInfo: Record<
   stove: {
     description: ["땅 슬라임만 감자를 썰 수 있습니다. (행동력 2)", "재료를 올리고 꺼내는 것은 누구나 합니다."],
     required: ["earth"],
-    steps: ["🥔 감자", "🔪 손질", "🍽️ 그릇"],
+    steps: ["🥔 감자", "🔪 땅 슬라임이 썰기", "🍽️ 그릇"],
   },
   submission: {
     description: ["주문 음식이 담긴 그릇을 제출합니다. (행동력 1)", "제출한 그릇은 더러워집니다."],

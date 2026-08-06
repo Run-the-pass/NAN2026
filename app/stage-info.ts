@@ -33,7 +33,7 @@ export const stageInfoUiConfig: Record<string, StageInfoUiConfig> = {
     mapPreviewKey: "kitchen-v1",
     tipLines: [
       "슬라임을 고르면 갈 수 있는 칸이 보여요.",
-      "도마는 땅 슬라임만 쓸 수 있어요.",
+      "도마 썰기는 땅 슬라임만 할 수 있어요.",
     ],
     availableFoodIds: ["roasted-potato"],
   },
