@@ -12,8 +12,12 @@ const htmlPath = resolve(root, "tools/map-editor.html");
 const mapPath = resolve(root, "game/map-data.ts");
 const tempMapPath = resolve(root, "game/map-data.ts.tmp");
 const stationCodes = {
-  "ingredient-box": "I",
+  "potato-box": "P",
+  "carrot-box": "R",
+  "cabbage-box": "A",
   stove: "C",
+  fryer: "F",
+  blender: "M",
   submission: "S",
   trash: "X",
   "dish-rack": "D",
@@ -21,14 +25,23 @@ const stationCodes = {
   table: "T",
 };
 const stationLabels = {
-  "ingredient-box": "재료 상자",
+  "potato-box": "감자 상자",
+  "carrot-box": "당근 상자",
+  "cabbage-box": "양배추 상자",
   stove: "도마",
+  fryer: "튀김기",
+  blender: "믹서기",
   submission: "음식 제출대",
   trash: "소각기",
   "dish-rack": "그릇 생성대",
-  washer: "세척기",
+  washer: "세척대",
   table: "테이블",
 };
+// 여러 칸을 차지하는 기구. 여기 없는 기구는 한 칸이다.
+const stationTileCount = { washer: 2, submission: 2 };
+const tilesFor = (type) => stationTileCount[type] ?? 1;
+const elements = ["water", "fire", "lightning", "earth"];
+const elementLabels = { water: "물", fire: "불", lightning: "번개", earth: "땅" };
 
 function parseMapSource(source) {
   const start = source.indexOf("{");
@@ -46,6 +59,48 @@ const position = (value) =>
   value.row >= 0 &&
   value.row < MAP_HEIGHT;
 
+const neighbours = ({ col, row }) => [
+  { col, row: row - 1 },
+  { col: col - 1, row },
+  { col: col + 1, row },
+  { col, row: row + 1 },
+];
+
+// 맞닿은 같은 글자를 한 대로 묶는다. 한 칸짜리는 붙어 있어도 각각 다른 대다.
+function stationInstances(data) {
+  const seen = new Set();
+  const instances = [];
+  const key = ({ col, row }) => `${col},${row}`;
+  const codeToType = new Map(Object.entries(stationCodes).map(([type, code]) => [code, type]));
+  for (let row = 0; row < data.rows.length; row += 1) {
+    for (let col = 0; col < data.rows[row].length; col += 1) {
+      const code = data.rows[row][col];
+      const type = codeToType.get(code);
+      if (!type || seen.has(key({ col, row }))) continue;
+      if (tilesFor(type) === 1) {
+        seen.add(key({ col, row }));
+        instances.push({ type, tiles: [{ col, row }] });
+        continue;
+      }
+      const tiles = [];
+      const queue = [{ col, row }];
+      seen.add(key({ col, row }));
+      while (queue.length) {
+        const tile = queue.shift();
+        tiles.push(tile);
+        for (const next of neighbours(tile)) {
+          if (seen.has(key(next)) || data.rows[next.row]?.[next.col] !== code) continue;
+          seen.add(key(next));
+          queue.push(next);
+        }
+      }
+      tiles.sort((one, two) => one.row - two.row || one.col - two.col);
+      instances.push({ type, tiles });
+    }
+  }
+  return instances;
+}
+
 function validateMap(data) {
   const errors = [];
   if (!data || !Array.isArray(data.rows) || data.rows.length !== MAP_HEIGHT || data.rows.some((row) => typeof row !== "string" || row.length !== MAP_WIDTH)) {
@@ -56,37 +111,36 @@ function validateMap(data) {
   if ([...data.rows[0], ...data.rows[MAP_HEIGHT - 1]].includes(".") || data.rows.slice(1, -1).some((row) => row[0] === "." || row.at(-1) === ".")) {
     errors.push("맵 바깥 테두리는 조리대나 설비로 막아야 합니다.");
   }
-  if (!data.taskTiles || typeof data.taskTiles !== "object") errors.push("슬라임 작업 위치 정보가 없습니다.");
-  const displays = [];
-  for (const [id, code] of Object.entries(stationCodes)) {
-    const found = data.rows.flatMap((row, rowIndex) => [...row].flatMap((tile, col) => tile === code ? [{ id, col, row: rowIndex, instanceId: `${id}@${col},${rowIndex}` }] : []));
-    if (!found.length) errors.push(`${stationLabels[id]}: 한 칸 이상 있어야 합니다.`);
-    displays.push(...found);
+  const instances = stationInstances(data);
+  for (const type of Object.keys(stationCodes)) {
+    if (!instances.some((station) => station.type === type)) errors.push(`${stationLabels[type]}: 한 대 이상 있어야 합니다.`);
   }
-  const validIds = new Set(displays.map(({ instanceId }) => instanceId));
-  for (const id of Object.keys(data.taskTiles ?? {})) {
-    if (!validIds.has(id)) errors.push(`${id}: 맵에 없는 설비의 작업 위치입니다.`);
-  }
-  for (const display of displays) {
-    const adjacent = [
-      { col: display.col, row: display.row - 1 },
-      { col: display.col - 1, row: display.row },
-      { col: display.col + 1, row: display.row },
-      { col: display.col, row: display.row + 1 },
-    ];
-    const task = data.taskTiles?.[display.instanceId] ?? adjacent.find((tile) => data.rows[tile.row]?.[tile.col] === ".");
-    if (!task) {
-      errors.push(`${display.instanceId}: 인접한 바닥 작업 위치가 없습니다.`);
+  for (const station of instances) {
+    const need = tilesFor(station.type);
+    if (station.tiles.length !== need) {
+      errors.push(`${stationLabels[station.type]}: ${need}칸이어야 하는데 ${station.tiles.length}칸입니다.`);
       continue;
     }
-    if (!position(task) || data.rows[task.row]?.[task.col] !== ".") {
-      errors.push(`${display.instanceId}: 작업 위치는 바닥이어야 합니다.`);
-    } else if (Math.abs(task.col - display.col) + Math.abs(task.row - display.row) !== 1) {
-      errors.push(`${display.instanceId}: 작업 위치는 설비에 인접해야 합니다.`);
-    }
+    const sameRow = station.tiles.every((tile) => tile.row === station.tiles[0].row);
+    const sameCol = station.tiles.every((tile) => tile.col === station.tiles[0].col);
+    if (need > 1 && !sameRow && !sameCol) errors.push(`${stationLabels[station.type]}: 가로나 세로로 이어 놓아야 합니다.`);
+    const reachable = station.tiles.some((tile) => neighbours(tile).some((side) => data.rows[side.row]?.[side.col] === "."));
+    if (!reachable) errors.push(`${stationLabels[station.type]}: 붙어 설 수 있는 바닥이 없습니다.`);
   }
-  if (!position(data.startTile) || data.rows[data.startTile.row]?.[data.startTile.col] !== ".") {
-    errors.push("영업 시작 지점은 빈 바닥 한 칸이어야 합니다.");
+  if (!data.spawnTiles || typeof data.spawnTiles !== "object") {
+    errors.push("슬라임 위치 정보가 없습니다.");
+    return errors;
+  }
+  const used = new Set();
+  for (const element of elements) {
+    const tile = data.spawnTiles[element];
+    if (!position(tile) || data.rows[tile.row]?.[tile.col] !== ".") {
+      errors.push(`${elementLabels[element]} 슬라임 위치는 빈 바닥이어야 합니다.`);
+      continue;
+    }
+    const key = `${tile.col},${tile.row}`;
+    if (used.has(key)) errors.push(`${elementLabels[element]} 슬라임 위치가 다른 슬라임과 겹칩니다.`);
+    used.add(key);
   }
   return errors;
 }

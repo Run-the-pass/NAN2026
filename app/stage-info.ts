@@ -14,11 +14,19 @@ export type StageInfoUiConfig = {
 export const itemIcons: Record<ItemId, string> = {
   potato: "🥔",
   "roasted-potato": "🍟",
+  carrot: "🥕",
+  "chopped-carrot": "🍲",
+  cabbage: "🥬",
+  "chopped-cabbage": "🥗",
 };
 
 export const stationIcons: Record<StationId, string> = {
-  "ingredient-box": "🥔",
+  "potato-box": "🥔",
+  "carrot-box": "🥕",
+  "cabbage-box": "🥬",
   stove: "🔪",
+  fryer: "🍟",
+  blender: "🥤",
   submission: "📬",
   trash: "🔥",
   "dish-rack": "🍽️",
@@ -35,7 +43,7 @@ export const stageInfoUiConfig: Record<string, StageInfoUiConfig> = {
       "슬라임을 고르면 갈 수 있는 칸이 보여요.",
       "도마 썰기는 땅 슬라임만 할 수 있어요.",
     ],
-    availableFoodIds: ["roasted-potato"],
+    availableFoodIds: ["roasted-potato", "chopped-carrot", "chopped-cabbage"],
   },
   "1-2": {
     mapPreviewKey: "kitchen-v1",
@@ -43,7 +51,7 @@ export const stageInfoUiConfig: Record<string, StageInfoUiConfig> = {
       "번개 슬라임은 한 턴에 두 번 움직여요.",
       "쓰던 일은 다음 턴에 이어서 할 수 있어요.",
     ],
-    availableFoodIds: ["roasted-potato"],
+    availableFoodIds: ["roasted-potato", "chopped-carrot", "chopped-cabbage"],
   },
   "1-3": {
     mapPreviewKey: "kitchen-v1",
@@ -51,7 +59,7 @@ export const stageInfoUiConfig: Record<string, StageInfoUiConfig> = {
       "기준보다 더 많이 처리하면 별이 늘어요.",
       "더러운 그릇은 물 슬라임이 씻어요.",
     ],
-    availableFoodIds: ["roasted-potato"],
+    availableFoodIds: ["roasted-potato", "chopped-carrot", "chopped-cabbage"],
   },
 };
 

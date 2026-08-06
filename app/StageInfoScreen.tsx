@@ -18,11 +18,11 @@ import {
   stationIcons,
 } from "./stage-info";
 
+// 여러 칸짜리 기구는 차지한 칸마다 같은 아이콘을 보여 준다.
 const stationByTile = new Map(
-  stationInstances.map(({ type, displayTile }) => [
-    `${displayTile.col},${displayTile.row}`,
-    type as StationId,
-  ]),
+  stationInstances.flatMap(({ type, tiles }) =>
+    tiles.map((tile) => [`${tile.col},${tile.row}`, type as StationId] as const),
+  ),
 );
 
 function StageTitleHeader({ stage }: { stage: Stage }) {

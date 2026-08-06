@@ -6,13 +6,23 @@ export type SlimeTypeId = SlimeElement;
 // 마리 데려올 수 있으므로 속성 자체를 키로 쓰지 않는다. 속성은
 // ActorState.typeId에서 읽는다.
 export type ActorId = string;
-export type ItemId = "potato" | "roasted-potato";
+export type ItemId =
+  | "potato"
+  | "roasted-potato"
+  | "carrot"
+  | "chopped-carrot"
+  | "cabbage"
+  | "chopped-cabbage";
 export type DishStatus = "clean" | "filled" | "dirty";
 export type Dish = { id: string; status: DishStatus; content: ItemId | null };
 export type Carried = ItemId | Dish;
 export type StationId =
-  | "ingredient-box"
+  | "potato-box"
+  | "carrot-box"
+  | "cabbage-box"
   | "stove"
+  | "fryer"
+  | "blender"
   | "submission"
   | "trash"
   | "dish-rack"
@@ -22,8 +32,8 @@ export type StationInstanceId = `${StationId}@${number},${number}`;
 export type StationInstance = {
   id: StationInstanceId;
   type: StationId;
-  displayTile: TilePosition;
-  taskTile: TilePosition;
+  // 이 기구가 차지한 칸. 위→아래, 왼쪽→오른쪽 순서다.
+  tiles: TilePosition[];
 };
 // 마지막 행동. 화면이 어떤 모션을 재생할지 고르는 데만 쓴다.
 export type ActorStatus = "IDLE" | "MOVING" | "WORKING" | "CARRYING";
@@ -38,6 +48,10 @@ export type Position = { x: number; y: number };
 export const itemLabels: Record<ItemId, string> = {
   potato: "감자",
   "roasted-potato": "구운 감자",
+  carrot: "당근",
+  "chopped-carrot": "썬 당근",
+  cabbage: "양배추",
+  "chopped-cabbage": "썬 양배추",
 };
 
 export const itemLabel = (item: ItemId) => itemLabels[item];
@@ -60,25 +74,61 @@ export function withParticle(word: string, pair: [string, string] = ["을", "를
 }
 
 export const stationLabels: Record<StationId, string> = {
-  "ingredient-box": "재료 상자",
+  "potato-box": "감자 상자",
+  "carrot-box": "당근 상자",
+  "cabbage-box": "양배추 상자",
   stove: "도마",
+  fryer: "튀김기",
+  blender: "믹서기",
   submission: "음식 제출대",
   trash: "소각기",
   "dish-rack": "그릇 생성대",
-  washer: "세척기",
+  washer: "세척대",
   table: "테이블",
 };
 
-export const allItems: ItemId[] = ["potato", "roasted-potato"];
+export const allItems: ItemId[] = [
+  "potato",
+  "roasted-potato",
+  "carrot",
+  "chopped-carrot",
+  "cabbage",
+  "chopped-cabbage",
+];
 export const allStations: StationId[] = [
-  "ingredient-box",
+  "potato-box",
+  "carrot-box",
+  "cabbage-box",
   "stove",
+  "fryer",
+  "blender",
   "submission",
   "trash",
   "dish-rack",
   "washer",
   "table",
 ];
+
+// 재료 상자마다 꺼내는 재료. 여기 없는 설비는 재료를 주지 않는다.
+export const boxItems = {
+  "potato-box": "potato",
+  "carrot-box": "carrot",
+  "cabbage-box": "cabbage",
+} as const satisfies Partial<Record<StationId, ItemId>>;
+
+export const isBoxStation = (type: StationId): type is keyof typeof boxItems =>
+  type in boxItems;
+
+// 한 기구가 차지하는 타일 수. 여기 없는 기구는 한 칸이다.
+export const stationTileCount: Partial<Record<StationId, number>> = {
+  washer: 2,
+  submission: 2,
+};
+
+export const tilesFor = (type: StationId) => stationTileCount[type] ?? 1;
+
+// 아직 레시피가 없어 놓기만 하는 기구. 사용하면 이유를 알려 준다.
+export const placeholderStations: StationId[] = ["fryer", "blender"];
 
 export type Recipe = {
   foodId: ItemId;
@@ -101,9 +151,33 @@ export const recipes = {
     requiresCleanDish: true,
     submissionStation: "submission",
   },
+  "chopped-carrot": {
+    foodId: "chopped-carrot",
+    ingredient: { itemId: "carrot", count: 1 },
+    station: "stove",
+    choppedBy: "earth",
+    requiresCleanDish: true,
+    submissionStation: "submission",
+  },
+  "chopped-cabbage": {
+    foodId: "chopped-cabbage",
+    ingredient: { itemId: "cabbage", count: 1 },
+    station: "stove",
+    choppedBy: "earth",
+    requiresCleanDish: true,
+    submissionStation: "submission",
+  },
 } satisfies Partial<Record<ItemId, Recipe>>;
 
-const potatoRecipe = recipes["roasted-potato"];
+export const allRecipes = Object.values(recipes) as Recipe[];
+
+// 이 재료로 만들 수 있는 레시피. 도마 위에 무엇이 있느냐로 결과가 갈린다.
+export const recipeForIngredient = (item: ItemId) =>
+  allRecipes.find((recipe) => recipe.ingredient.itemId === item) ?? null;
+
+// 완성 음식인지. 도마에서 회수할 수 있는 것은 이것뿐이다.
+export const isCookedFood = (item: ItemId) =>
+  allRecipes.some((recipe) => recipe.foodId === item);
 
 export const slimeTypes: Record<
   SlimeTypeId,
@@ -146,6 +220,8 @@ export const slimeTypes: Record<
 };
 
 // 턴당 행동력. 전기(번개)만 2고 나머지는 1이다.
+export const allElements: SlimeElement[] = ["water", "fire", "lightning", "earth"];
+
 export const actionPointsPerTurn: Record<SlimeTypeId, number> = {
   water: 1,
   fire: 1,
@@ -290,8 +366,12 @@ export const STORAGE_MAX = 1;
 
 // I 재료 상자, C 조리 도구, S 제출대, X 쓰레기, D 그릇, W 세척기, T 테이블.
 export const stationTileCodes: Record<StationId, string> = {
-  "ingredient-box": "I",
+  "potato-box": "P",
+  "carrot-box": "R",
+  "cabbage-box": "A",
   stove: "C",
+  fryer: "F",
+  blender: "M",
   submission: "S",
   trash: "X",
   "dish-rack": "D",
@@ -301,11 +381,11 @@ export const stationTileCodes: Record<StationId, string> = {
 
 export type KitchenMapData = {
   rows: readonly string[];
-  taskTiles: Partial<Record<StationInstanceId, TilePosition>>;
-  // 영업 시작 지점. 슬라임은 여기서부터 가까운 빈 바닥으로 퍼진다.
-  startTile: TilePosition;
+  // 슬라임이 설 자리를 속성별로 하나씩 찍는다.
+  spawnTiles: Record<SlimeElement, TilePosition>;
 };
 
+// 여러 칸짜리 기구도 ID는 가장 위·왼쪽 칸 좌표로 만든다.
 export const stationInstanceId = (
   type: StationId,
   { col, row }: TilePosition,
@@ -313,14 +393,6 @@ export const stationInstanceId = (
 
 export const stationType = (id: StationInstanceId): StationId =>
   id.slice(0, id.indexOf("@")) as StationId;
-
-const stationDisplays = (data: KitchenMapData) =>
-  data.rows.flatMap((line, row) =>
-    [...line].flatMap((tile, col) => {
-      const type = allStations.find((id) => stationTileCodes[id] === tile);
-      return type ? [{ type, displayTile: { col, row } }] : [];
-    }),
-  );
 
 // 인접 칸을 보는 고정 순서. 위·왼쪽·오른쪽·아래라 같은 맵이면 늘 같은 결과다.
 const neighboursOf = ({ col, row }: TilePosition): TilePosition[] => [
@@ -333,15 +405,51 @@ const neighboursOf = ({ col, row }: TilePosition): TilePosition[] => [
 const sameTile = (one: TilePosition, two: TilePosition) =>
   one.col === two.col && one.row === two.row;
 
-const automaticTaskTile = (data: KitchenMapData, display: TilePosition) =>
-  neighboursOf(display).find((tile) => data.rows[tile.row]?.[tile.col] === ".");
+const tileKeyOf = ({ col, row }: TilePosition) => `${col},${row}`;
 
+const codeToStation = new Map(
+  allStations.map((type) => [stationTileCodes[type], type]),
+);
+
+// 맞닿은 같은 종류 타일은 한 대로 묶는다. 세척대·제출대가 2×1인 이유다.
 export function stationInstancesForMap(data: KitchenMapData): StationInstance[] {
-  return stationDisplays(data).flatMap(({ type, displayTile }) => {
-    const id = stationInstanceId(type, displayTile);
-    const taskTile = data.taskTiles[id] ?? automaticTaskTile(data, displayTile);
-    return taskTile ? [{ id, type, displayTile, taskTile }] : [];
-  });
+  const seen = new Set<string>();
+  const instances: StationInstance[] = [];
+  for (let row = 0; row < data.rows.length; row += 1) {
+    for (let col = 0; col < (data.rows[row]?.length ?? 0); col += 1) {
+      const type = codeToStation.get(data.rows[row][col]);
+      const key = tileKeyOf({ col, row });
+      if (!type || seen.has(key)) continue;
+      // 한 칸짜리는 붙어 있어도 각각 다른 대다. 테이블 두 대를 나란히
+      // 놓는 배치가 흔해서, 여러 칸 기구만 덩어리로 묶는다.
+      if (tilesFor(type) === 1) {
+        seen.add(key);
+        instances.push({
+          id: stationInstanceId(type, { col, row }),
+          type,
+          tiles: [{ col, row }],
+        });
+        continue;
+      }
+      // 같은 글자로 이어진 덩어리를 통째로 모은다.
+      const tiles: TilePosition[] = [];
+      const queue = [{ col, row }];
+      seen.add(key);
+      while (queue.length > 0) {
+        const tile = queue.shift()!;
+        tiles.push(tile);
+        for (const next of neighboursOf(tile)) {
+          const nextKey = tileKeyOf(next);
+          if (seen.has(nextKey) || data.rows[next.row]?.[next.col] !== data.rows[row][col]) continue;
+          seen.add(nextKey);
+          queue.push(next);
+        }
+      }
+      tiles.sort((one, two) => one.row - two.row || one.col - two.col);
+      instances.push({ id: stationInstanceId(type, tiles[0]), type, tiles });
+    }
+  }
+  return instances;
 }
 
 const inMap = ({ col, row }: TilePosition) =>
@@ -371,42 +479,55 @@ export function validateKitchenMap(data: KitchenMapData) {
   ) {
     errors.push("맵 바깥 테두리는 조리대나 설비로 막아야 합니다.");
   }
-  const displays = stationDisplays(data);
+  const instances = stationInstancesForMap(data);
   for (const type of allStations) {
-    if (!displays.some((display) => display.type === type)) {
-      errors.push(`${stationLabels[type]}: 한 칸 이상 있어야 합니다.`);
+    if (!instances.some((station) => station.type === type)) {
+      errors.push(`${stationLabels[type]}: 한 대 이상 있어야 합니다.`);
     }
   }
-  const validIds = new Set(displays.map(({ type, displayTile }) => stationInstanceId(type, displayTile)));
-  for (const key of Object.keys(data.taskTiles)) {
-    if (!validIds.has(key as StationInstanceId)) errors.push(`${key}: 맵에 없는 설비의 작업 위치입니다.`);
-  }
-  for (const { type, displayTile } of displays) {
-    const id = stationInstanceId(type, displayTile);
-    const task = data.taskTiles[id] ?? automaticTaskTile(data, displayTile);
-    if (!task) {
-      errors.push(`${id}: 인접한 바닥 작업 위치가 없습니다.`);
+  for (const station of instances) {
+    const need = tilesFor(station.type);
+    if (station.tiles.length !== need) {
+      errors.push(
+        `${stationLabels[station.type]}: ${need}칸이어야 하는데 ${station.tiles.length}칸입니다.`,
+      );
       continue;
     }
-    if (!inMap(task) || data.rows[task.row]?.[task.col] !== ".") {
-      errors.push(`${id}: 작업 위치는 바닥이어야 합니다.`);
-    } else if (
-      Math.abs(task.col - displayTile.col) + Math.abs(task.row - displayTile.row) !== 1
-    ) {
-      errors.push(`${id}: 작업 위치는 설비에 인접해야 합니다.`);
+    // 여러 칸짜리는 가로나 세로로 한 줄이어야 한다.
+    const sameRow = station.tiles.every((tile) => tile.row === station.tiles[0].row);
+    const sameCol = station.tiles.every((tile) => tile.col === station.tiles[0].col);
+    if (need > 1 && !sameRow && !sameCol) {
+      errors.push(`${stationLabels[station.type]}: 가로나 세로로 이어 놓아야 합니다.`);
+    }
+    // 어느 방향에서든 쓸 수 있어야 하므로 붙은 바닥이 하나는 있어야 한다.
+    const reachable = station.tiles.some((tile) =>
+      neighboursOf(tile).some((side) => data.rows[side.row]?.[side.col] === "."),
+    );
+    if (!reachable) {
+      errors.push(`${stationLabels[station.type]}: 붙어 설 수 있는 바닥이 없습니다.`);
     }
   }
-  if (
-    !data.startTile ||
-    !inMap(data.startTile) ||
-    data.rows[data.startTile.row]?.[data.startTile.col] !== "."
-  ) {
-    errors.push("영업 시작 지점은 빈 바닥 한 칸이어야 합니다.");
+  const spawns = data.spawnTiles;
+  if (!spawns || typeof spawns !== "object") {
+    errors.push("슬라임 위치 정보가 없습니다.");
+    return errors;
+  }
+  const used = new Set<string>();
+  for (const element of allElements) {
+    const tile = spawns[element];
+    if (!tile || !inMap(tile) || data.rows[tile.row]?.[tile.col] !== ".") {
+      errors.push(`${slimeTypes[element].name} 슬라임 위치는 빈 바닥이어야 합니다.`);
+      continue;
+    }
+    if (used.has(tileKeyOf(tile))) {
+      errors.push(`${slimeTypes[element].name} 슬라임 위치가 다른 슬라임과 겹칩니다.`);
+    }
+    used.add(tileKeyOf(tile));
   }
   return errors;
 }
 
-const mapData = kitchenMap as KitchenMapData;
+const mapData = kitchenMap as unknown as KitchenMapData;
 const mapErrors = validateKitchenMap(mapData);
 if (mapErrors.length) throw new Error(mapErrors.join(" "));
 
@@ -418,46 +539,47 @@ export const stationsById = Object.fromEntries(
 export const stationInstancesByType = Object.fromEntries(
   allStations.map((type) => [type, stationInstances.filter((station) => station.type === type)]),
 ) as Record<StationId, StationInstance[]>;
-export const displayTiles = Object.fromEntries(
-  stationInstances.map((station) => [station.id, station.displayTile]),
-) as Record<StationInstanceId, TilePosition>;
-export const taskTiles = Object.fromEntries(
-  stationInstances.map((station) => [station.id, station.taskTile]),
-) as Record<StationInstanceId, TilePosition>;
-export const startTile = { ...mapData.startTile };
+export const stationTiles = Object.fromEntries(
+  stationInstances.map((station) => [station.id, station.tiles]),
+) as Record<StationInstanceId, TilePosition[]>;
+export const spawnTiles = { ...mapData.spawnTiles };
 
-// 서로 이만큼은 떨어뜨려 세운다. 턴제는 슬라임끼리 지나갈 수 없어서,
-// 좁은 주방에 붙여 세우면 안쪽 슬라임이 첫 턴부터 동료에게 막혀 갇힌다.
-export const SPAWN_SPACING = 3;
-
-const tileDistance = (one: TilePosition, two: TilePosition) =>
-  Math.abs(one.col - two.col) + Math.abs(one.row - two.row);
-
-// 시작 지점에서 가까운 빈 바닥부터 차례로 자리를 잡는다. 벽과 설비 칸은
-// 바닥이 아니라 애초에 후보에 오르지 않고, 경로도 바닥으로만 퍼진다.
-export function spawnTilesFrom(start: TilePosition, count: number) {
-  const seen = new Set([`${start.col},${start.row}`]);
-  const queue = [start];
+// 슬라임 자리는 맵에서 속성별로 직접 찍는다. 같은 속성을 여러 마리
+// 데려오면 2호부터는 그 자리에서 가까운 빈 바닥으로 밀려난다.
+export function spawnTilesFor(squad: SlimeTypeId[]): TilePosition[] {
+  const taken = new Set<string>();
   const tiles: TilePosition[] = [];
-  while (queue.length > 0 && tiles.length < count) {
-    const tile = queue.shift()!;
-    if (!isWalkable(tile)) continue;
-    for (const next of neighboursOf(tile)) {
-      const key = `${next.col},${next.row}`;
-      if (seen.has(key) || !inMap(next)) continue;
-      seen.add(key);
-      queue.push(next);
-    }
-    if (tiles.every((taken) => tileDistance(taken, tile) >= SPAWN_SPACING)) {
-      tiles.push(tile);
-    }
+  for (const typeId of squad) {
+    const home = spawnTiles[typeId];
+    const spot = nearestFreeFloor(home, taken);
+    if (!spot) break;
+    taken.add(tileKeyOf(spot));
+    tiles.push(spot);
   }
   return tiles;
 }
 
+// 시작 칸이 이미 찼으면 위·왼쪽·오른쪽·아래 고정 순서로 퍼져 빈 바닥을 찾는다.
+function nearestFreeFloor(from: TilePosition, taken: Set<string>) {
+  const seen = new Set([tileKeyOf(from)]);
+  const queue = [from];
+  while (queue.length > 0) {
+    const tile = queue.shift()!;
+    if (!isWalkable(tile)) continue;
+    if (!taken.has(tileKeyOf(tile))) return tile;
+    for (const next of neighboursOf(tile)) {
+      const key = tileKeyOf(next);
+      if (seen.has(key) || !inMap(next)) continue;
+      seen.add(key);
+      queue.push(next);
+    }
+  }
+  return null;
+}
+
 // 지금 맵에서 이 인원을 세울 수 있는지.
-export const canPlaceSquad = (count: number) =>
-  spawnTilesFrom(startTile, count).length >= count;
+export const canPlaceSquad = (squad: SlimeTypeId[]) =>
+  spawnTilesFor(squad).length >= squad.length;
 
 export const tileCenter = ({ col, row }: TilePosition) => ({
   x: col * TILE_SIZE + TILE_SIZE / 2,
@@ -555,9 +677,14 @@ const newFires = (): Partial<Record<StationInstanceId, FireState>> =>
       .map(({ id }) => [id, { onFire: false }]),
   );
 
+// 맵에 놓인 모든 재료 상자. 감자·당근·양배추 상자를 한데 본다.
+export const boxInstances = stationInstances.filter((station) =>
+  isBoxStation(station.type),
+);
+
 const initialStationState = () => ({
   ingredients: Object.fromEntries(
-    stationInstancesByType["ingredient-box"].map(({ id }) => [id, { stock: 1 }]),
+    boxInstances.map(({ id }) => [id, { stock: 1 }]),
   ),
   stoves: Object.fromEntries(stationInstancesByType.stove.map(({ id }) => [id, [] as ItemId[]])),
   dishRacks: Object.fromEntries(
@@ -591,15 +718,16 @@ const initialStationState = () => ({
 // 기본 스테이지 목록. 턴 수와 통과 기준은 임시 검증값이며 기획이 정해지면
 // 이 배열만 바꾸면 된다. 레시피 목록은 통과 기준보다 길어야 랭크가 오른다.
 export const defaultStages = (): Stage[] => [
-  { id: "1-1", name: "첫 영업", orders: potatoOrders(6), turnLimit: 60, requiredOrders: 3 },
-  { id: "1-2", name: "점심 러시", orders: potatoOrders(9), turnLimit: 70, requiredOrders: 5 },
-  { id: "1-3", name: "저녁 마감", orders: potatoOrders(11), turnLimit: 80, requiredOrders: 7 },
+  { id: "1-1", name: "첫 영업", orders: rotatingOrders(6), turnLimit: 60, requiredOrders: 3 },
+  { id: "1-2", name: "점심 러시", orders: rotatingOrders(9), turnLimit: 70, requiredOrders: 5 },
+  { id: "1-3", name: "저녁 마감", orders: rotatingOrders(11), turnLimit: 80, requiredOrders: 7 },
 ];
 
-function potatoOrders(count: number): Order[] {
+// 레시피 목록을 순서대로 돌려 주문을 만든다.
+function rotatingOrders(count: number): Order[] {
   return Array.from({ length: count }, (_, index) => ({
     id: `order-${index + 1}`,
-    foodId: potatoRecipe.foodId,
+    foodId: allRecipes[index % allRecipes.length].foodId,
     targetCount: 1,
     submittedCount: 0,
   }));
@@ -648,10 +776,10 @@ export function initialState(
   if (squad.length < 1 || squad.some((typeId) => !(typeId in slimeTypes))) {
     throw new Error("스쿼드는 속성 슬라임 1마리 이상이어야 합니다.");
   }
-  const placements = spawnTilesFrom(startTile, squad.length);
+  const placements = spawnTilesFor(squad);
   if (placements.length < squad.length) {
     throw new Error(
-      `영업 시작 지점 주변 빈 바닥이 ${squad.length}칸 필요한데 ${placements.length}칸뿐입니다.`,
+      `슬라임 ${squad.length}마리를 세울 빈 바닥이 모자랍니다.`,
     );
   }
   const roundStages = checkStages(stages, stageIndex);
@@ -841,7 +969,10 @@ export function resolveStationTarget(target: StationInstanceId | StationId) {
 export const isBesideStation = (
   actor: ActorState,
   station: StationInstance,
-) => neighboursOf(station.displayTile).some((tile) => sameTile(tile, actor));
+) =>
+  station.tiles.some((tile) =>
+    neighboursOf(tile).some((side) => sameTile(side, actor)),
+  );
 
 export function interactActor(
   state: GameState,
@@ -864,10 +995,19 @@ export function interactActor(
   if (actor.actionPoints < 1) {
     return refuse(state, actor, "남은 행동력이 없습니다.");
   }
+  if (placeholderStations.includes(station.type)) {
+    // ponytail: 레시피가 정해지면 여기에 각 기구의 동작을 붙인다.
+    return refuse(
+      state,
+      actor,
+      `${stationLabels[station.type]}로 만드는 음식이 아직 없습니다.`,
+    );
+  }
   const id = station.id;
+  if (isBoxStation(station.type)) {
+    return atIngredientBox(state, actorId, actor, id, boxItems[station.type]);
+  }
   switch (station.type) {
-    case "ingredient-box":
-      return atIngredientBox(state, actorId, actor, id);
     case "stove":
       return atStove(state, actorId, actor, id);
     case "washer":
@@ -880,6 +1020,8 @@ export function interactActor(
       return atTable(state, actorId, actor, id);
     case "submission":
       return atSubmission(state, actorId, actor);
+    default:
+      return refuse(state, actor, "지금은 쓸 수 없는 설비입니다.");
   }
 }
 
@@ -888,13 +1030,13 @@ function atIngredientBox(
   actorId: ActorId,
   actor: ActorState,
   station: StationInstanceId,
+  item: ItemId,
 ): GameState {
   const ingredients = state.ingredients[station]!;
   if (ingredients.stock < 1) {
-    return refuse(state, actor, "재료 상자가 비어 있습니다.");
+    return refuse(state, actor, `${stationLabels[stationType(station)]}가 비어 있습니다.`);
   }
   const clean = dishIndex(actor, (dish) => dish.status === "clean");
-  const item = potatoRecipe.ingredient.itemId;
   if (clean < 0 && !canCarry(actor, item)) {
     return refuse(state, actor, "이미 음식이나 그릇을 들고 있습니다.");
   }
@@ -910,8 +1052,8 @@ function atIngredientBox(
   return event(
     state,
     clean >= 0
-      ? `${actor.name}이(가) 그릇에 감자를 담았습니다.`
-      : `${actor.name}이(가) 감자를 들었습니다.`,
+      ? `${actor.name}이(가) 그릇에 ${withParticle(itemLabel(item))} 담았습니다.`
+      : `${actor.name}이(가) ${withParticle(itemLabel(item))} 들었습니다.`,
     {
       actors: patchActor(state, actorId, { ...next, carrying }),
       ingredients: {
@@ -930,55 +1072,67 @@ function atStove(
 ): GameState {
   const stove = state.stoves[station]!;
   const workstation = state.workstations[station]!;
-  const ingredient = potatoRecipe.ingredient.itemId;
-  const loosePotato = actor.carrying.indexOf(ingredient);
-  const potatoDish = dishIndex(actor, (dish) => dish.content === ingredient);
+  const onBoard = stove[0] ?? null;
 
-  // 재료 올리기. 물건 분류라 속성 제한이 없다.
-  if (loosePotato >= 0 || potatoDish >= 0) {
+  // 재료 올리기. 물건 분류라 속성 제한이 없다. 손에 든 것 중 도마에서
+  // 쓸 수 있는 재료를 찾는다.
+  const looseIndex = actor.carrying.findIndex(
+    (carried) => !isDish(carried) && recipeForIngredient(carried),
+  );
+  const dishIdx = dishIndex(
+    actor,
+    (dish) => dish.content !== null && Boolean(recipeForIngredient(dish.content)),
+  );
+  if (looseIndex >= 0 || dishIdx >= 0) {
     if (stove.length >= STORAGE_MAX) {
       return refuse(state, actor, "도마가 사용 중입니다.");
     }
+    const held = actor.carrying[looseIndex >= 0 ? looseIndex : dishIdx];
+    const ingredient = (looseIndex >= 0 ? held : (held as Dish).content) as ItemId;
     const carrying =
-      loosePotato >= 0
-        ? actor.carrying.filter((_, index) => index !== loosePotato)
+      looseIndex >= 0
+        ? actor.carrying.filter((_, index) => index !== looseIndex)
         : actor.carrying.map((carried, index) =>
-            index === potatoDish && isDish(carried)
+            index === dishIdx && isDish(carried)
               ? { ...carried, status: "clean" as const, content: null }
               : carried,
           );
-    return event(state, `${actor.name}이(가) 도마에 감자를 올렸습니다.`, {
-      actors: patchActor(state, actorId, {
-        ...spend(actor, actionCost.carry, "CARRYING"),
-        carrying,
-      }),
-      stoves: { ...state.stoves, [station]: [ingredient] },
-      workstations: {
-        ...state.workstations,
-        [station]: { status: "IDLE", progress: 0 },
+    return event(
+      state,
+      `${actor.name}이(가) 도마에 ${withParticle(itemLabel(ingredient))} 올렸습니다.`,
+      {
+        actors: patchActor(state, actorId, {
+          ...spend(actor, actionCost.carry, "CARRYING"),
+          carrying,
+        }),
+        stoves: { ...state.stoves, [station]: [ingredient] },
+        workstations: {
+          ...state.workstations,
+          [station]: { status: "IDLE", progress: 0 },
+        },
       },
-    });
+    );
   }
 
   // 완성 음식 회수. 이것도 물건 분류라 누구나 할 수 있다.
-  if (stove.includes(potatoRecipe.foodId)) {
+  if (onBoard && isCookedFood(onBoard)) {
     const clean = dishIndex(actor, (dish) => dish.status === "clean");
-    if (clean < 0 && !canCarry(actor, potatoRecipe.foodId)) {
+    if (clean < 0 && !canCarry(actor, onBoard)) {
       return refuse(state, actor, "완성 음식을 들 자리가 없습니다.");
     }
     const carrying =
       clean >= 0
         ? actor.carrying.map((carried, index) =>
             index === clean && isDish(carried)
-              ? { ...carried, status: "filled" as const, content: potatoRecipe.foodId }
+              ? { ...carried, status: "filled" as const, content: onBoard }
               : carried,
           )
-        : [...actor.carrying, potatoRecipe.foodId];
+        : [...actor.carrying, onBoard];
     return event(
       state,
       clean >= 0
-        ? `${actor.name}이(가) 그릇에 구운 감자를 담았습니다.`
-        : `${actor.name}이(가) 도마에서 구운 감자를 들었습니다.`,
+        ? `${actor.name}이(가) 그릇에 ${withParticle(itemLabel(onBoard))} 담았습니다.`
+        : `${actor.name}이(가) 도마에서 ${withParticle(itemLabel(onBoard))} 들었습니다.`,
       {
         actors: patchActor(state, actorId, {
           ...spend(actor, actionCost.carry, "CARRYING"),
@@ -993,18 +1147,19 @@ function atStove(
     );
   }
 
-  // 여기부터는 도마 사용. 땅 슬라임만 할 수 있다.
+  // 여기부터는 도마 사용. 레시피가 정한 속성만 썰 수 있다.
   if (actor.carrying.length > 0) {
     return refuse(state, actor, "들고 있는 물건을 먼저 내려놓아야 합니다.");
   }
-  if (!stove.includes(ingredient)) {
+  const recipe = onBoard ? recipeForIngredient(onBoard) : null;
+  if (!recipe) {
     return refuse(state, actor, "도마에 썰 재료가 없습니다.");
   }
-  if (actor.typeId !== potatoRecipe.choppedBy) {
+  if (actor.typeId !== recipe.choppedBy) {
     return refuse(
       state,
       actor,
-      `${slimeTypes[potatoRecipe.choppedBy].name} 슬라임만 도마를 쓸 수 있습니다.`,
+      `${slimeTypes[recipe.choppedBy].name} 슬라임만 도마를 쓸 수 있습니다.`,
     );
   }
   const step = progressStep(actor, actionCost.chop, workstation.progress);
@@ -1012,7 +1167,7 @@ function atStove(
   if (!step.done) {
     return event(
       state,
-      `${actor.name}이(가) 감자를 썰고 있습니다. (${step.progress}/${actionCost.chop})`,
+      `${actor.name}이(가) ${withParticle(itemLabel(onBoard!))} 썰고 있습니다. (${step.progress}/${actionCost.chop})`,
       {
         actors: patchActor(state, actorId, next),
         workstations: {
@@ -1024,10 +1179,10 @@ function atStove(
   }
   return event(
     state,
-    `${actor.name}이(가) ${itemLabel(potatoRecipe.foodId)}를 완성했습니다.`,
+    `${actor.name}이(가) ${itemLabel(recipe.foodId)}를 완성했습니다.`,
     {
       actors: patchActor(state, actorId, next),
-      stoves: { ...state.stoves, [station]: [potatoRecipe.foodId] },
+      stoves: { ...state.stoves, [station]: [recipe.foodId] },
       workstations: {
         ...state.workstations,
         [station]: { status: "COMPLETE", progress: 0 },
@@ -1386,7 +1541,7 @@ export function endTurn(state: GameState): GameState {
     };
   }
   const ingredients = { ...state.ingredients };
-  for (const { id } of stationInstancesByType["ingredient-box"]) {
+  for (const { id } of boxInstances) {
     ingredients[id] = {
       stock: Math.min(INGREDIENT_MAX, ingredients[id]!.stock + INGREDIENT_PER_TURN),
     };

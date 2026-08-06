@@ -4,9 +4,22 @@
     {
       "name": "slime-restaurant",
       "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "dev"],
+      "runtimeArgs": [
+        "run",
+        "dev"
+      ],
       "port": 3000,
       "autoPort": true
+    },
+    {
+      "name": "map-editor",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": [
+        "run",
+        "map:edit"
+      ],
+      "port": 4173,
+      "url": "http://127.0.0.1:4173"
     }
   ]
 }

@@ -34,6 +34,7 @@ import {
   GOLD_PER_ORDER,
   dishConfig,
   incineratorConfig,
+  isBoxStation,
   carriedLabel,
   isDish,
   type ActorId,
@@ -94,23 +95,26 @@ const workStatusLabels = {
   WORKING: "조리 중",
   COMPLETE: "요리 완성",
 } as const;
-// 주방 설비 타일 색.
-const stationColors: Record<StationId, number> = {
-  "ingredient-box": 0x9a6235,
-  stove: 0x8b5b32,
-  submission: 0x3f7f4a,
-  trash: 0x585264,
-  "dish-rack": 0x6f83a7,
-  washer: 0x3e8e9e,
-  table: 0x8b5b32,
-};
-// 이모지 대신 그림으로 그리는 설비. 조리 도구는 불을 쓰지 않으므로
-// 테이블 위에 올린 도마로 표현한다.
-const stationImages: Partial<Record<StationId, string>> = {
+// 기구마다 그려 넣을 그림. 원본은 raw/에셋에 있고 public으로 줄여 넣었다.
+const stationArt: Record<StationId, string> = {
+  "potato-box": "/stations/ingredient-box.png",
+  "carrot-box": "/stations/ingredient-box.png",
+  "cabbage-box": "/stations/ingredient-box.png",
   stove: "/food/doma.png",
-  "ingredient-box": "/food/gamja.png",
+  fryer: "/stations/fryer.png",
+  blender: "/stations/blender.png",
+  submission: "/stations/submission.png",
+  trash: "/stations/trash.png",
+  "dish-rack": "/stations/dish-rack.png",
+  washer: "/stations/washer.png",
+  table: "/stations/table.png",
 };
-const STATION_ART_PX = 34;
+// 재료 상자는 같은 상자 그림을 쓰고 안에 든 재료만 얹어 구분한다.
+const boxItemArt: Partial<Record<StationId, string>> = {
+  "potato-box": "/food/gamja.png",
+  "carrot-box": "/food/carrot.png",
+  "cabbage-box": "/food/cabbage.png",
+};
 // 판이 시작할 때와 마감이 다가올 때 잠깐 띄우는 큰 문구.
 const bannerImages = {
   start: "/text/business-start-title.png",
@@ -119,7 +123,9 @@ const bannerImages = {
 const BANNER_MS = 1600;
 // 주문 카드에 빈 접시 위로 얹어 그리는 완성 음식.
 const foodImages: Partial<Record<ItemId, string>> = {
-  "roasted-potato": "/food/gamja.png",
+  "roasted-potato": "/food/roasted-potato.png",
+  "chopped-carrot": "/food/carrot.png",
+  "chopped-cabbage": "/food/cabbage.png",
 };
 
 // 소지품은 머리 위가 아니라 슬라임이 앞으로 든 것처럼 놓는다. 등을 돌리면
@@ -156,10 +162,30 @@ const stationPanelInfo: Record<
   StationId,
   { description: string[]; required: SlimeTypeId[]; steps: string[] }
 > = {
-  "ingredient-box": {
+  "potato-box": {
     description: ["턴이 끝날 때마다 감자가 한 개 찹니다.", "빈손이나 깨끗한 그릇으로 꺼냅니다. (행동력 1)"],
     required: [],
     steps: ["🥔 감자 받기"],
+  },
+  "carrot-box": {
+    description: ["턴이 끝날 때마다 당근이 한 개 찹니다.", "빈손이나 깨끗한 그릇으로 꺼냅니다. (행동력 1)"],
+    required: [],
+    steps: ["🥕 당근 받기"],
+  },
+  "cabbage-box": {
+    description: ["턴이 끝날 때마다 양배추가 한 개 찹니다.", "빈손이나 깨끗한 그릇으로 꺼냅니다. (행동력 1)"],
+    required: [],
+    steps: ["🥬 양배추 받기"],
+  },
+  fryer: {
+    description: ["아직 튀김 레시피가 없습니다.", "맵에 놓을 수만 있습니다."],
+    required: [],
+    steps: ["🍟 준비 중"],
+  },
+  blender: {
+    description: ["아직 믹서기 레시피가 없습니다.", "맵에 놓을 수만 있습니다."],
+    required: [],
+    steps: ["🥤 준비 중"],
   },
   stove: {
     description: ["땅 슬라임만 감자를 썰 수 있습니다. (행동력 2)", "재료를 올리고 꺼내는 것은 누구나 합니다."],
@@ -659,8 +685,11 @@ export default function Game() {
       }
 
       preload() {
-        for (const [id, url] of Object.entries(stationImages)) {
-          this.load.image(`station-${id}`, url);
+        for (const url of new Set([
+          ...Object.values(stationArt),
+          ...Object.values(boxItemArt),
+        ])) {
+          this.load.image(url, url);
         }
         for (const typeId of kinds) {
           const asset = authoredSlimeAssets[typeId];
@@ -723,78 +752,32 @@ export default function Game() {
             }
           });
         });
-        // 네 주방 설비를 서로 다른 실루엣으로 그린다.
+        // 기구는 차지한 칸 범위에 나무 상판을 깔고 그림을 얹는다.
         this.stations = {} as Record<StationInstanceId, Phaser.GameObjects.Text>;
         for (const station of stationInstances) {
-          const { id, type, displayTile } = station;
-          const { x, y } = tileCenter(displayTile);
-          const shape = this.add.graphics().setDepth(y);
-          if (type === "ingredient-box") {
-            shape
-              .fillStyle(0x6d3f20, 1)
-              .fillRect(x - 28, y - 28, 56, 56)
-              .lineStyle(3, 0xc88a4c, 0.9)
-              .strokeRect(x - 28, y - 28, 56, 56)
-              .lineStyle(2, 0x3d2415, 0.8)
-              .strokeLineShape(new Phaser.Geom.Line(x, y - 26, x, y + 26));
-          } else if (type === "stove" || type === "table") {
-            // 조리 도구는 불을 쓰지 않는다. 테이블 위에 도마를 올린 모습이다.
-            shape
-              .fillStyle(stationColors[type], 1)
-              .fillRoundedRect(x - 29, y - 17, 58, 34, 6)
-              .lineStyle(3, 0xc89258, 0.9)
-              .strokeRoundedRect(x - 29, y - 17, 58, 34, 6)
-              .fillStyle(0x563619, 1)
-              .fillRect(x - 22, y + 14, 7, 12)
-              .fillRect(x + 15, y + 14, 7, 12);
-          } else if (type === "submission") {
-            shape
-              .fillStyle(stationColors[type], 1)
-              .fillRoundedRect(x - 27, y - 22, 54, 45, 5)
-              .lineStyle(2, 0xb9edbd, 0.75)
-              .strokeRoundedRect(x - 27, y - 22, 54, 45, 5)
-              .fillStyle(0x183b24, 1)
-              .fillRect(x - 14, y - 8, 28, 4);
-          } else if (type === "dish-rack") {
-            shape
-              .fillStyle(0x4b382a, 1)
-              .fillRoundedRect(x - 27, y - 23, 54, 46, 5)
-              .lineStyle(3, stationColors[type], 0.95)
-              .strokeRoundedRect(x - 27, y - 23, 54, 46, 5)
-              .lineStyle(2, 0xd9e8ff, 0.7)
-              .strokeLineShape(new Phaser.Geom.Line(x - 20, y - 5, x + 20, y - 5))
-              .strokeLineShape(new Phaser.Geom.Line(x - 20, y + 10, x + 20, y + 10));
-          } else if (type === "washer") {
-            shape
-              .fillStyle(0x394b50, 1)
-              .fillRoundedRect(x - 27, y - 18, 54, 42, 6)
-              .fillStyle(0x77c9d8, 0.75)
-              .fillEllipse(x, y - 14, 45, 18)
-              .lineStyle(2, 0xcdf8ff, 0.8)
-              .strokeEllipse(x, y - 14, 45, 18);
-          } else {
-            shape
-              .fillStyle(stationColors[type], 1)
-              .fillRect(x - 28, y - 28, 56, 56)
-              .lineStyle(3, 0xbdb6c9, 0.65)
-              .strokeRect(x - 28, y - 28, 56, 56)
-              .fillStyle(0x2b2731, 1)
-              .fillRect(x - 19, y - 18, 38, 9)
-              .lineStyle(2, 0xbdb6c9, 0.55)
-              .strokeLineShape(new Phaser.Geom.Line(x - 13, y - 8, x - 13, y + 16))
-              .strokeLineShape(new Phaser.Geom.Line(x + 13, y - 8, x + 13, y + 16));
-          }
-          if (stationImages[type]) {
-            const art = this.add.image(x, y - 10, `station-${type}`).setDepth(y + 1);
-            art.setScale(STATION_ART_PX / Math.max(art.width, art.height));
-          } else if (type !== "table") {
-            this.add
-              .text(x, y - 10, stationIcons[type], {
-                fontSize: "20px",
-                resolution: RENDER_SCALE,
-              })
-              .setOrigin(0.5)
-              .setDepth(y + 1);
+          const { id, type, tiles } = station;
+          const first = tileCenter(tiles[0]);
+          const last = tileCenter(tiles[tiles.length - 1]);
+          const x = (first.x + last.x) / 2;
+          const y = (first.y + last.y) / 2;
+          const width = Math.abs(last.x - first.x) + TILE_SIZE;
+          const height = Math.abs(last.y - first.y) + TILE_SIZE;
+          this.add
+            .graphics()
+            .setDepth(y - 1)
+            .fillStyle(0x6d4526, 1)
+            .fillRoundedRect(x - width / 2 + 3, y - height / 2 + 3, width - 6, height - 6, 7)
+            .lineStyle(3, 0xc89258, 0.9)
+            .strokeRoundedRect(x - width / 2 + 3, y - height / 2 + 3, width - 6, height - 6, 7);
+          const art = this.add.image(x, y, stationArt[type]).setDepth(y + 1);
+          art.setScale(
+            Math.min((width - 12) / art.width, (height - 12) / art.height),
+          );
+          const itemArt = boxItemArt[type];
+          if (itemArt) {
+            // 상자 그림 가운데 흰 원 자리에 재료를 얹는다.
+            const badge = this.add.image(x, y + 2, itemArt).setDepth(y + 2);
+            badge.setScale(26 / Math.max(badge.width, badge.height));
           }
           // 설비 이름은 상시 표시하지 않는다. 그림으로 알아보고, 자세한
           // 내용은 클릭했을 때 정보 패널에서 본다.
@@ -1014,7 +997,7 @@ export default function Game() {
               const workstation = current.workstations[id];
               const label = current.fires[id]?.onFire
                 ? "🔥"
-                : type === "ingredient-box"
+                : isBoxStation(type)
                   ? `${current.ingredients[id]!.stock}/${INGREDIENT_MAX}`
                   : type === "stove"
                     ? workstation!.progress > 0

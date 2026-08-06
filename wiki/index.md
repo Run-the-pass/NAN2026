@@ -38,6 +38,7 @@ sources:
   - raw/references/map-ui-help-overlay.png
   - raw/references/map-ui-workflow-panel.png
   - raw/턴제_전환_Claude_구현_명세.md
+  - raw/에셋/
 ---
 
 # NAN 2026 Wiki

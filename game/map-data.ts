@@ -2,17 +2,30 @@
 export default {
   "rows": [
     "##############",
-    "##TTDTTDTT####",
-    "#T........T###",
-    "#C........C###",
-    "#I..T..T..I###",
-    "#X..W..W..X###",
-    "##TT#SS#TT####",
+    "###CC#TT#TTT##",
+    "##P..T..T...R#",
+    "##T..T..T...T#",
+    "##A.........F#",
+    "##M.........T#",
+    "###TXDSSWWTT##",
     "##############"
   ],
-  "taskTiles": {},
-  "startTile": {
-    "col": 2,
-    "row": 3
+  "spawnTiles": {
+    "water": {
+      "col": 3,
+      "row": 4
+    },
+    "fire": {
+      "col": 6,
+      "row": 4
+    },
+    "lightning": {
+      "col": 9,
+      "row": 4
+    },
+    "earth": {
+      "col": 11,
+      "row": 4
+    }
   }
 } as const;

@@ -238,6 +238,9 @@ button, select { font: inherit; }
 }
 
 .sound-toggle[aria-pressed="true"] { border-color: var(--gold); }
+.sound-toggle img { width: 26px; height: 26px; object-fit: contain; }
+/* 꺼진 줄은 흐려지므로 아이콘도 같이 죽인다. */
+.sound-row[data-off] .sound-toggle img { opacity: .55; }
 .sound-row[data-off] label { opacity: 0.45; }
 .sound-row input:disabled { cursor: not-allowed; }
 

@@ -40,7 +40,10 @@ function pathToStation(
 ): TilePosition[] | null {
   const actor = state.actors[actorId]!;
   const goals = new Set(
-    neighbours(station.displayTile).filter(isWalkable).map(tileKey),
+    station.tiles
+      .flatMap((tile) => neighbours(tile))
+      .filter(isWalkable)
+      .map(tileKey),
   );
   const start: TilePosition = { col: actor.col, row: actor.row };
   if (goals.has(tileKey(start))) return [];
@@ -101,7 +104,9 @@ function makeWay(
   actorId: ActorId,
   station: StationInstance,
 ): GameState {
-  const floors = neighbours(station.displayTile).filter(isWalkable);
+  const floors = station.tiles
+    .flatMap((tile) => neighbours(tile))
+    .filter(isWalkable);
   const free = (current: GameState) =>
     floors.some((tile) => {
       const holder = occupantOf(current, tile);

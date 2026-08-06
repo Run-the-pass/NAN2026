@@ -77,7 +77,8 @@ function SoundRow({
         aria-label={`${label} ${on ? "끄기" : "켜기"}`}
         onClick={onToggle}
       >
-        <span aria-hidden>{on ? "🔊" : "🔇"}</span>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src={on ? "/ui/sound-on.png" : "/ui/sound-off.png"} alt="" />
       </button>
       <label>
         <span>{label} {Math.round(volume * 100)}%</span>
