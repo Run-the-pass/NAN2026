@@ -341,9 +341,9 @@ button, select { font: inherit; }
   top: 12px;
   left: 12px;
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr)) auto;
   gap: 8px;
-  width: min(47vw, 560px);
+  width: min(42vw, 480px);
   pointer-events: none;
 }
 
@@ -362,25 +362,22 @@ button, select { font: inherit; }
   color: #2c1a0e;
 }
 
-/* 카드 위 띠는 남은 영업 시간이 줄면 같이 줄고 색이 바뀐다. */
-.order-gauge {
-  position: absolute;
-  top: 0;
-  right: 0;
-  left: 0;
-  overflow: hidden;
-  height: 8px;
-  border-radius: 2px 2px 0 0;
-  background: #00000026;
+/* 다음에 들어올 레시피. 현재 주문 오른쪽 위에 작게 붙는다. */
+.order-next {
+  align-self: start;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  border: 2px solid #815329;
+  border-radius: 4px;
+  padding: 5px 8px;
+  background: #4b2b17e0;
+  box-shadow: 0 4px 0 #221208;
+  color: #fff0c8;
+  font-size: 18px;
 }
-.order-gauge i {
-  display: block;
-  height: 100%;
-  background: #52c579;
-  transition: width 0.35s linear, background-color 0.4s ease;
-}
-.order-card[data-urgency="warn"] .order-gauge i { background: #ffd84c; }
-.order-card[data-urgency="danger"] .order-gauge i { background: #ff4b58; }
+.order-next b { font-size: 10px; opacity: .85; }
+.order-next-empty { font-size: 13px; opacity: .6; }
 .order-card > header,
 .order-card > footer { display: flex; align-items: center; justify-content: space-between; gap: 6px; padding: 6px 9px; }
 .order-card > header { color: #5b371c; font-size: 10px; }
@@ -442,8 +439,9 @@ button, select { font: inherit; }
 .hud-bottom > * { pointer-events: auto; }
 .hud-right { display: grid; justify-items: end; gap: 8px; }
 
-.control-keys { display: flex; align-items: end; gap: clamp(5px, .8vw, 10px); }
-.stage-frame .control-keys button {
+/* 슬라임별 남은 행동력과 턴 종료 */
+.turn-bar { display: flex; align-items: end; gap: clamp(5px, .8vw, 10px); }
+.stage-frame .turn-bar button {
   display: grid;
   place-items: center;
   width: clamp(54px, 6vw, 78px);
@@ -455,14 +453,44 @@ button, select { font: inherit; }
   box-shadow: 0 7px 18px #0007;
   transform: none;
 }
-.stage-frame .control-keys button[data-type="fire"] { background: #a74435ec; }
-.stage-frame .control-keys button[data-type="lightning"] { background: #9b771fec; }
-.stage-frame .control-keys button[data-type="earth"] { background: #647832ec; }
-.stage-frame .control-keys button[aria-pressed="true"] { border-color: #fff; box-shadow: 0 0 0 4px var(--gold), 0 7px 18px #0008; }
-.stage-frame .control-keys button:hover { border-color: var(--gold); transform: translateY(-2px); }
-.control-keys b { font-size: clamp(17px, 2vw, 26px); }
-.control-keys small { font-size: 9px; opacity: .82; }
-.stage-frame .control-keys .control-key-space { width: clamp(70px, 7.5vw, 98px); }
+.stage-frame .turn-bar button[data-type="fire"] { background: #a74435ec; }
+.stage-frame .turn-bar button[data-type="lightning"] { background: #9b771fec; }
+.stage-frame .turn-bar button[data-type="earth"] { background: #647832ec; }
+.stage-frame .turn-bar button[aria-pressed="true"] { border-color: #fff; box-shadow: 0 0 0 4px var(--gold), 0 7px 18px #0008; }
+.stage-frame .turn-bar button:hover { border-color: var(--gold); transform: translateY(-2px); }
+/* 행동력을 다 쓴 슬라임은 흐리게 둔다. 고를 수는 있다. */
+.stage-frame .turn-bar button[data-spent] { opacity: .5; }
+.turn-bar b { font-size: clamp(13px, 1.5vw, 18px); }
+.turn-bar small { font-size: 10px; opacity: .9; }
+.stage-frame .turn-bar .turn-end {
+  width: clamp(76px, 8.5vw, 108px);
+  aspect-ratio: auto;
+  min-height: clamp(54px, 6vw, 78px);
+  border-radius: 10px;
+  background: #6b4021ec;
+}
+
+/* 행동력을 쓰지 않고 거절된 이유 */
+.action-toast {
+  position: absolute;
+  z-index: 20;
+  bottom: clamp(96px, 13vh, 148px);
+  left: 50%;
+  margin: 0;
+  border: 2px solid #815329;
+  border-radius: 6px;
+  padding: 8px 16px;
+  background: #2c1a0eee;
+  box-shadow: 0 6px 18px #0008;
+  color: #ffe9b8;
+  font-size: 13px;
+  white-space: nowrap;
+  transform: translateX(-50%);
+}
+
+/* 스테이지 랭크 별 */
+.stage-rank { margin: 0 0 4px; color: var(--gold); font-size: 30px; letter-spacing: 4px; }
+.stage-rank span { opacity: .35; }
 
 /* 맵과 겹치지 않는 우측 선택 정보 레일 */
 .info-rail {
@@ -590,14 +618,6 @@ button, select { font: inherit; }
     repeating-linear-gradient(0deg, #684022 0 76px, #3a2112 77px 82px);
 }
 
-
-
-.select-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
-  gap: 14px;
-}
-
 .select-shell button,
 .stage-frame button {
   border: 2px solid #8d592c;
@@ -618,39 +638,6 @@ button, select { font: inherit; }
 
 .select-shell button:disabled,
 .stage-frame button:disabled { cursor: not-allowed; opacity: .45; transform: none; }
-
-.slime-select-card {
-  display: grid;
-  justify-items: start;
-  gap: 8px;
-  border: 3px solid #916031 !important;
-  border-radius: 4px !important;
-  padding: 16px !important;
-  background: linear-gradient(#59351e, #2d180d) !important;
-  box-shadow: inset 0 0 0 2px #d5a35b33, 0 7px 0 #170b05;
-  text-align: left;
-  transform: none;
-}
-
-.slime-select-card:hover { border-color: #e0a84e !important; transform: translateY(-2px); }
-.slime-select-card[data-active] { border-color: var(--gold) !important; box-shadow: inset 0 0 0 2px #fff0a855, 0 7px 0 #170b05; }
-.slime-select-card strong { font-size: 16px; }
-.slime-select-card small { min-height: 30px; color: #dcc39a; font-weight: 400; letter-spacing: 0; text-transform: none; }
-
-.slime-portrait { display: block; flex: none; width: 72px; height: 64px; object-fit: contain; }
-.slime-select-card .slime-portrait { margin-top: 4px; }
-.slime-portrait[data-water],
-.slime-portrait[data-authored] {
-  transform-origin: 50% 88%;
-  animation: slime-card-stretch 2.8s ease-in-out infinite;
-}
-.slime-portrait[data-authored] {
-  width: 84px;
-  height: 76px;
-  margin-top: -8px;
-  margin-bottom: -4px;
-  object-position: center bottom;
-}
 
 @keyframes slime-card-stretch {
   0%, 72%, 100% { transform: scale(1); }
@@ -685,33 +672,6 @@ button, select { font: inherit; }
   background: #1d1009;
 }
 .stat-gauge i[data-on] { border-color: var(--gold); background: var(--gold); }
-
-.select-start { border-color: #fff0b0 !important; padding: 12px 22px !important; background: var(--gold) !important; color: #21120a !important; font-size: 16px; }
-
-.recruit-overlay {
-  position: fixed;
-  z-index: 45;
-  inset: 0;
-  display: grid;
-  place-items: center;
-  padding: 24px;
-  background: #160c07ed;
-}
-
-.recruit-screen {
-  display: grid;
-  width: min(1050px, 100%);
-  gap: 18px;
-  border: 7px solid #6f431f;
-  padding: clamp(18px, 3vw, 34px);
-  background: repeating-linear-gradient(0deg, #5a351d 0 70px, #351d10 71px 76px);
-  text-align: center;
-}
-
-.recruit-screen h2,
-.recruit-screen p { margin: 0; }
-.recruit-overlay button { cursor: pointer; }
-.recruit-screen .select-start { justify-self: center; min-width: 160px; }
 
 .mic-state { min-height: 20px; color: #7a4a24; font-size: 13px; }
 .eyebrow { margin: 0 0 8px; color: #e4a64d; font-size: 12px; font-weight: 800; letter-spacing: .13em; text-transform: uppercase; }
@@ -1135,8 +1095,7 @@ button, select { font: inherit; }
 .voice-lab-error { color: #ffabc1; }
 
 @media (max-width: 760px) {
-  .select-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .voice-lab-header, .voice-lab-result > header { align-items: stretch; flex-direction: column; }
+    .voice-lab-header, .voice-lab-result > header { align-items: stretch; flex-direction: column; }
   .voice-lab-controls, .voice-lab-result-grid { grid-template-columns: 1fr; }
   .voice-lab-live { grid-template-columns: auto 1fr; }
   .voice-lab-live kbd { grid-column: 1 / -1; text-align: center; }
@@ -1176,10 +1135,10 @@ button, select { font: inherit; }
   .order-process { gap: 3px; padding: 2px; font-size: 10px; }
   .order-process span { min-width: 20px; min-height: 20px; }
   .hud-bottom { right: calc(var(--game-info-rail) + 7px); bottom: 7px; left: 167px; }
-  .stage-frame .control-keys button { width: 44px; border-width: 2px; padding: 3px; }
-  .stage-frame .control-keys .control-key-space { width: 58px; }
-  .control-keys b { font-size: 14px; }
-  .control-keys small, .feed { font-size: 7px; }
+  .stage-frame .turn-bar button { width: 44px; border-width: 2px; padding: 3px; }
+  .stage-frame .turn-bar .turn-end { width: 62px; min-height: 44px; }
+  .turn-bar b { font-size: 11px; }
+  .turn-bar small, .feed { font-size: 7px; }
   .game-inspector { width: 100%; padding: 9px 14px; }
   .stage-frame .inspector-close { width: 32px; height: 32px; font-size: 23px; }
   .inspector-portrait, .inspector-station-icon { width: 76px; height: 76px; margin: 0 auto 3px; border-width: 3px !important; padding: 8px !important; }
@@ -1226,18 +1185,11 @@ button, select { font: inherit; }
   .stage-frame .stage-info-next { min-width: 120px; padding: 5px 16px; font-size: 12px; }
 
   .select-shell { overflow-y: auto; padding: 8px; }
-  .select-grid { gap: 6px; }
-  .slime-select-card { gap: 3px; padding: 7px !important; }
-  .slime-select-card strong { font-size: 12px; }
-  .slime-select-card small { min-height: 0; font-size: 9px; }
-  .slime-portrait { width: 48px; height: 42px; }
-  .slime-portrait[data-authored] { width: 56px; height: 50px; margin-top: -5px; margin-bottom: -3px; }
-  .slime-stats { gap: 2px; margin-top: 0; }
+              .slime-stats { gap: 2px; margin-top: 0; }
   .slime-stats li { grid-template-columns: 14px 1fr auto; gap: 2px; font-size: 9px; }
   .stat-gauge { gap: 1px; }
   .stat-gauge i { width: 7px; height: 6px; }
-  .select-start { padding: 7px 10px !important; font-size: 11px; }
-
+  
   .result-overlay { align-items: start; overflow-y: auto; padding: 6px; }
   .result-overlay > div { width: min(520px, 100%); padding: 12px 20px; border-width: 4px; }
   .result-overlay .eyebrow { margin-bottom: 2px; font-size: 9px; }
@@ -1250,8 +1202,6 @@ button, select { font: inherit; }
 }
 
 @media (min-width: 761px) and (max-width: 900px) {
-  .select-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
-  .slime-select-card { padding: 12px !important; }
   .slime-stats li { grid-template-columns: 18px 1fr auto; gap: 4px; }
   .stat-gauge { gap: 2px; }
   .stat-gauge i { width: 9px; }
@@ -1259,5 +1209,5 @@ button, select { font: inherit; }
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; transition: none !important; }
-  .home-cauldron, .home-cauldron-bubble, .slime-portrait[data-water], .slime-portrait[data-authored] { animation: none; }
+  .home-cauldron, .home-cauldron-bubble { animation: none; }
 }

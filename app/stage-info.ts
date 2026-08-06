@@ -5,13 +5,10 @@ import {
   type StationId,
 } from "../game/core.js";
 
-export type StageInfoNextStep = "RECRUIT" | "PLAY";
-
 export type StageInfoUiConfig = {
   mapPreviewKey: string;
   tipLines: string[];
   availableFoodIds: string[];
-  nextStep: StageInfoNextStep;
 };
 
 export const itemIcons: Record<ItemId, string> = {
@@ -35,29 +32,26 @@ export const stageInfoUiConfig: Record<string, StageInfoUiConfig> = {
   "1-1": {
     mapPreviewKey: "kitchen-v1",
     tipLines: [
-      "도마는 슬라임 누구나 쓸 수 있어요.",
-      "완성 음식은 깨끗한 그릇에 담아요.",
+      "슬라임을 고르면 갈 수 있는 칸이 보여요.",
+      "도마는 땅 슬라임만 쓸 수 있어요.",
     ],
     availableFoodIds: ["roasted-potato"],
-    nextStep: "PLAY",
   },
   "1-2": {
     mapPreviewKey: "kitchen-v1",
     tipLines: [
-      "조리 완료 뒤 12초가 지나면 불이 나요.",
-      "물 슬라임은 화재를 5초간 진화해요.",
+      "번개 슬라임은 한 턴에 두 번 움직여요.",
+      "쓰던 일은 다음 턴에 이어서 할 수 있어요.",
     ],
     availableFoodIds: ["roasted-potato"],
-    nextStep: "RECRUIT",
   },
   "1-3": {
     mapPreviewKey: "kitchen-v1",
     tipLines: [
-      "주문 수가 많아도 조리 순서는 같아요.",
-      "더러운 그릇은 세척해서 다시 써요.",
+      "기준보다 더 많이 처리하면 별이 늘어요.",
+      "더러운 그릇은 물 슬라임이 씻어요.",
     ],
     availableFoodIds: ["roasted-potato"],
-    nextStep: "RECRUIT",
   },
 };
 

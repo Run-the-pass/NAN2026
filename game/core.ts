@@ -25,7 +25,8 @@ export type StationInstance = {
   displayTile: TilePosition;
   taskTile: TilePosition;
 };
-export type ActorStatus = "IDLE" | "MOVING" | "WORKING" | "WAITING";
+// 마지막 행동. 화면이 어떤 모션을 재생할지 고르는 데만 쓴다.
+export type ActorStatus = "IDLE" | "MOVING" | "WORKING" | "CARRYING";
 export type WorkstationStatus =
   | "IDLE"
   | "MISSING_MATERIAL"
@@ -100,8 +101,6 @@ export const recipes = {
 
 const potatoRecipe = recipes["roasted-potato"];
 
-export type StatLevels = { workSpeed: number; moveSpeed: number };
-
 export const slimeTypes: Record<
   SlimeTypeId,
   {
@@ -110,72 +109,88 @@ export const slimeTypes: Record<
     role: string;
     element: SlimeElement;
     elementLabel: string;
-    statLevels: StatLevels;
   }
 > = {
   water: {
     name: "물",
-    trait: "물을 공급하고 설거지와 화재 진화를 담당합니다.",
-    role: "물 공급 · 설거지 · 소화",
+    trait: "물을 공급하고 설거지를 담당합니다.",
+    role: "물 공급 · 설거지",
     element: "water",
     elementLabel: "물",
-    statLevels: { workSpeed: 2, moveSpeed: 1 },
   },
   fire: {
     name: "불",
-    trait: "열을 다뤄 음식을 조리하고 쓰레기를 소각합니다.",
-    role: "가열 · 조리 · 소각",
+    trait: "열을 다뤄 쓰레기를 소각합니다.",
+    role: "가열 · 소각",
     element: "fire",
     elementLabel: "불",
-    statLevels: { workSpeed: 3, moveSpeed: 1 },
   },
   lightning: {
     name: "번개",
-    trait: "빠르게 재료와 음식을 운반하고 전자 기구를 작동합니다.",
-    role: "운반 · 발전 · 전자 기구",
+    trait: "턴마다 두 번 움직여 재료와 음식을 빠르게 나릅니다.",
+    role: "운반 · 발전",
     element: "lightning",
     elementLabel: "번개",
-    statLevels: { workSpeed: 1, moveSpeed: 3 },
   },
   earth: {
     name: "땅",
-    trait: "재료를 손질하고 여러 그릇을 안정적으로 나릅니다.",
+    trait: "재료를 썰고 여러 그릇을 안정적으로 나릅니다.",
     role: "손질 · 썰기 · 다중 운반",
     element: "earth",
     elementLabel: "땅",
-    statLevels: { workSpeed: 2, moveSpeed: 1 },
   },
 };
 
-export const statTables = {
-  // 작업 속도 레벨별 초당 작업량. 기준(레벨 1)이 100/초라 비용 100은 1초다.
-  workSpeedPerSecond: [85, 100, 120, 145, 175, 210],
-  moveTilesPerSecond: [2, 2.4, 2.8, 3.2, 3.6, 4],
-} as const;
+// 턴당 행동력. 전기(번개)만 2고 나머지는 1이다.
+export const actionPointsPerTurn: Record<SlimeTypeId, number> = {
+  water: 1,
+  fire: 1,
+  lightning: 2,
+  earth: 1,
+};
 
-// 아직 확정되지 않은 주문·화재 규칙은 여기서만 바꾼다. 기본값은 현재
-// 게임 동작을 그대로 유지한다.
+export const maxActionPoints = (typeId: SlimeTypeId) =>
+  actionPointsPerTurn[typeId];
+
+// 행동별 행동력. 명세 4절에 없던 버리기·제출·재료 집기는 "물건 집기·
+// 내려놓기"와 같은 1로, 소각은 세척·조리와 같은 2로 둔다.
+export const actionCost = {
+  move: 1,
+  carry: 1,
+  chop: 2,
+  wash: 2,
+  burn: 2,
+};
+
+// 기구별 사용 가능한 속성. 여기 없는 기구는 모든 슬라임이 쓴다. 물건을
+// 집고 놓는 것은 "물건" 분류라 속성 제한을 받지 않는다.
+export const stationElements = {
+  chop: "earth" as SlimeElement,
+  wash: "water" as SlimeElement,
+  burn: "fire" as SlimeElement,
+};
+
+// 아직 확정되지 않은 주문 규칙은 여기서만 바꾼다.
 export const orderConfig = {
   // 동시에 노출하는 주문 수.
-  activeOrderCount: 3,
+  activeOrderCount: 2,
+  // 현재 주문 뒤에 미리 보여 줄 다음 레시피 수.
+  previewCount: 2,
   // 주문에 없는 음식 처리. reject는 거부하고 음식을 그대로 들려 둔다.
   invalidSubmission: "reject" as "reject" | "discard",
-  // 목표를 일찍 채웠을 때 라운드를 바로 끝낼지.
+  // 레시피 목록을 다 처리했을 때 스테이지를 바로 끝낼지.
   endRoundWhenOrdersDone: true,
 };
 
+// 통과 기준 대비 추가 처리 수별 별 개수. 0개 추가면 별 1개다.
+export const rankThresholds = [0, 2, 3];
+
+// 화재는 후순위다. 상태와 설정만 남기고 발화·전파는 넣지 않는다.
+// ponytail: 턴 기반 발화 규칙이 정해지면 여기 값을 턴 단위로 바꾸고
+// endTurn에 진행 단계를 붙인다. 지금은 어떤 설비에도 불이 붙지 않는다.
 export const fireConfig = {
-  // 화재가 발생할 수 있는 설비. 여기 없는 설비에는 화재 상태를 만들지 않는다.
   flammableStations: ["stove"] as StationId[],
-  // 방치 판정을 시작하는 조리 도구 상태.
-  neglectStatus: "COMPLETE" as WorkstationStatus,
-  igniteAfterMs: 12_000,
-  spreadIntervalMs: 6_000,
-  // 설비 배치 타일 거리 기준 인접 판정. 바닥 타일은 대상이 아니다.
-  spreadRange: 1,
-  spreadDiagonal: false,
   extinguishElement: "water" as SlimeElement,
-  keepExtinguishProgress: false,
 };
 
 // 원문에서 수치가 미정인 항목은 플레이 검증값으로 한곳에 둔다.
@@ -185,13 +200,10 @@ export const dishConfig = {
   washerCapacity: 1,
   earthDishCarry: 2,
   tableCapacity: 1,
-  dragThresholdPx: 8,
 };
 
 export const incineratorConfig = {
   capacity: 5,
-  // 비용이라 기준 속도(100/초)에서 3초다. 시간이 아니라 작업량이다.
-  burnCost: 300,
 };
 
 export type Order = {
@@ -202,84 +214,51 @@ export type Order = {
 };
 
 // 스테이지 한 판. 스테이지를 늘릴 때 코드가 아니라 이 목록만 바꾼다.
-// TIP과 나올 수 있는 음식 목록은 소개 화면을 만들 때 함께 추가한다.
+// orders는 순서대로 나오는 레시피 목록이고, requiredOrders를 채우면
+// 통과한다. 더 처리하면 랭크가 오른다.
 export type Stage = {
   id: string;
   name: string;
   orders: Order[];
-  timeLimitMs: number;
+  turnLimit: number;
+  requiredOrders: number;
 };
 
-export type FireState = {
-  neglectMs: number;
-  onFire: boolean;
-  workerId: ActorId | null;
-  extinguishMs: number;
-  // 이번에 붙은 슬라임 기준 진화 총 시간. 진행도 표시에 쓴다.
-  extinguishTotalMs: number;
-  spreadMs: number;
-};
-
-export type IncineratorState = {
-  count: number;
-  workerId: ActorId | null;
-  progressMs: number;
-  totalMs: number;
-};
-
-export type ActorIntent =
-  | { kind: "MOVE"; destination: Position; route: Position[] }
-  | {
-      kind: "INTERACT";
-      station: StationInstanceId;
-      leader: ActorId | null;
-      route: Position[];
-      // 물건을 내려놓은 뒤 이어서 할 작업. 손이 차 있어 바로 못 하는 지시를
-      // 받았을 때 테이블에 들르게 하고 여기에 원래 목적지를 담아 둔다.
-      then?: StationInstanceId;
-    };
+export type FireState = { onFire: boolean };
 
 export type ActorState = {
   typeId: SlimeTypeId;
   name: string;
-  x: number;
-  y: number;
-  moveSpeed: number;
+  col: number;
+  row: number;
+  actionPoints: number;
   status: ActorStatus;
+  // 이 슬라임이 지금까지 한 행동 수. 화면이 모션을 한 번씩 재생하는 데 쓴다.
+  acts: number;
   carrying: Carried[];
-  intent: ActorIntent | null;
-  workLeftMs: number;
-  statLevels: StatLevels;
-  buffs: string[];
-  alert: string | null;
-  alertMs: number;
 };
+
+// 행동력을 쓰지 않고 거절된 이유. 화면은 seq가 바뀔 때 토스트를 띄운다.
+export type Refusal = { seq: number; message: string };
 
 export type GameState = {
   seed: number;
   phase: "playing" | "won" | "lost";
-  timeLeft: number;
-  timeLeftMs: number;
+  turn: number;
+  turnsLeft: number;
   filled: number;
   goal: number;
   gold: number;
   actors: Partial<Record<ActorId, ActorState>>;
-  ingredients: Partial<Record<StationInstanceId, { stock: number; timerMs: number }>>;
+  ingredients: Partial<Record<StationInstanceId, { stock: number }>>;
   stoves: Partial<Record<StationInstanceId, ItemId[]>>;
   dishRacks: Partial<Record<StationInstanceId, Dish[]>>;
   tables: Partial<Record<StationInstanceId, Carried[]>>;
-  incinerators: Partial<Record<StationInstanceId, IncineratorState>>;
-  washers: Partial<Record<StationInstanceId, {
-    dish: Dish | null;
-    workerId: ActorId | null;
-    progressMs: number;
-    totalMs: number;
-  }>>;
+  incinerators: Partial<Record<StationInstanceId, { count: number; progress: number }>>;
+  washers: Partial<Record<StationInstanceId, { dish: Dish | null; progress: number }>>;
   workstations: Partial<Record<StationInstanceId, {
     status: WorkstationStatus;
-    workerId: ActorId | null;
-    progressMs: number;
-    totalMs: number;
+    progress: number;
   }>>;
   orders: Order[];
   fires: Partial<Record<StationInstanceId, FireState>>;
@@ -289,6 +268,7 @@ export type GameState = {
   squad: SlimeTypeId[];
   // 주문에 없는 음식을 제출한 횟수. 표시용이며 골드에는 영향이 없다.
   misses: number;
+  refusal: Refusal | null;
   lastEvent: string;
   history: string[];
 };
@@ -298,7 +278,10 @@ export const MAP_WIDTH = 14;
 export const MAP_HEIGHT = 8;
 export const GOLD_PER_ORDER = 100;
 export const INGREDIENT_MAX = 4;
-export const INGREDIENT_INTERVAL_MS = 6_000;
+// 남은 턴이 이 이하면 마감이 임박한 것으로 본다. 음악·배너가 함께 쓴다.
+export const RUSH_TURNS_LEFT = 10;
+// 턴이 끝날 때 재료 상자마다 채우는 개수.
+export const INGREDIENT_PER_TURN = 1;
 export const STORAGE_MAX = 1;
 
 // I 재료 상자, C 조리 도구, S 제출대, X 쓰레기, D 그릇, W 세척기, T 테이블.
@@ -342,6 +325,9 @@ const neighboursOf = ({ col, row }: TilePosition): TilePosition[] => [
   { col: col + 1, row },
   { col, row: row + 1 },
 ];
+
+const sameTile = (one: TilePosition, two: TilePosition) =>
+  one.col === two.col && one.row === two.row;
 
 const automaticTaskTile = (data: KitchenMapData, display: TilePosition) =>
   neighboursOf(display).find((tile) => data.rows[tile.row]?.[tile.col] === ".");
@@ -436,8 +422,15 @@ export const taskTiles = Object.fromEntries(
 ) as Record<StationInstanceId, TilePosition>;
 export const startTile = { ...mapData.startTile };
 
+// 서로 이만큼은 떨어뜨려 세운다. 턴제는 슬라임끼리 지나갈 수 없어서,
+// 좁은 주방에 붙여 세우면 안쪽 슬라임이 첫 턴부터 동료에게 막혀 갇힌다.
+export const SPAWN_SPACING = 3;
+
+const tileDistance = (one: TilePosition, two: TilePosition) =>
+  Math.abs(one.col - two.col) + Math.abs(one.row - two.row);
+
 // 시작 지점에서 가까운 빈 바닥부터 차례로 자리를 잡는다. 벽과 설비 칸은
-// 바닥이 아니라 애초에 후보에 오르지 않는다.
+// 바닥이 아니라 애초에 후보에 오르지 않고, 경로도 바닥으로만 퍼진다.
 export function spawnTilesFrom(start: TilePosition, count: number) {
   const seen = new Set([`${start.col},${start.row}`]);
   const queue = [start];
@@ -445,12 +438,14 @@ export function spawnTilesFrom(start: TilePosition, count: number) {
   while (queue.length > 0 && tiles.length < count) {
     const tile = queue.shift()!;
     if (!isWalkable(tile)) continue;
-    tiles.push(tile);
     for (const next of neighboursOf(tile)) {
       const key = `${next.col},${next.row}`;
       if (seen.has(key) || !inMap(next)) continue;
       seen.add(key);
       queue.push(next);
+    }
+    if (tiles.every((taken) => tileDistance(taken, tile) >= SPAWN_SPACING)) {
+      tiles.push(tile);
     }
   }
   return tiles;
@@ -460,127 +455,10 @@ export function spawnTilesFrom(start: TilePosition, count: number) {
 export const canPlaceSquad = (count: number) =>
   spawnTilesFrom(startTile, count).length >= count;
 
-// 상호작용 비용. 작업량이 초당 작업 속도만큼 쌓여 이 값에 닿으면 끝난다.
-// 보통 속도(100/초) 기준 100 = 1초. 소각기를 비롯한 기본 상호작용이 100이다.
-export const workCost = {
-  interact: 100,
-  cook: 570,
-  wash: 400,
-  extinguish: 500,
-};
-
 export const tileCenter = ({ col, row }: TilePosition) => ({
   x: col * TILE_SIZE + TILE_SIZE / 2,
   y: row * TILE_SIZE + TILE_SIZE / 2,
 });
-
-const hitboxHalfSize = { x: 46, y: 42 };
-export const stationHitboxes = stationInstances.map(({ displayTile }) => {
-  const center = tileCenter(displayTile);
-  return {
-    centerX: center.x,
-    centerY: center.y,
-    halfWidth: hitboxHalfSize.x,
-    halfHeight: hitboxHalfSize.y,
-  };
-});
-
-// 이동 주체를 점으로 계산하므로 벽 타일에 슬라임 몸통 여유를 더한다.
-export const wallHitboxes = KITCHEN_ROWS.flatMap((line, row) =>
-  [...line].flatMap((tile, col) => {
-    if (tile !== "#") return [];
-    const center = tileCenter({ col, row });
-    return [{
-      centerX: center.x,
-      centerY: center.y,
-      halfWidth: TILE_SIZE / 2 + 16,
-      halfHeight: TILE_SIZE / 2 + 16,
-      interior: row > 0 && row < MAP_HEIGHT - 1 && col > 0 && col < MAP_WIDTH - 1,
-    }];
-  }),
-);
-
-const navigationHitboxes = [...stationHitboxes, ...wallHitboxes];
-
-function segmentCrossesObstacle(from: Position, to: Position) {
-  return navigationHitboxes.some((box) => {
-    const dx = to.x - from.x;
-    const dy = to.y - from.y;
-    let near = 0;
-    let far = 1;
-    for (const [direction, distance] of [
-      [-dx, from.x - (box.centerX - box.halfWidth)],
-      [dx, box.centerX + box.halfWidth - from.x],
-      [-dy, from.y - (box.centerY - box.halfHeight)],
-      [dy, box.centerY + box.halfHeight - from.y],
-    ]) {
-      if (direction === 0) {
-        if (distance < 0) return false;
-        continue;
-      }
-      const ratio = distance / direction;
-      if (direction < 0) near = Math.max(near, ratio);
-      else far = Math.min(far, ratio);
-      if (near > far) return false;
-    }
-    return near < 1 && far > 0;
-  });
-}
-
-function routeBetween(from: Position, to: Position) {
-  // 외곽 벽은 경로를 막기만 한다. 외곽 모서리를 후보로 넣으면 맵 밖으로
-  // 우회할 수 있으므로, 경로 후보점은 설비와 내부 벽에만 만든다.
-  const cornerHitboxes = [
-    ...stationHitboxes,
-    ...wallHitboxes.filter((box) => box.interior),
-  ];
-  const nodes = [
-    from,
-    to,
-    ...cornerHitboxes.flatMap((box) => [
-      { x: box.centerX - box.halfWidth - 2, y: box.centerY - box.halfHeight - 2 },
-      { x: box.centerX + box.halfWidth + 2, y: box.centerY - box.halfHeight - 2 },
-      { x: box.centerX - box.halfWidth - 2, y: box.centerY + box.halfHeight + 2 },
-      { x: box.centerX + box.halfWidth + 2, y: box.centerY + box.halfHeight + 2 },
-    ]),
-  ];
-  const costs = nodes.map(() => Infinity);
-  const previous = nodes.map(() => -1);
-  const visited = nodes.map(() => false);
-  costs[0] = 0;
-  for (let count = 0; count < nodes.length; count += 1) {
-    let current = -1;
-    for (let index = 0; index < nodes.length; index += 1) {
-      if (!visited[index] && (current < 0 || costs[index] < costs[current])) current = index;
-    }
-    if (current < 0 || !Number.isFinite(costs[current]) || current === 1) break;
-    visited[current] = true;
-    for (let index = 1; index < nodes.length; index += 1) {
-      if (visited[index] || segmentCrossesObstacle(nodes[current], nodes[index])) continue;
-      const cost = costs[current] + Math.hypot(
-        nodes[index].x - nodes[current].x,
-        nodes[index].y - nodes[current].y,
-      );
-      if (cost < costs[index]) {
-        costs[index] = cost;
-        previous[index] = current;
-      }
-    }
-  }
-  if (!Number.isFinite(costs[1])) return [];
-  const route: Position[] = [];
-  for (let index = 1; index > 0; index = previous[index]) route.unshift(nodes[index]);
-  return route;
-}
-
-function routeLength(from: Position, route: Position[]) {
-  let total = 0;
-  for (const point of route) {
-    total += Math.hypot(point.x - from.x, point.y - from.y);
-    from = point;
-  }
-  return total;
-}
 
 export const pixelToTile = (x: number, y: number): TilePosition => ({
   col: Math.floor(x / TILE_SIZE),
@@ -606,21 +484,15 @@ function makeActor(
   spawn: TilePosition,
   name: string,
 ): ActorState {
-  const kind = slimeTypes[typeId];
   return {
     typeId,
     name,
-    ...tileCenter(spawn),
-    moveSpeed:
-      statTables.moveTilesPerSecond[kind.statLevels.moveSpeed] * TILE_SIZE,
+    col: spawn.col,
+    row: spawn.row,
+    actionPoints: maxActionPoints(typeId),
     status: "IDLE",
+    acts: 0,
     carrying: [],
-    intent: null,
-    workLeftMs: 0,
-    statLevels: { ...kind.statLevels },
-    buffs: [],
-    alert: null,
-    alertMs: 0,
   };
 }
 
@@ -647,36 +519,41 @@ function checkOrders(orders: Order[]): Order[] {
 export const orderComplete = (order: Order) =>
   order.submittedCount >= order.targetCount;
 
-export const activeOrders = (state: GameState) =>
-  state.orders
-    .filter((order) => !orderComplete(order))
-    .slice(0, orderConfig.activeOrderCount);
+const pendingOrders = (state: GameState) =>
+  state.orders.filter((order) => !orderComplete(order));
 
-// 라운드 종료 판정. 필수 주문을 모두 채웠는지만 본다.
+export const activeOrders = (state: GameState) =>
+  pendingOrders(state).slice(0, orderConfig.activeOrderCount);
+
+// 현재 주문 뒤에 이어서 나올 레시피. 주문 카드 옆에 작게 보여 준다.
+export const upcomingOrders = (state: GameState) =>
+  pendingOrders(state).slice(
+    orderConfig.activeOrderCount,
+    orderConfig.activeOrderCount + orderConfig.previewCount,
+  );
+
+// 스테이지 통과 판정. 최소 주문 수를 채웠는지만 본다.
 export const roundResult = (state: GameState): "won" | "lost" =>
-  state.orders.every(orderComplete) ? "won" : "lost";
+  state.filled >= currentStage(state).requiredOrders ? "won" : "lost";
+
+// 통과 기준을 얼마나 넘겼는지로 별 1~3개. 못 넘겼으면 0이다.
+export function stageRank(state: GameState) {
+  const stage = currentStage(state);
+  if (state.filled < stage.requiredOrders) return 0;
+  const extra = state.filled - stage.requiredOrders;
+  return rankThresholds.filter((need) => extra >= need).length;
+}
 
 const newFires = (): Partial<Record<StationInstanceId, FireState>> =>
   Object.fromEntries(
-    stationInstances.filter(({ type }) => fireConfig.flammableStations.includes(type)).map(({ id }) => [
-      id,
-      {
-        neglectMs: 0,
-        onFire: false,
-        workerId: null,
-        extinguishMs: 0,
-        extinguishTotalMs: 0,
-        spreadMs: 0,
-      },
-    ]),
+    stationInstances
+      .filter(({ type }) => fireConfig.flammableStations.includes(type))
+      .map(({ id }) => [id, { onFire: false }]),
   );
 
 const initialStationState = () => ({
   ingredients: Object.fromEntries(
-    stationInstancesByType["ingredient-box"].map(({ id }) => [
-      id,
-      { stock: 1, timerMs: INGREDIENT_INTERVAL_MS },
-    ]),
+    stationInstancesByType["ingredient-box"].map(({ id }) => [id, { stock: 1 }]),
   ),
   stoves: Object.fromEntries(stationInstancesByType.stove.map(({ id }) => [id, [] as ItemId[]])),
   dishRacks: Object.fromEntries(
@@ -694,36 +571,25 @@ const initialStationState = () => ({
   ),
   tables: Object.fromEntries(stationInstancesByType.table.map(({ id }) => [id, [] as Carried[]])),
   incinerators: Object.fromEntries(
-    stationInstancesByType.trash.map(({ id }) => [
-      id,
-      { count: 0, workerId: null, progressMs: 0, totalMs: 0 },
-    ]),
+    stationInstancesByType.trash.map(({ id }) => [id, { count: 0, progress: 0 }]),
   ),
   washers: Object.fromEntries(
-    stationInstancesByType.washer.map(({ id }) => [
-      id,
-      { dish: null, workerId: null, progressMs: 0, totalMs: 0 },
-    ]),
+    stationInstancesByType.washer.map(({ id }) => [id, { dish: null, progress: 0 }]),
   ),
   workstations: Object.fromEntries(
     stationInstancesByType.stove.map(({ id }) => [
       id,
-      {
-        status: "MISSING_MATERIAL" as WorkstationStatus,
-        workerId: null,
-        progressMs: 0,
-        totalMs: 0,
-      },
+      { status: "MISSING_MATERIAL" as WorkstationStatus, progress: 0 },
     ]),
   ),
 });
 
-// 기본 스테이지 목록. 이름과 주문 수는 임시값이며 기획이 정해지면
-// 이 배열만 바꾸면 된다.
+// 기본 스테이지 목록. 턴 수와 통과 기준은 임시 검증값이며 기획이 정해지면
+// 이 배열만 바꾸면 된다. 레시피 목록은 통과 기준보다 길어야 랭크가 오른다.
 export const defaultStages = (): Stage[] => [
-  { id: "1-1", name: "첫 영업", orders: potatoOrders(3), timeLimitMs: 180_000 },
-  { id: "1-2", name: "점심 러시", orders: potatoOrders(5), timeLimitMs: 180_000 },
-  { id: "1-3", name: "저녁 마감", orders: potatoOrders(7), timeLimitMs: 180_000 },
+  { id: "1-1", name: "첫 영업", orders: potatoOrders(6), turnLimit: 60, requiredOrders: 3 },
+  { id: "1-2", name: "점심 러시", orders: potatoOrders(9), turnLimit: 70, requiredOrders: 5 },
+  { id: "1-3", name: "저녁 마감", orders: potatoOrders(11), turnLimit: 80, requiredOrders: 7 },
 ];
 
 function potatoOrders(count: number): Order[] {
@@ -745,8 +611,11 @@ function checkStages(stages: Stage[], stageIndex: number): Stage[] {
         !stage.id ||
         !stage.name ||
         stage.name.length > 30 ||
-        !Number.isSafeInteger(stage.timeLimitMs) ||
-        stage.timeLimitMs < 1_000,
+        !Number.isSafeInteger(stage.turnLimit) ||
+        stage.turnLimit < 1 ||
+        !Number.isSafeInteger(stage.requiredOrders) ||
+        stage.requiredOrders < 1 ||
+        stage.requiredOrders > stage.orders.length,
     ) ||
     !Number.isSafeInteger(stageIndex) ||
     stageIndex < 0 ||
@@ -803,10 +672,10 @@ export function initialState(
   return {
     seed: seed >>> 0,
     phase: "playing",
-    timeLeft: Math.ceil(stage.timeLimitMs / 1000),
-    timeLeftMs: stage.timeLimitMs,
+    turn: 1,
+    turnsLeft: stage.turnLimit,
     filled: 0,
-    goal: roundOrders.length,
+    goal: stage.requiredOrders,
     gold: 0,
     actors,
     ...stationState,
@@ -816,34 +685,18 @@ export function initialState(
     stageIndex,
     squad: [...squad],
     misses: 0,
-    lastEvent: `${stage.id} ${stage.name} — 음식 주문 ${roundOrders.length}건을 완료하세요.`,
+    refusal: null,
+    lastEvent: `${stage.id} ${stage.name} — ${stage.turnLimit}턴 안에 음식 주문 ${stage.requiredOrders}건을 완료하세요.`,
     history: [`${stage.id} 영업 시작`],
   };
 }
 
 // 스테이지를 깬 뒤 다음 스테이지 상태를 만든다. 골드와 스쿼드는 잇고
-// 설비·소지품·화재는 새로 시작한다.
+// 설비·소지품은 새로 시작한다.
 export function nextStage(state: GameState): GameState {
   if (state.phase !== "won" || isLastStage(state)) return state;
   return {
     ...initialState(state.seed, state.squad, state.stages, state.stageIndex + 1),
-    gold: state.gold,
-  };
-}
-
-export function recruitSlime(state: GameState, typeId: SlimeTypeId): GameState {
-  if (
-    state.phase !== "playing" ||
-    !slimeTypes[typeId] ||
-    !canPlaceSquad(state.squad.length + 1)
-  ) return state;
-  return {
-    ...initialState(
-      state.seed,
-      [...state.squad, typeId],
-      state.stages,
-      state.stageIndex,
-    ),
     gold: state.gold,
   };
 }
@@ -861,8 +714,20 @@ function event(state: GameState, message: string, patch: Partial<GameState>) {
     ...state,
     ...patch,
     seed: advanceSeed(state.seed),
+    refusal: null,
     lastEvent: message,
     history: [...state.history.slice(-7), message],
+  };
+}
+
+// 유효하지 않은 상호작용. 행동력을 쓰지 않고 이유만 남긴다.
+function refuse(state: GameState, actor: ActorState, message: string): GameState {
+  return {
+    ...state,
+    refusal: {
+      seq: (state.refusal?.seq ?? 0) + 1,
+      message: `${actor.name}: ${message}`,
+    },
   };
 }
 
@@ -872,6 +737,16 @@ function patchActor(
   next: ActorState,
 ): Partial<Record<ActorId, ActorState>> {
   return { ...state.actors, [actorId]: next };
+}
+
+// 행동력을 쓰고 모션용 카운터를 올린 슬라임.
+function spend(actor: ActorState, cost: number, status: ActorStatus): ActorState {
+  return {
+    ...actor,
+    actionPoints: actor.actionPoints - cost,
+    status,
+    acts: actor.acts + 1,
+  };
 }
 
 function carryCapacity(actor: ActorState, carried: Carried) {
@@ -893,284 +768,533 @@ const dishIndex = (
   test: (dish: Dish) => boolean,
 ) => actor.carrying.findIndex((carried) => isDish(carried) && test(carried));
 
-function releaseWork(state: GameState, actorIds: ActorId[]): GameState {
-  const workstations = { ...state.workstations };
-  const washers = { ...state.washers };
-  const incinerators = { ...state.incinerators };
-  let changed = false;
-  for (const [id, workstation] of Object.entries(workstations) as [StationInstanceId, NonNullable<GameState["workstations"][StationInstanceId]>][]) {
-    if (!workstation.workerId || !actorIds.includes(workstation.workerId)) continue;
-    workstations[id] = {
-      ...workstation,
-      status: state.stoves[id]?.includes(potatoRecipe.ingredient.itemId)
-        ? "IDLE"
-        : "MISSING_MATERIAL",
-      workerId: null,
-      progressMs: 0,
-    };
-    changed = true;
-  }
-  for (const [id, washer] of Object.entries(washers) as [StationInstanceId, NonNullable<GameState["washers"][StationInstanceId]>][]) {
-    if (!washer.workerId || !actorIds.includes(washer.workerId)) continue;
-    washers[id] = { ...washer, workerId: null, progressMs: 0 };
-    changed = true;
-  }
-  for (const [id, incinerator] of Object.entries(incinerators) as [StationInstanceId, NonNullable<GameState["incinerators"][StationInstanceId]>][]) {
-    if (!incinerator.workerId || !actorIds.includes(incinerator.workerId)) continue;
-    incinerators[id] = { ...incinerator, workerId: null, progressMs: 0 };
-    changed = true;
-  }
-  const next = changed ? { ...state, workstations, washers, incinerators } : state;
-  // 진화하던 슬라임이 새 지시를 받으면 설정에 따라 진행도를 버린다.
-  const fires = { ...next.fires };
-  let dropped = false;
-  for (const station of Object.keys(fires) as StationInstanceId[]) {
-    const fire = fires[station]!;
-    if (!fire.workerId || !actorIds.includes(fire.workerId)) continue;
-    fires[station] = {
-      ...fire,
-      workerId: null,
-      extinguishMs: fireConfig.keepExtinguishProgress ? fire.extinguishMs : 0,
-    };
-    dropped = true;
-  }
-  return dropped ? { ...next, fires } : next;
-}
-
-const isBurning = (state: GameState, station: StationInstanceId) =>
+export const isBurning = (state: GameState, station: StationInstanceId) =>
   state.fires[station]?.onFire === true;
 
-// 설비끼리의 배치 거리로만 인접을 본다. 바닥 타일은 전파 경로가 아니다.
-function isAdjacentStation(one: StationInstanceId, two: StationInstanceId) {
-  const from = displayTiles[one];
-  const to = displayTiles[two];
-  const cols = Math.abs(from.col - to.col);
-  const rows = Math.abs(from.row - to.row);
-  return fireConfig.spreadDiagonal
-    ? Math.max(cols, rows) <= fireConfig.spreadRange
-    : cols + rows <= fireConfig.spreadRange;
+export const occupantOf = (
+  state: GameState,
+  tile: TilePosition,
+): ActorId | null =>
+  (Object.keys(state.actors) as ActorId[]).find((id) =>
+    sameTile(state.actors[id]!, tile),
+  ) ?? null;
+
+// 선택한 슬라임이 이번에 갈 수 있는 칸. 벽·설비 칸과 다른 슬라임이 선
+// 칸은 애초에 후보에서 빠지므로 명세 7절 충돌 규칙이 여기서 끝난다.
+export function moveTargets(state: GameState, actorId: ActorId): TilePosition[] {
+  const actor = state.actors[actorId];
+  if (state.phase !== "playing" || !actor || actor.actionPoints < actionCost.move) {
+    return [];
+  }
+  return neighboursOf(actor).filter(
+    (tile) => isWalkable(tile) && !occupantOf(state, tile),
+  );
 }
 
-export function moveActors(
+export function moveActor(
   state: GameState,
-  actorIds: ActorId[],
-  destination: Position,
+  actorId: ActorId,
+  to: TilePosition,
 ): GameState {
-  if (
-    state.phase !== "playing" ||
-    !Number.isFinite(destination.x) ||
-    !Number.isFinite(destination.y) ||
-    !isWalkable(pixelToTile(destination.x, destination.y))
-  ) return state;
-  const ids = [...new Set(actorIds)];
-  const base = releaseWork(state, ids);
-  let actors = base.actors;
-  let moved = 0;
-  for (const actorId of ids) {
-    const actor = actors[actorId];
-    if (!actor) continue;
-    const route = routeBetween(actor, destination);
-    if (!route.length) continue;
-    actors = patchActor({ ...base, actors }, actorId, {
-      ...actor,
-      intent: { kind: "MOVE", destination, route },
-      status: "MOVING",
-      workLeftMs: 0,
-      alert: null,
-      alertMs: 0,
-    });
-    moved += 1;
+  const actor = state.actors[actorId];
+  if (state.phase !== "playing" || !actor) return state;
+  if (actor.actionPoints < actionCost.move) {
+    return refuse(state, actor, "남은 행동력이 없습니다.");
   }
-  return moved
-    ? event(base, `${moved}마리에게 이동을 지시했습니다.`, { actors })
-    : state;
+  if (!inMap(to) || !neighboursOf(actor).some((tile) => sameTile(tile, to))) {
+    return refuse(state, actor, "상하좌우 한 칸으로만 이동할 수 있습니다.");
+  }
+  if (!isWalkable(to)) {
+    return refuse(state, actor, "갈 수 없는 칸입니다.");
+  }
+  if (occupantOf(state, to)) {
+    return refuse(state, actor, "다른 슬라임이 있는 칸입니다.");
+  }
+  return {
+    ...state,
+    refusal: null,
+    actors: patchActor(state, actorId, {
+      ...spend(actor, actionCost.move, "MOVING"),
+      col: to.col,
+      row: to.row,
+    }),
+  };
 }
 
-function canUseStation(
-  state: GameState,
-  actor: ActorState,
-  station: StationInstanceId,
-) {
-  const type = stationType(station);
-  // 불이 난 설비는 진화 외의 어떤 작업도 시작할 수 없다.
-  if (isBurning(state, station)) {
-    return actor.typeId === fireConfig.extinguishElement;
-  }
-  if (type === "table") {
-    const table = state.tables[station]!;
-    const tableItem = table[0];
-    const cleanDish = dishIndex(actor, (dish) => dish.status === "clean") >= 0;
-    const looseItem = actor.carrying.some((carried) => !isDish(carried));
-    const canPlate =
-      (Boolean(tableItem) && !isDish(tableItem!) && cleanDish) ||
-      (Boolean(tableItem) && isDish(tableItem!) && tableItem.status === "clean" && looseItem);
-    return actor.carrying.length > 0
-      ? table.length < dishConfig.tableCapacity || canPlate
-      : Boolean(table[0] && canCarry(actor, table[0]));
-  }
-  if (type === "dish-rack") {
-    const dishRack = state.dishRacks[station]!;
-    const nextDish = dishRack[0];
-    // 낱개 음식을 들고 오면 빈 접시를 꺼내 그 자리에서 담는다. 손이 꽉 차
-    // 있어도 되므로 canCarry와 별개로 허용한다.
-    if (
-      nextDish?.status === "clean" &&
-      actor.carrying.some((carried) => !isDish(carried))
-    ) return true;
-    return nextDish && canCarry(actor, nextDish)
-      ? true
-      : dishIndex(actor, (dish) => dish.status === "clean") >= 0 &&
-          dishRack.length < dishConfig.rackCapacity;
-  }
-  if (type === "washer") {
-    const washer = state.washers[station]!;
-    const dirty = dishIndex(actor, (dish) => dish.status === "dirty") >= 0;
-    if (!washer.dish) return dirty;
-    if (washer.dish.status === "dirty") {
-      return actor.typeId === "water" && !washer.workerId;
-    }
-    return canCarry(actor, washer.dish);
-  }
-  if (type === "submission") {
-    return actor.carrying.length > 0;
-  }
-  if (type === "trash") {
-    // 가득 찼는지·소각할 게 있는지는 소각기가 판정한다. 경로에서 미리 막으면
-    // 슬라임이 가지도 않아 "왜 안 되는지" 안내가 나올 수 없다.
-    return actor.carrying.length > 0 || actor.typeId === "fire";
-  }
-  if (type === "ingredient-box") {
-    const clean = dishIndex(actor, (dish) => dish.status === "clean") >= 0;
-    return clean || canCarry(actor, potatoRecipe.ingredient.itemId);
-  }
-  if (type === "stove") {
-    const stove = state.stoves[station]!;
-    return (
-      actor.carrying.includes(potatoRecipe.ingredient.itemId) ||
-      dishIndex(
-        actor,
-        (dish) => dish.content === potatoRecipe.ingredient.itemId,
-      ) >= 0 ||
-      (stove.includes(potatoRecipe.foodId) &&
-        dishIndex(actor, (dish) => dish.status === "clean") >= 0) ||
-      stove.includes(potatoRecipe.foodId) ||
-      // 속성 제한이 없으므로 빈손인 슬라임은 누구나 조리할 수 있다.
-      actor.carrying.length === 0
-    );
-  }
-  return false;
-}
-
-// 물건을 잠시 내려놓을 수 있는 가장 가까운 테이블. 자리가 없으면 없다.
-function nearestFreeTable(state: GameState, actor: ActorState) {
-  return stationInstancesByType.table
-    .filter((table) => (state.tables[table.id]?.length ?? 0) < dishConfig.tableCapacity)
-    .map((table) => ({
-      table,
-      cost: routeLength(actor, routeBetween(actor, tileCenter(table.taskTile))),
-    }))
-    .filter(({ cost }) => Number.isFinite(cost))
-    .sort((a, b) => a.cost - b.cost)[0]?.table ?? null;
+// 조리·세척·소각처럼 여러 턴에 걸칠 수 있는 작업. 남은 행동력만큼만
+// 진척도를 올리고, 모자라면 다음 턴에 이어서 한다.
+function progressStep(actor: ActorState, cost: number, progress: number) {
+  const spent = Math.min(actor.actionPoints, cost - progress);
+  return { spent, progress: progress + spent, done: progress + spent >= cost };
 }
 
 export function resolveStationTarget(target: StationInstanceId | StationId) {
   return stationsById[target as StationInstanceId] ?? stationInstancesByType[target as StationId]?.[0];
 }
 
-export function interactActors(
+// 슬라임이 이 설비를 쓸 수 있는 자리에 서 있는지. 설비 칸에 상하좌우로
+// 붙어 있으면 된다.
+export const isBesideStation = (
+  actor: ActorState,
+  station: StationInstance,
+) => neighboursOf(station.displayTile).some((tile) => sameTile(tile, actor));
+
+export function interactActor(
   state: GameState,
-  actorIds: ActorId[],
+  actorId: ActorId,
   target: StationInstanceId | StationId,
 ): GameState {
-  if (state.phase !== "playing") return state;
+  const actor = state.actors[actorId];
   const station = resolveStationTarget(target);
-  if (!station) return state;
-  const ids = [...new Set(actorIds)];
-  const base = releaseWork(state, ids);
-  const orders = ids
-    .map((actorId) => {
-      const actor = base.actors[actorId];
-      return actor ? { actorId, actor } : null;
-    })
-    .filter((order): order is NonNullable<typeof order> => Boolean(order));
-  const leader =
-    orders
-      .filter(({ actor }) => canUseStation(base, actor, station.id))
-      .sort((a, b) => {
-        const destination = tileCenter(station.taskTile);
-        return (
-          routeLength(a.actor, routeBetween(a.actor, destination)) / a.actor.moveSpeed -
-          routeLength(b.actor, routeBetween(b.actor, destination)) / b.actor.moveSpeed
-        );
-      })[0]?.actorId ?? null;
-  let actors = base.actors;
-  for (const { actorId, actor } of orders) {
-    // 손이 차서 지금은 못 하는 지시면 가까운 빈 테이블에 먼저 내려놓는다.
-    const detour =
-      !canUseStation(base, actor, station.id) && actor.carrying.length > 0
-        ? nearestFreeTable(base, actor)
-        : null;
-    const goal = detour ?? station;
-    const route = routeBetween(actor, tileCenter(goal.taskTile));
-    if (!route.length) continue;
-    actors = patchActor({ ...base, actors }, actorId, {
-      ...actor,
-      intent: {
-        kind: "INTERACT",
-        station: goal.id,
-        leader: detour ? actorId : leader,
-        route,
-        ...(detour ? { then: station.id } : {}),
-      },
-      status: "MOVING",
-      workLeftMs: 0,
-      alert: null,
-      alertMs: 0,
-    });
+  if (state.phase !== "playing" || !actor || !station) return state;
+  if (!isBesideStation(actor, station)) {
+    return refuse(
+      state,
+      actor,
+      `${withParticle(stationLabels[station.type])} 쓰려면 옆 칸에 서야 합니다.`,
+    );
   }
-  return orders.length
-    ? event(
-        base,
-        `${orders.length}마리에게 ${stationLabels[station.type]} 상호작용을 지시했습니다.`,
-        { actors },
-      )
-    : state;
+  if (isBurning(state, station.id)) {
+    return refuse(state, actor, "불이 난 설비는 사용할 수 없습니다.");
+  }
+  if (actor.actionPoints < 1) {
+    return refuse(state, actor, "남은 행동력이 없습니다.");
+  }
+  const id = station.id;
+  switch (station.type) {
+    case "ingredient-box":
+      return atIngredientBox(state, actorId, actor, id);
+    case "stove":
+      return atStove(state, actorId, actor, id);
+    case "washer":
+      return atWasher(state, actorId, actor, id);
+    case "trash":
+      return atIncinerator(state, actorId, actor, id);
+    case "dish-rack":
+      return atDishRack(state, actorId, actor, id);
+    case "table":
+      return atTable(state, actorId, actor, id);
+    case "submission":
+      return atSubmission(state, actorId, actor);
+  }
 }
 
-// 비용 ÷ 초당 작업량 = 걸리는 시간(ms).
-export function workDurationFor(actor: ActorState, cost: number) {
-  return (cost / statTables.workSpeedPerSecond[actor.statLevels.workSpeed]) * 1000;
-}
-
-function waitAtStation(actor: ActorState, keepIntent = false): ActorState {
-  return {
-    ...actor,
-    intent: keepIntent ? actor.intent : null,
-    status: "WAITING",
-    workLeftMs: 0,
-    alert: "WAITING",
-    alertMs: 1_800,
-  };
-}
-
-function refuse(
+function atIngredientBox(
   state: GameState,
   actorId: ActorId,
   actor: ActorState,
-  message: string,
-  alert = "INVALID_ROUTE",
-) {
-  const nextActor: ActorState = {
-    ...actor,
-    intent: null,
-    status: "IDLE",
-    workLeftMs: 0,
-    alert,
-    alertMs: 1_800,
-  };
-  return event(state, `${actor.name}: ${message}`, {
-    actors: patchActor(state, actorId, nextActor),
+  station: StationInstanceId,
+): GameState {
+  const ingredients = state.ingredients[station]!;
+  if (ingredients.stock < 1) {
+    return refuse(state, actor, "재료 상자가 비어 있습니다.");
+  }
+  const clean = dishIndex(actor, (dish) => dish.status === "clean");
+  const item = potatoRecipe.ingredient.itemId;
+  if (clean < 0 && !canCarry(actor, item)) {
+    return refuse(state, actor, "이미 음식이나 그릇을 들고 있습니다.");
+  }
+  const next = spend(actor, actionCost.carry, "CARRYING");
+  const carrying =
+    clean >= 0
+      ? actor.carrying.map((carried, index) =>
+          index === clean && isDish(carried)
+            ? { ...carried, status: "filled" as const, content: item }
+            : carried,
+        )
+      : [...actor.carrying, item];
+  return event(
+    state,
+    clean >= 0
+      ? `${actor.name}이(가) 그릇에 감자를 담았습니다.`
+      : `${actor.name}이(가) 감자를 들었습니다.`,
+    {
+      actors: patchActor(state, actorId, { ...next, carrying }),
+      ingredients: {
+        ...state.ingredients,
+        [station]: { stock: ingredients.stock - 1 },
+      },
+    },
+  );
+}
+
+function atStove(
+  state: GameState,
+  actorId: ActorId,
+  actor: ActorState,
+  station: StationInstanceId,
+): GameState {
+  const stove = state.stoves[station]!;
+  const workstation = state.workstations[station]!;
+  const ingredient = potatoRecipe.ingredient.itemId;
+  const loosePotato = actor.carrying.indexOf(ingredient);
+  const potatoDish = dishIndex(actor, (dish) => dish.content === ingredient);
+
+  // 재료 올리기. 물건 분류라 속성 제한이 없다.
+  if (loosePotato >= 0 || potatoDish >= 0) {
+    if (stove.length >= STORAGE_MAX) {
+      return refuse(state, actor, "도마가 사용 중입니다.");
+    }
+    const carrying =
+      loosePotato >= 0
+        ? actor.carrying.filter((_, index) => index !== loosePotato)
+        : actor.carrying.map((carried, index) =>
+            index === potatoDish && isDish(carried)
+              ? { ...carried, status: "clean" as const, content: null }
+              : carried,
+          );
+    return event(state, `${actor.name}이(가) 도마에 감자를 올렸습니다.`, {
+      actors: patchActor(state, actorId, {
+        ...spend(actor, actionCost.carry, "CARRYING"),
+        carrying,
+      }),
+      stoves: { ...state.stoves, [station]: [ingredient] },
+      workstations: {
+        ...state.workstations,
+        [station]: { status: "IDLE", progress: 0 },
+      },
+    });
+  }
+
+  // 완성 음식 회수. 이것도 물건 분류라 누구나 할 수 있다.
+  if (stove.includes(potatoRecipe.foodId)) {
+    const clean = dishIndex(actor, (dish) => dish.status === "clean");
+    if (clean < 0 && !canCarry(actor, potatoRecipe.foodId)) {
+      return refuse(state, actor, "완성 음식을 들 자리가 없습니다.");
+    }
+    const carrying =
+      clean >= 0
+        ? actor.carrying.map((carried, index) =>
+            index === clean && isDish(carried)
+              ? { ...carried, status: "filled" as const, content: potatoRecipe.foodId }
+              : carried,
+          )
+        : [...actor.carrying, potatoRecipe.foodId];
+    return event(
+      state,
+      clean >= 0
+        ? `${actor.name}이(가) 그릇에 구운 감자를 담았습니다.`
+        : `${actor.name}이(가) 도마에서 구운 감자를 들었습니다.`,
+      {
+        actors: patchActor(state, actorId, {
+          ...spend(actor, actionCost.carry, "CARRYING"),
+          carrying,
+        }),
+        stoves: { ...state.stoves, [station]: [] },
+        workstations: {
+          ...state.workstations,
+          [station]: { status: "MISSING_MATERIAL", progress: 0 },
+        },
+      },
+    );
+  }
+
+  // 여기부터는 도마 사용. 땅 슬라임만 할 수 있다.
+  if (actor.carrying.length > 0) {
+    return refuse(state, actor, "들고 있는 물건을 먼저 내려놓아야 합니다.");
+  }
+  if (!stove.includes(ingredient)) {
+    return refuse(state, actor, "도마에 썰 재료가 없습니다.");
+  }
+  if (actor.typeId !== stationElements.chop) {
+    return refuse(
+      state,
+      actor,
+      `${slimeTypes[stationElements.chop].name} 슬라임만 도마를 쓸 수 있습니다.`,
+    );
+  }
+  const step = progressStep(actor, actionCost.chop, workstation.progress);
+  const next = spend(actor, step.spent, "WORKING");
+  if (!step.done) {
+    return event(
+      state,
+      `${actor.name}이(가) 감자를 썰고 있습니다. (${step.progress}/${actionCost.chop})`,
+      {
+        actors: patchActor(state, actorId, next),
+        workstations: {
+          ...state.workstations,
+          [station]: { status: "WORKING", progress: step.progress },
+        },
+      },
+    );
+  }
+  return event(
+    state,
+    `${actor.name}이(가) ${itemLabel(potatoRecipe.foodId)}를 완성했습니다.`,
+    {
+      actors: patchActor(state, actorId, next),
+      stoves: { ...state.stoves, [station]: [potatoRecipe.foodId] },
+      workstations: {
+        ...state.workstations,
+        [station]: { status: "COMPLETE", progress: 0 },
+      },
+    },
+  );
+}
+
+function atWasher(
+  state: GameState,
+  actorId: ActorId,
+  actor: ActorState,
+  station: StationInstanceId,
+): GameState {
+  const washer = state.washers[station]!;
+  // 더러운 그릇 넣기. 모든 슬라임이 할 수 있다.
+  if (!washer.dish) {
+    const dirty = dishIndex(actor, (dish) => dish.status === "dirty");
+    if (dirty < 0) return refuse(state, actor, "세척할 더러운 그릇이 없습니다.");
+    const dish = actor.carrying[dirty] as Dish;
+    return event(state, `${actor.name}이(가) 더러운 그릇을 세척기에 놓았습니다.`, {
+      actors: patchActor(state, actorId, {
+        ...spend(actor, actionCost.carry, "CARRYING"),
+        carrying: actor.carrying.filter((_, index) => index !== dirty),
+      }),
+      washers: { ...state.washers, [station]: { dish, progress: 0 } },
+    });
+  }
+  // 세척. 물 슬라임만 할 수 있다.
+  if (washer.dish.status === "dirty") {
+    if (actor.typeId !== stationElements.wash) {
+      return refuse(
+        state,
+        actor,
+        `${slimeTypes[stationElements.wash].name} 슬라임만 그릇을 씻을 수 있습니다.`,
+      );
+    }
+    const step = progressStep(actor, actionCost.wash, washer.progress);
+    const next = spend(actor, step.spent, "WORKING");
+    if (!step.done) {
+      return event(
+        state,
+        `${actor.name}이(가) 그릇을 씻고 있습니다. (${step.progress}/${actionCost.wash})`,
+        {
+          actors: patchActor(state, actorId, next),
+          washers: { ...state.washers, [station]: { ...washer, progress: step.progress } },
+        },
+      );
+    }
+    return event(state, `${actor.name}이(가) 그릇을 깨끗이 씻었습니다.`, {
+      actors: patchActor(state, actorId, next),
+      washers: {
+        ...state.washers,
+        [station]: {
+          dish: { ...washer.dish, status: "clean", content: null },
+          progress: 0,
+        },
+      },
+    });
+  }
+  // 씻은 그릇 꺼내기.
+  if (!canCarry(actor, washer.dish)) {
+    return refuse(state, actor, "씻은 그릇을 들 수 없습니다.");
+  }
+  return event(state, `${actor.name}이(가) 씻은 그릇을 꺼냈습니다.`, {
+    actors: patchActor(state, actorId, {
+      ...spend(actor, actionCost.carry, "CARRYING"),
+      carrying: [...actor.carrying, washer.dish],
+    }),
+    washers: { ...state.washers, [station]: { dish: null, progress: 0 } },
   });
+}
+
+function atIncinerator(
+  state: GameState,
+  actorId: ActorId,
+  actor: ActorState,
+  station: StationInstanceId,
+): GameState {
+  const incinerator = state.incinerators[station]!;
+  const carried = actor.carrying[0];
+  const full = incinerator.count >= incineratorConfig.capacity;
+  // 가득 찬 소각기 앞에서는 물건을 든 불 슬라임도 넣기 대신 소각부터 한다.
+  const burnsInstead = full && actor.typeId === stationElements.burn;
+  if (carried && !burnsInstead) {
+    if (full) return refuse(state, actor, "소각기가 가득 찼습니다.");
+    if (isDish(carried) && !carried.content) {
+      return refuse(state, actor, "빈 그릇은 소각기에 버릴 수 없습니다.");
+    }
+    const discarded = isDish(carried) ? itemLabel(carried.content!) : itemLabel(carried);
+    return event(state, `${actor.name}이(가) 소각기에 ${withParticle(discarded)} 버렸습니다.`, {
+      actors: patchActor(state, actorId, {
+        ...spend(actor, actionCost.carry, "CARRYING"),
+        carrying: isDish(carried)
+          ? [{ ...carried, status: "dirty" as const, content: null }, ...actor.carrying.slice(1)]
+          : actor.carrying.slice(1),
+      }),
+      incinerators: {
+        ...state.incinerators,
+        [station]: { ...incinerator, count: incinerator.count + 1 },
+      },
+    });
+  }
+  if (actor.typeId !== stationElements.burn) {
+    return refuse(
+      state,
+      actor,
+      `${slimeTypes[stationElements.burn].name} 슬라임만 소각기를 비울 수 있습니다.`,
+    );
+  }
+  if (incinerator.count < 1) {
+    return refuse(state, actor, "소각할 쓰레기가 없습니다.");
+  }
+  const step = progressStep(actor, actionCost.burn, incinerator.progress);
+  const next = spend(actor, step.spent, "WORKING");
+  if (!step.done) {
+    return event(
+      state,
+      `${actor.name}이(가) 소각하고 있습니다. (${step.progress}/${actionCost.burn})`,
+      {
+        actors: patchActor(state, actorId, next),
+        incinerators: {
+          ...state.incinerators,
+          [station]: { ...incinerator, progress: step.progress },
+        },
+      },
+    );
+  }
+  return event(state, `${actor.name}이(가) 소각기를 비웠습니다.`, {
+    actors: patchActor(state, actorId, next),
+    incinerators: { ...state.incinerators, [station]: { count: 0, progress: 0 } },
+  });
+}
+
+function atDishRack(
+  state: GameState,
+  actorId: ActorId,
+  actor: ActorState,
+  station: StationInstanceId,
+): GameState {
+  const dishRack = state.dishRacks[station]!;
+  const ready = dishRack[0];
+  // 낱개 음식을 들고 오면 빈 접시를 꺼내 그 자리에서 담는다. 손에 든
+  // 개수가 그대로라 용량이 꽉 차 있어도 된다.
+  const looseFood = actor.carrying.findIndex((carried) => !isDish(carried));
+  if (ready?.status === "clean" && looseFood >= 0) {
+    const food = actor.carrying[looseFood] as ItemId;
+    return event(
+      state,
+      `${actor.name}이(가) 빈 접시에 ${withParticle(itemLabel(food))} 담았습니다.`,
+      {
+        actors: patchActor(state, actorId, {
+          ...spend(actor, actionCost.carry, "CARRYING"),
+          carrying: actor.carrying.map((carried, index) =>
+            index === looseFood
+              ? { ...ready, status: "filled" as const, content: food }
+              : carried,
+          ),
+        }),
+        dishRacks: { ...state.dishRacks, [station]: dishRack.slice(1) },
+      },
+    );
+  }
+  if (ready && canCarry(actor, ready)) {
+    return event(state, `${actor.name}이(가) 깨끗한 그릇을 들었습니다.`, {
+      actors: patchActor(state, actorId, {
+        ...spend(actor, actionCost.carry, "CARRYING"),
+        carrying: [...actor.carrying, ready],
+      }),
+      dishRacks: { ...state.dishRacks, [station]: dishRack.slice(1) },
+    });
+  }
+  const clean = dishIndex(actor, (dish) => dish.status === "clean");
+  if (clean < 0 || dishRack.length >= dishConfig.rackCapacity) {
+    return refuse(state, actor, "그릇을 가져가거나 반납할 수 없습니다.");
+  }
+  const dish = actor.carrying[clean] as Dish;
+  return event(state, `${actor.name}이(가) 깨끗한 그릇을 반납했습니다.`, {
+    actors: patchActor(state, actorId, {
+      ...spend(actor, actionCost.carry, "CARRYING"),
+      carrying: actor.carrying.filter((_, index) => index !== clean),
+    }),
+    dishRacks: { ...state.dishRacks, [station]: [...dishRack, dish] },
+  });
+}
+
+// 명세 11절. 두 물건이 함께 있을 수 있으면 테이블에 내려놓는 방향으로
+// 처리하고, 조합이 성립하지 않으면 아무 동작도 하지 않는다.
+function atTable(
+  state: GameState,
+  actorId: ActorId,
+  actor: ActorState,
+  station: StationInstanceId,
+): GameState {
+  const table = state.tables[station]!;
+  const tableItem = table[0];
+  const put = (
+    message: string,
+    carrying: Carried[],
+    contents: Carried[],
+  ): GameState =>
+    event(state, message, {
+      actors: patchActor(state, actorId, {
+        ...spend(actor, actionCost.carry, "CARRYING"),
+        carrying,
+      }),
+      tables: { ...state.tables, [station]: contents },
+    });
+
+  // 그릇을 들고 음식이 있는 테이블: 그릇을 내려놓고 음식을 담는다.
+  // 음식이 담긴 그릇은 테이블 위에 남는다.
+  const cleanDish = dishIndex(actor, (dish) => dish.status === "clean");
+  if (tableItem && !isDish(tableItem) && cleanDish >= 0) {
+    const dish = actor.carrying[cleanDish] as Dish;
+    return put(
+      `${actor.name}이(가) 테이블의 ${withParticle(itemLabel(tableItem))} 접시에 담았습니다.`,
+      actor.carrying.filter((_, index) => index !== cleanDish),
+      [{ ...dish, status: "filled", content: tableItem }],
+    );
+  }
+
+  // 음식을 들고 빈 그릇이 있는 테이블: 음식을 그릇에 담는다.
+  const looseItem = actor.carrying.findIndex((carried) => !isDish(carried));
+  if (tableItem && isDish(tableItem) && tableItem.status === "clean" && looseItem >= 0) {
+    const food = actor.carrying[looseItem] as ItemId;
+    return put(
+      `${actor.name}이(가) 테이블의 빈 접시에 ${withParticle(itemLabel(food))} 담았습니다.`,
+      actor.carrying.filter((_, index) => index !== looseItem),
+      [{ ...tableItem, status: "filled", content: food }],
+    );
+  }
+
+  // 물건을 들고 있으면 내려놓는다. 자리가 없으면 조합이 성립하지 않는다.
+  if (actor.carrying.length > 0) {
+    if (table.length >= dishConfig.tableCapacity) {
+      return refuse(state, actor, "테이블에 놓을 자리가 없습니다.");
+    }
+    const carried = actor.carrying[0];
+    return put(
+      `${actor.name}이(가) ${withParticle(carriedLabel(carried))} 테이블에 놓았습니다.`,
+      actor.carrying.slice(1),
+      [...table, carried],
+    );
+  }
+
+  // 빈손이면 집어 든다. 빈 테이블이면 아무 동작도 하지 않는다.
+  if (!tableItem) return refuse(state, actor, "테이블이 비어 있습니다.");
+  if (!canCarry(actor, tableItem)) {
+    return refuse(state, actor, "테이블의 물건을 들 수 없습니다.");
+  }
+  return put(
+    `${actor.name}이(가) 테이블에서 ${withParticle(carriedLabel(tableItem))} 들었습니다.`,
+    [tableItem],
+    table.slice(1),
+  );
+}
+
+function atSubmission(
+  state: GameState,
+  actorId: ActorId,
+  actor: ActorState,
+): GameState {
+  const filledDish = dishIndex(
+    actor,
+    (dish) => dish.status === "filled" && dish.content !== null,
+  );
+  const dish = actor.carrying[filledDish];
+  if (filledDish < 0 || !dish || !isDish(dish) || !dish.content) {
+    return refuse(state, actor, "접시에 담긴 완성 음식만 제출할 수 있습니다.");
+  }
+  return submitFood(state, actorId, actor, filledDish, dish.content);
 }
 
 function submitFood(
@@ -1179,37 +1303,35 @@ function submitFood(
   actor: ActorState,
   carriedIndex: number,
   food: ItemId,
-) {
+): GameState {
   // 음식 이름이 아니라 ID로 현재 주문과 대조한다.
   const target = activeOrders(state).find((order) => order.foodId === food);
   const label = itemLabel(food);
+  // 제출한 접시는 더러워진다.
+  const emptied = (base: ActorState) => ({
+    ...base,
+    carrying: base.carrying.map((carried, index) =>
+      index === carriedIndex && isDish(carried)
+        ? { ...carried, status: "dirty" as const, content: null }
+        : carried,
+    ),
+  });
   if (!target) {
     // 실수는 횟수만 센다. 골드는 깎지 않는다.
     const missed = { ...state, misses: state.misses + 1 };
     if (orderConfig.invalidSubmission === "reject") {
-      return refuse(
-        missed,
-        actorId,
-        actor,
-        `현재 주문에 없는 ${withParticle(label)} 제출할 수 없습니다.`,
-      );
+      // 거절이라 행동력을 쓰지 않는다.
+      return refuse(missed, actor, `현재 주문에 없는 ${withParticle(label)} 제출할 수 없습니다.`);
     }
     return event(
       missed,
       `${actor.name}이(가) 주문에 없는 ${withParticle(label)} 처분했습니다.`,
       {
-        actors: patchActor(missed, actorId, {
-          ...actor,
-          carrying: actor.carrying.flatMap((carried, index) =>
-            index !== carriedIndex
-              ? [carried]
-              : isDish(carried)
-                ? [{ ...carried, status: "dirty" as const, content: null }]
-                : [],
-          ),
-          intent: null,
-          status: "IDLE",
-        }),
+        actors: patchActor(
+          missed,
+          actorId,
+          emptied(spend(actor, actionCost.carry, "CARRYING")),
+        ),
       },
     );
   }
@@ -1221,953 +1343,59 @@ function submitFood(
   const filled = orders.filter(orderComplete).length;
   const cleared = filled > state.filled;
   const allDone = orders.every(orderComplete);
-  const nextActor = {
-    ...actor,
-    carrying: actor.carrying.flatMap((carried, index) =>
-      index !== carriedIndex
-        ? [carried]
-        : isDish(carried)
-          ? [{ ...carried, status: "dirty" as const, content: null }]
-          : [],
-    ),
-    intent: null,
-    status: "IDLE" as const,
-  };
   const submitted = orders.find((order) => order.id === target.id)!;
   return event(
     state,
     cleared
-      ? `음식 주문 완료 — ${filled}/${orders.length} (+${GOLD_PER_ORDER}G)`
+      ? `음식 주문 완료 — ${filled}/${currentStage(state).requiredOrders} (+${GOLD_PER_ORDER}G)`
       : `${label} 제출 — ${submitted.submittedCount}/${submitted.targetCount}`,
     {
-      actors: patchActor(state, actorId, nextActor),
+      actors: patchActor(
+        state,
+        actorId,
+        emptied(spend(actor, actionCost.carry, "CARRYING")),
+      ),
       orders,
       filled,
       gold: cleared ? state.gold + GOLD_PER_ORDER : state.gold,
-      phase: allDone && orderConfig.endRoundWhenOrdersDone ? "won" : "playing",
+      // 레시피 목록을 다 처리하면 남은 턴과 무관하게 끝난다.
+      phase:
+        allDone && orderConfig.endRoundWhenOrdersDone
+          ? filled >= currentStage(state).requiredOrders
+            ? "won"
+            : "lost"
+          : "playing",
     },
   );
 }
 
-function moveActor(state: GameState, actorId: ActorId, deltaMs: number) {
-  let next = state;
-  let remaining = deltaMs;
-  let actor = next.actors[actorId]!;
-  // 테이블에 들렀다 가는 중이면 원래 목적지를 기억해 둔다.
-  const followUp =
-    actor.intent?.kind === "INTERACT" ? actor.intent.then : undefined;
-  while (remaining > 0 && next.phase === "playing" && actor.intent) {
-    // actor를 재할당하면 intent 좁히기가 풀리므로 먼저 붙잡아 둔다.
-    const intent = actor.intent;
-    if (actor.status === "MOVING") {
-      const destination = intent.route[0];
-      if (destination) {
-        const dx = destination.x - actor.x;
-        const dy = destination.y - actor.y;
-        const distance = Math.hypot(dx, dy);
-        if (distance > 0.001) {
-          const travelMs = (distance / actor.moveSpeed) * 1000;
-          if (travelMs > remaining) {
-            const ratio = remaining / travelMs;
-            actor = {
-              ...actor,
-              x: actor.x + dx * ratio,
-              y: actor.y + dy * ratio,
-            };
-            remaining = 0;
-            break;
-          }
-          actor = { ...actor, x: destination.x, y: destination.y };
-          remaining -= travelMs;
-        }
-        actor = {
-          ...actor,
-          intent: { ...intent, route: intent.route.slice(1) },
-        };
-        continue;
-      }
-
-      if (actor.intent.kind === "MOVE") {
-        actor = { ...actor, intent: null, status: "IDLE" };
-        break;
-      }
-      if (actor.intent.leader !== actorId) {
-        // 불난 설비에서는 진화 속성만 남고 나머지는 작업 불가다.
-        const burning = isBurning(next, actor.intent.station);
-        if (burning && actor.typeId !== fireConfig.extinguishElement) {
-          next = refuse(
-            next,
-            actorId,
-            actor,
-            "물 슬라임만 불을 끌 수 있습니다.",
-            "WRONG_ELEMENT",
-          );
-          actor = next.actors[actorId]!;
-        } else if (!actor.intent.leader) {
-          next = refuse(
-            next,
-            actorId,
-            actor,
-            `${withParticle(stationLabels[stationType(actor.intent.station)])} 지금 사용할 수 없습니다.`,
-          );
-          actor = next.actors[actorId]!;
-        } else {
-          actor = waitAtStation(actor);
-          next = event(
-            next,
-            `${actor.name}이(가) 다른 슬라임의 작업을 기다립니다.`,
-            { actors: patchActor(next, actorId, actor) },
-          );
-        }
-        remaining = 0;
-        break;
-      }
-      actor = {
-        ...actor,
-        status: "WORKING",
-        workLeftMs: workDurationFor(actor, workCost.interact),
-      };
-      continue;
-    }
-
-    // 진화는 조리와 같은 방식으로 진행도를 쌓는다. 작업자를 잡아 둔
-    // 뒤에만 여기로 들어오므로 접근 동작이 진행도로 새지 않는다.
-    const extinguishing =
-      actor.intent.kind === "INTERACT" &&
-      next.fires[actor.intent.station]?.workerId === actorId;
-    if (extinguishing && actor.intent.kind === "INTERACT") {
-      const station = actor.intent.station;
-      const fire = next.fires[station]!;
-      const spent = Math.min(actor.workLeftMs, remaining);
-      const extinguishMs = Math.min(
-        fire.extinguishTotalMs,
-        fire.extinguishMs + spent,
-      );
-      if (actor.workLeftMs > remaining) {
-        actor = { ...actor, workLeftMs: actor.workLeftMs - remaining };
-        next = {
-          ...next,
-          fires: { ...next.fires, [station]: { ...fire, extinguishMs } },
-        };
-        remaining = 0;
-        break;
-      }
-      remaining -= actor.workLeftMs;
-      actor = {
-        ...actor,
-        intent: null,
-        status: "IDLE",
-        workLeftMs: 0,
-        alert: null,
-        alertMs: 0,
-      };
-      next = event(
-        next,
-        `${actor.name}이(가) ${withParticle(stationLabels[stationType(station)])} 진화했습니다.`,
-        {
-          actors: patchActor(next, actorId, actor),
-          fires: {
-            ...next.fires,
-            [station]: {
-              neglectMs: 0,
-              onFire: false,
-              workerId: null,
-              extinguishMs: 0,
-              spreadMs: 0,
-            },
-          },
-        },
-      );
-      continue;
-    }
-
-    const workingStation = actor.intent.kind === "INTERACT" ? actor.intent.station : null;
-    const washing = workingStation &&
-      stationType(workingStation) === "washer" &&
-      next.washers[workingStation]!.workerId === actorId;
-    if (washing && workingStation) {
-      const station = workingStation;
-      const washer = next.washers[station]!;
-      const spent = Math.min(actor.workLeftMs, remaining);
-      const progressMs = Math.min(washer.totalMs, washer.progressMs + spent);
-      if (actor.workLeftMs > remaining) {
-        actor = { ...actor, workLeftMs: actor.workLeftMs - remaining };
-        next = { ...next, washers: { ...next.washers, [station]: { ...washer, progressMs } } };
-        remaining = 0;
-        break;
-      }
-      remaining -= actor.workLeftMs;
-      actor = {
-        ...actor,
-        intent: null,
-        status: "IDLE",
-        workLeftMs: 0,
-        alert: null,
-        alertMs: 0,
-      };
-      next = event(next, `${actor.name}이(가) 그릇을 깨끗이 씻었습니다.`, {
-        actors: patchActor(next, actorId, actor),
-        washers: {
-          ...next.washers,
-          [station]: {
-          ...washer,
-          dish: washer.dish
-            ? { ...washer.dish, status: "clean", content: null }
-            : null,
-          workerId: null,
-          progressMs: washer.totalMs,
-          },
-        },
-      });
-      continue;
-    }
-
-    const incinerating = workingStation &&
-      stationType(workingStation) === "trash" &&
-      next.incinerators[workingStation]!.workerId === actorId;
-    if (incinerating && workingStation) {
-      const station = workingStation;
-      const incinerator = next.incinerators[station]!;
-      const spent = Math.min(actor.workLeftMs, remaining);
-      const progressMs = Math.min(incinerator.totalMs, incinerator.progressMs + spent);
-      if (actor.workLeftMs > remaining) {
-        actor = { ...actor, workLeftMs: actor.workLeftMs - remaining };
-        next = { ...next, incinerators: { ...next.incinerators, [station]: { ...incinerator, progressMs } } };
-        remaining = 0;
-        break;
-      }
-      remaining -= actor.workLeftMs;
-      actor = {
-        ...actor,
-        intent: null,
-        status: "IDLE",
-        workLeftMs: 0,
-        alert: null,
-        alertMs: 0,
-      };
-      next = event(next, `${actor.name}이(가) 소각기를 비웠습니다.`, {
-        actors: patchActor(next, actorId, actor),
-        incinerators: {
-          ...next.incinerators,
-          [station]: { ...incinerator, count: 0, workerId: null, progressMs: incinerator.totalMs },
-        },
-      });
-      continue;
-    }
-
-    const cooking = workingStation &&
-      stationType(workingStation) === "stove" &&
-      next.workstations[workingStation]!.status === "WORKING" &&
-      next.workstations[workingStation]!.workerId === actorId;
-    if (cooking && workingStation) {
-      const station = workingStation;
-      const workstation = next.workstations[station]!;
-      const spent = Math.min(actor.workLeftMs, remaining);
-      const progressMs = Math.min(
-        workstation.totalMs,
-        workstation.progressMs + spent,
-      );
-      if (actor.workLeftMs > remaining) {
-        actor = { ...actor, workLeftMs: actor.workLeftMs - remaining };
-        next = {
-          ...next,
-          workstations: { ...next.workstations, [station]: { ...workstation, progressMs } },
-        };
-        remaining = 0;
-        break;
-      }
-      remaining -= actor.workLeftMs;
-      actor = {
-        ...actor,
-        intent: null,
-        status: "IDLE",
-        workLeftMs: 0,
-        alert: null,
-        alertMs: 0,
-      };
-      next = event(
-        next,
-        `${actor.name}이(가) ${itemLabel(potatoRecipe.foodId)}를 완성했습니다.`,
-        {
-          actors: patchActor(next, actorId, actor),
-          stoves: { ...next.stoves, [station]: [potatoRecipe.foodId] },
-          workstations: { ...next.workstations, [station]: {
-            ...workstation,
-            status: "COMPLETE",
-            workerId: null,
-            progressMs: workstation.totalMs,
-          } },
-        },
-      );
-      continue;
-    }
-
-    if (actor.workLeftMs > remaining) {
-      actor = { ...actor, workLeftMs: actor.workLeftMs - remaining };
-      remaining = 0;
-      break;
-    }
-    remaining -= actor.workLeftMs;
-    if (actor.intent.kind !== "INTERACT") {
-      actor = { ...actor, intent: null, status: "IDLE", workLeftMs: 0 };
-      continue;
-    }
-    const station = actor.intent.station;
-    const type = stationType(station);
-
-    // 불이 났으면 다른 작업은 시작하지 않고 진화만 건다.
-    const fire = next.fires[station];
-    if (fire?.onFire) {
-      if (actor.typeId !== fireConfig.extinguishElement) {
-        next = refuse(
-          next,
-          actorId,
-          actor,
-          "물 슬라임만 불을 끌 수 있습니다.",
-          "WRONG_ELEMENT",
-        );
-        actor = next.actors[actorId]!;
-        continue;
-      }
-      const extinguishTotalMs = workDurationFor(actor, workCost.extinguish);
-      const from = fireConfig.keepExtinguishProgress
-        ? Math.min(fire.extinguishMs, extinguishTotalMs)
-        : 0;
-      actor = {
-        ...actor,
-        status: "WORKING",
-        workLeftMs: extinguishTotalMs - from,
-        alert: null,
-        alertMs: 0,
-      };
-      next = event(
-        next,
-        `${actor.name}이(가) ${withParticle(stationLabels[type])} 진화하기 시작했습니다.`,
-        {
-          actors: patchActor(next, actorId, actor),
-          fires: {
-            ...next.fires,
-            [station]: {
-              ...fire,
-              workerId: actorId,
-              extinguishMs: from,
-              extinguishTotalMs,
-            },
-          },
-        },
-      );
-      continue;
-    }
-
-    if (
-      type === "stove" &&
-      next.workstations[station]!.status === "WORKING" &&
-      next.workstations[station]!.workerId !== actorId
-    ) {
-      actor = waitAtStation(actor);
-      remaining = 0;
-      break;
-    }
-
-    if (type === "table") {
-      const table = next.tables[station]!;
-      const tableItem = table[0];
-      const cleanDish = dishIndex(actor, (dish) => dish.status === "clean");
-      if (tableItem && !isDish(tableItem) && cleanDish >= 0) {
-        actor = {
-          ...actor,
-          carrying: actor.carrying.map((carried, index) =>
-            index === cleanDish && isDish(carried)
-              ? { ...carried, status: "filled" as const, content: tableItem }
-              : carried,
-          ),
-          intent: null,
-          status: "IDLE",
-        };
-        next = event(next, `${actor.name}이(가) 테이블의 ${withParticle(itemLabel(tableItem))} 접시에 담았습니다.`, {
-          actors: patchActor(next, actorId, actor),
-          tables: { ...next.tables, [station]: [] },
-        });
-        continue;
-      }
-      const looseItem = actor.carrying.findIndex((carried) => !isDish(carried));
-      if (tableItem && isDish(tableItem) && tableItem.status === "clean" && looseItem >= 0) {
-        const food = actor.carrying[looseItem] as ItemId;
-        actor = {
-          ...actor,
-          carrying: actor.carrying.filter((_, index) => index !== looseItem),
-          intent: null,
-          status: "IDLE",
-        };
-        next = event(next, `${actor.name}이(가) 테이블의 빈 접시에 ${withParticle(itemLabel(food))} 담았습니다.`, {
-          actors: patchActor(next, actorId, actor),
-          tables: { ...next.tables, [station]: [{ ...tableItem, status: "filled", content: food }] },
-        });
-        continue;
-      }
-      if (actor.carrying.length > 0) {
-        if (table.length >= dishConfig.tableCapacity) {
-          next = refuse(next, actorId, actor, "테이블에 빈 자리가 없습니다.", "TARGET_FULL");
-          actor = next.actors[actorId]!;
-          continue;
-        }
-        const carried = actor.carrying[0];
-        actor = { ...actor, carrying: actor.carrying.slice(1), intent: null, status: "IDLE" };
-        next = event(next, `${actor.name}이(가) ${withParticle(carriedLabel(carried))} 테이블에 놓았습니다.`, {
-          actors: patchActor(next, actorId, actor),
-          tables: { ...next.tables, [station]: [...table, carried] },
-        });
-        continue;
-      }
-      const carried = table[0];
-      if (!carried || !canCarry(actor, carried)) {
-        next = refuse(next, actorId, actor, "테이블에서 집을 수 있는 물건이 없습니다.");
-        actor = next.actors[actorId]!;
-        continue;
-      }
-      actor = { ...actor, carrying: [carried], intent: null, status: "IDLE" };
-      next = event(next, `${actor.name}이(가) 테이블에서 ${withParticle(carriedLabel(carried))} 들었습니다.`, {
-        actors: patchActor(next, actorId, actor),
-        tables: { ...next.tables, [station]: table.slice(1) },
-      });
-      continue;
-    }
-
-    if (type === "dish-rack") {
-      const dishRack = next.dishRacks[station]!;
-      const ready = dishRack[0];
-      // 음식을 들고 왔으면 빈 접시를 꺼내 담는다. 들고 있던 낱개 음식이
-      // 담긴 접시로 바뀌므로 손에 든 개수는 그대로다.
-      const looseFood = actor.carrying.findIndex((carried) => !isDish(carried));
-      if (ready?.status === "clean" && looseFood >= 0) {
-        const food = actor.carrying[looseFood] as ItemId;
-        actor = {
-          ...actor,
-          carrying: actor.carrying.map((carried, index) =>
-            index === looseFood
-              ? { ...ready, status: "filled" as const, content: food }
-              : carried,
-          ),
-          intent: null,
-          status: "IDLE",
-        };
-        next = event(
-          next,
-          `${actor.name}이(가) 빈 접시에 ${withParticle(itemLabel(food))} 담았습니다.`,
-          {
-            actors: patchActor(next, actorId, actor),
-            dishRacks: { ...next.dishRacks, [station]: dishRack.slice(1) },
-          },
-        );
-        continue;
-      }
-      if (ready && canCarry(actor, ready)) {
-        actor = {
-          ...actor,
-          carrying: [...actor.carrying, ready],
-          intent: null,
-          status: "IDLE",
-        };
-        next = event(next, `${actor.name}이(가) 깨끗한 그릇을 들었습니다.`, {
-          actors: patchActor(next, actorId, actor),
-          dishRacks: { ...next.dishRacks, [station]: dishRack.slice(1) },
-        });
-        continue;
-      }
-      const clean = dishIndex(actor, (dish) => dish.status === "clean");
-      if (clean < 0 || dishRack.length >= dishConfig.rackCapacity) {
-        next = refuse(next, actorId, actor, "그릇을 가져가거나 반납할 수 없습니다.");
-        actor = next.actors[actorId]!;
-        continue;
-      }
-      const dish = actor.carrying[clean] as Dish;
-      actor = {
-        ...actor,
-        carrying: actor.carrying.filter((_, index) => index !== clean),
-        intent: null,
-        status: "IDLE",
-      };
-      next = event(next, `${actor.name}이(가) 깨끗한 그릇을 반납했습니다.`, {
-        actors: patchActor(next, actorId, actor),
-        dishRacks: { ...next.dishRacks, [station]: [...dishRack, dish] },
-      });
-      continue;
-    }
-
-    if (type === "washer") {
-      const washer = next.washers[station]!;
-      if (!washer.dish) {
-        const dirty = dishIndex(actor, (dish) => dish.status === "dirty");
-        if (dirty < 0) {
-          next = refuse(next, actorId, actor, "세척할 더러운 그릇이 없습니다.");
-          actor = next.actors[actorId]!;
-          continue;
-        }
-        const dish = actor.carrying[dirty] as Dish;
-        const starts = actor.typeId === "water";
-        const washMs = workDurationFor(actor, workCost.wash);
-        actor = {
-          ...actor,
-          carrying: actor.carrying.filter((_, index) => index !== dirty),
-          intent: starts ? actor.intent : null,
-          status: starts ? "WORKING" : "IDLE",
-          workLeftMs: starts ? washMs : 0,
-        };
-        next = event(next, starts ? `${actor.name}이(가) 그릇을 씻기 시작했습니다.` : `${actor.name}이(가) 더러운 그릇을 세척기에 놓았습니다.`, {
-          actors: patchActor(next, actorId, actor),
-          washers: { ...next.washers, [station]: {
-            dish,
-            workerId: starts ? actorId : null,
-            progressMs: 0,
-            totalMs: washMs,
-          } },
-        });
-        continue;
-      }
-      if (washer.dish.status === "dirty") {
-        if (actor.typeId !== "water" || washer.workerId) {
-          next = refuse(next, actorId, actor, "물 슬라임만 그릇을 씻을 수 있습니다.", "WRONG_ELEMENT");
-          actor = next.actors[actorId]!;
-          continue;
-        }
-        const restartMs = workDurationFor(actor, workCost.wash);
-        actor = { ...actor, status: "WORKING", workLeftMs: restartMs };
-        next = event(next, `${actor.name}이(가) 그릇을 씻기 시작했습니다.`, {
-          actors: patchActor(next, actorId, actor),
-          washers: { ...next.washers, [station]: {
-            ...washer,
-            workerId: actorId,
-            progressMs: 0,
-            totalMs: restartMs,
-          } },
-        });
-        continue;
-      }
-      if (!canCarry(actor, washer.dish)) {
-        next = refuse(next, actorId, actor, "씻은 그릇을 들 수 없습니다.");
-        actor = next.actors[actorId]!;
-        continue;
-      }
-      actor = {
-        ...actor,
-        carrying: [...actor.carrying, washer.dish],
-        intent: null,
-        status: "IDLE",
-      };
-      next = event(next, `${actor.name}이(가) 씻은 그릇을 꺼냈습니다.`, {
-        actors: patchActor(next, actorId, actor),
-        washers: { ...next.washers, [station]: { ...washer, dish: null, workerId: null, progressMs: 0 } },
-      });
-      continue;
-    }
-
-    if (type === "ingredient-box") {
-      const ingredients = next.ingredients[station]!;
-      if (ingredients.stock < 1) {
-        actor = waitAtStation(actor, true);
-        remaining = 0;
-        break;
-      }
-      const clean = dishIndex(actor, (dish) => dish.status === "clean");
-      if (clean >= 0) {
-        const carrying = actor.carrying.map((carried, index) =>
-          index === clean && isDish(carried)
-            ? {
-                ...carried,
-                status: "filled" as const,
-                content: potatoRecipe.ingredient.itemId,
-              }
-            : carried,
-        );
-        actor = {
-          ...actor,
-          carrying,
-          intent: null,
-          status: "IDLE",
-          alert: null,
-          alertMs: 0,
-        };
-        next = event(next, `${actor.name}이(가) 그릇에 감자를 담았습니다.`, {
-          actors: patchActor(next, actorId, actor),
-          ingredients: { ...next.ingredients, [station]: { ...ingredients, stock: ingredients.stock - 1 } },
-        });
-        continue;
-      }
-      if (!canCarry(actor, potatoRecipe.ingredient.itemId)) {
-        next = refuse(next, actorId, actor, "이미 음식이나 그릇을 들고 있습니다.");
-        actor = next.actors[actorId]!;
-        continue;
-      }
-      actor = {
-        ...actor,
-        carrying: [...actor.carrying, potatoRecipe.ingredient.itemId],
-        intent: null,
-        status: "IDLE",
-        alert: null,
-        alertMs: 0,
-      };
-      next = event(next, `${actor.name}이(가) 감자를 들었습니다.`, {
-        actors: patchActor(next, actorId, actor),
-        ingredients: { ...next.ingredients, [station]: { ...ingredients, stock: ingredients.stock - 1 } },
-      });
-      continue;
-    }
-
-    if (type === "stove") {
-      const stove = next.stoves[station]!;
-      const workstation = next.workstations[station]!;
-      const loosePotato = actor.carrying.indexOf(
-        potatoRecipe.ingredient.itemId,
-      );
-      const potatoDish = dishIndex(
-        actor,
-        (dish) => dish.content === potatoRecipe.ingredient.itemId,
-      );
-      if (loosePotato >= 0 || potatoDish >= 0) {
-        if (stove.length >= STORAGE_MAX) {
-          next = refuse(next, actorId, actor, "도마가 사용 중입니다.", "TARGET_FULL");
-          actor = next.actors[actorId]!;
-          continue;
-        }
-        const carrying = actor.carrying
-          .filter((_, index) => index !== loosePotato)
-          .map((carried, index) => {
-            const originalIndex = loosePotato >= 0 ? index + 1 : index;
-            return originalIndex === potatoDish && isDish(carried)
-              ? { ...carried, status: "clean" as const, content: null }
-              : carried;
-          });
-        actor = {
-          ...actor,
-          carrying,
-          intent: null,
-          status: "IDLE",
-        };
-        next = event(next, `${actor.name}이(가) 도마에 감자를 올렸습니다.`, {
-          actors: patchActor(next, actorId, actor),
-          stoves: { ...next.stoves, [station]: [potatoRecipe.ingredient.itemId] },
-          workstations: { ...next.workstations, [station]: {
-            ...workstation,
-            status: "IDLE",
-            workerId: null,
-            progressMs: 0,
-          } },
-        });
-        continue;
-      }
-      if (stove.includes(potatoRecipe.foodId)) {
-        const clean = dishIndex(actor, (dish) => dish.status === "clean");
-        if (clean < 0 && !canCarry(actor, potatoRecipe.foodId)) {
-          next = refuse(next, actorId, actor, "완성 음식을 들 자리가 없습니다.");
-          actor = next.actors[actorId]!;
-          continue;
-        }
-        actor = {
-          ...actor,
-          carrying: clean >= 0
-            ? actor.carrying.map((carried, index) =>
-                index === clean && isDish(carried)
-                  ? {
-                      ...carried,
-                      status: "filled" as const,
-                      content: potatoRecipe.foodId,
-                    }
-                  : carried,
-              )
-            : [...actor.carrying, potatoRecipe.foodId],
-          intent: null,
-          status: "IDLE",
-        };
-        next = event(next, clean >= 0
-          ? `${actor.name}이(가) 그릇에 구운 감자를 담았습니다.`
-          : `${actor.name}이(가) 도마에서 구운 감자를 들었습니다.`, {
-          actors: patchActor(next, actorId, actor),
-          stoves: { ...next.stoves, [station]: [] },
-          workstations: { ...next.workstations, [station]: {
-            ...workstation,
-            status: "MISSING_MATERIAL",
-            workerId: null,
-            progressMs: 0,
-          } },
-        });
-        continue;
-      }
-      if (actor.carrying.length > 0) {
-        next = refuse(next, actorId, actor, "들고 있는 물건을 먼저 내려놓아야 합니다.");
-        actor = next.actors[actorId]!;
-        continue;
-      }
-      if (!stove.includes(potatoRecipe.ingredient.itemId)) {
-        actor = waitAtStation(actor, true);
-        next = {
-          ...next,
-          actors: patchActor(next, actorId, actor),
-          workstations: { ...next.workstations, [station]: {
-            ...workstation,
-            status: "MISSING_MATERIAL",
-            workerId: actorId,
-            progressMs: 0,
-          } },
-        };
-        remaining = 0;
-        break;
-      }
-      const totalMs = workDurationFor(actor, workCost.cook);
-      actor = {
-        ...actor,
-        status: "WORKING",
-        workLeftMs: totalMs,
-        alert: null,
-        alertMs: 0,
-      };
-      next = event(next, `${actor.name}이(가) 감자를 굽기 시작했습니다.`, {
-        actors: patchActor(next, actorId, actor),
-        workstations: { ...next.workstations, [station]: {
-          status: "WORKING",
-          workerId: actorId,
-          progressMs: 0,
-          totalMs,
-        } },
-      });
-      continue;
-    }
-
-    if (type === "submission") {
-      const filledDish = dishIndex(
-        actor,
-        (dish) => dish.status === "filled" && dish.content !== null,
-      );
-      const dish = actor.carrying[filledDish];
-      if (filledDish < 0 || !dish || !isDish(dish) || !dish.content) {
-        next = refuse(next, actorId, actor, "접시에 담긴 완성 음식만 제출할 수 있습니다.");
-        actor = next.actors[actorId]!;
-        continue;
-      }
-      next = submitFood(next, actorId, actor, filledDish, dish.content);
-      actor = next.actors[actorId]!;
-      continue;
-    }
-
-    if (type === "trash") {
-      const incinerator = next.incinerators[station]!;
-      const carried = actor.carrying[0];
-      const full = incinerator.count >= incineratorConfig.capacity;
-      // 가득 찬 소각기 앞에서는 물건을 든 불 슬라임도 넣기 대신 소각부터 한다.
-      // 그러지 않으면 넣지도 비우지도 못하고 손을 비우러 다녀와야 한다.
-      const burnsInstead = full && actor.typeId === "fire" && !incinerator.workerId;
-      if (carried && !burnsInstead) {
-        if (full) {
-          next = refuse(next, actorId, actor, "소각기가 가득 찼습니다.", "TARGET_FULL");
-          actor = next.actors[actorId]!;
-          continue;
-        }
-        if (isDish(carried) && !carried.content) {
-          next = refuse(next, actorId, actor, "빈 그릇은 소각기에 버릴 수 없습니다.");
-          actor = next.actors[actorId]!;
-          continue;
-        }
-        const discarded = isDish(carried) ? itemLabel(carried.content!) : itemLabel(carried);
-        actor = {
-          ...actor,
-          carrying: isDish(carried)
-            ? [{ ...carried, status: "dirty", content: null }, ...actor.carrying.slice(1)]
-            : actor.carrying.slice(1),
-          intent: null,
-          status: "IDLE",
-        };
-        next = event(next, `${actor.name}이(가) 소각기에 ${withParticle(discarded)} 버렸습니다.`, {
-          actors: patchActor(next, actorId, actor),
-          incinerators: {
-            ...next.incinerators,
-            [station]: { ...incinerator, count: incinerator.count + 1, progressMs: 0 },
-          },
-        });
-        continue;
-      }
-      if (actor.typeId !== "fire") {
-        next = refuse(next, actorId, actor, "불 슬라임만 소각기를 비울 수 있습니다.", "WRONG_ELEMENT");
-        actor = next.actors[actorId]!;
-        continue;
-      }
-      if (incinerator.count < 1 || incinerator.workerId) {
-        next = refuse(next, actorId, actor, "소각할 쓰레기가 없습니다.");
-        actor = next.actors[actorId]!;
-        continue;
-      }
-      const totalMs = workDurationFor(actor, incineratorConfig.burnCost);
-      actor = { ...actor, status: "WORKING", workLeftMs: totalMs, alert: null, alertMs: 0 };
-      next = event(next, `${actor.name}이(가) 소각을 시작했습니다.`, {
-        actors: patchActor(next, actorId, actor),
-        incinerators: {
-          ...next.incinerators,
-          [station]: { ...incinerator, workerId: actorId, progressMs: 0, totalMs },
-        },
-      });
-      continue;
-    }
-  }
-  // 내려놓기가 끝났으면 원래 지시를 이어서 수행한다.
-  if (followUp && !actor.intent && actor.status === "IDLE") {
-    const target = stationsById[followUp];
-    const route = target ? routeBetween(actor, tileCenter(target.taskTile)) : [];
-    if (target && route.length) {
-      actor = {
-        ...actor,
-        intent: { kind: "INTERACT", station: target.id, leader: actorId, route },
-        status: "MOVING",
-      };
-    }
-  }
-  return { ...next, actors: patchActor(next, actorId, actor) };
-}
-
-function decayAlerts(state: GameState, deltaMs: number) {
-  let changed = false;
-  const actors = { ...state.actors };
-  for (const id of Object.keys(actors) as ActorId[]) {
-    const actor = actors[id]!;
-    if (!actor.alert) continue;
-    const alertMs = Math.max(0, actor.alertMs - deltaMs);
+// 턴 종료. 남은 행동력은 소멸하고, 재료가 차고, 스테이지 남은 턴이 준다.
+export function endTurn(state: GameState): GameState {
+  if (state.phase !== "playing") return state;
+  const actors: Partial<Record<ActorId, ActorState>> = {};
+  for (const id of Object.keys(state.actors) as ActorId[]) {
+    const actor = state.actors[id]!;
     actors[id] = {
       ...actor,
-      status:
-        alertMs === 0 && actor.status === "WAITING" && !actor.intent
-          ? "IDLE"
-          : actor.status,
-      alertMs,
-      alert: alertMs > 0 ? actor.alert : null,
+      actionPoints: maxActionPoints(actor.typeId),
+      status: "IDLE",
     };
-    changed = true;
   }
-  return changed ? { ...state, actors } : state;
-}
-
-function advanceIngredients(state: GameState, deltaMs: number) {
-  let next = state;
-  for (const station of stationInstancesByType["ingredient-box"]) {
-    const ingredients = next.ingredients[station.id]!;
-    if (ingredients.stock >= INGREDIENT_MAX) {
-      next = {
-        ...next,
-        ingredients: {
-          ...next.ingredients,
-          [station.id]: { ...ingredients, timerMs: INGREDIENT_INTERVAL_MS },
-        },
-      };
-      continue;
-    }
-    const timerMs = ingredients.timerMs - deltaMs;
-    if (timerMs > 0) {
-      next = {
-        ...next,
-        ingredients: { ...next.ingredients, [station.id]: { ...ingredients, timerMs } },
-      };
-      continue;
-    }
-    next = event(next, "재료 상자에 감자가 채워졌습니다.", {
-      ingredients: {
-        ...next.ingredients,
-        [station.id]: {
-          stock: ingredients.stock + 1,
-          timerMs: INGREDIENT_INTERVAL_MS,
-        },
-      },
-    });
+  const ingredients = { ...state.ingredients };
+  for (const { id } of stationInstancesByType["ingredient-box"]) {
+    ingredients[id] = {
+      stock: Math.min(INGREDIENT_MAX, ingredients[id]!.stock + INGREDIENT_PER_TURN),
+    };
   }
-  return next;
-}
-
-function igniteStation(state: GameState, station: StationInstanceId, message: string) {
-  const fire = state.fires[station];
-  // 화재 대상이 아니거나 이미 불이 난 곳에는 중복 적용하지 않는다.
-  if (!fire || fire.onFire) return state;
-  return event(state, message, {
-    fires: {
-      ...state.fires,
-      [station]: {
-        neglectMs: 0,
-        onFire: true,
-        workerId: null,
-        extinguishMs: 0,
-        spreadMs: 0,
-      },
-    },
-  });
-}
-
-// 방치 판정: 지금 상호작용 상태를 가진 설비는 조리 도구뿐이다. 다른
-// 설비가 상태를 갖게 되면 여기에 분기를 추가한다.
-function isNeglected(state: GameState, station: StationInstanceId) {
-  return (
-    stationType(station) === "stove" &&
-    state.workstations[station]?.status === fireConfig.neglectStatus
+  const turnsLeft = state.turnsLeft - 1;
+  const played = { ...state, actors, ingredients, turnsLeft, turn: state.turn + 1 };
+  if (turnsLeft > 0) {
+    return { ...played, refusal: null };
+  }
+  const stage = currentStage(played);
+  return event(
+    played,
+    `${stage.id} 영업 종료 — 주문 ${played.filled}/${stage.requiredOrders}건 완료`,
+    { phase: roundResult(played), turnsLeft: 0 },
   );
-}
-
-function advanceFires(state: GameState, deltaMs: number) {
-  let next = state;
-  for (const station of Object.keys(next.fires) as StationInstanceId[]) {
-    const fire = next.fires[station]!;
-    if (!fire.onFire) {
-      const neglectMs = isNeglected(next, station) ? fire.neglectMs + deltaMs : 0;
-      if (neglectMs < fireConfig.igniteAfterMs) {
-        next = { ...next, fires: { ...next.fires, [station]: { ...fire, neglectMs } } };
-        continue;
-      }
-      next = igniteStation(
-        next,
-        station,
-        `${withParticle(stationLabels[stationType(station)])} 방치해 불이 났습니다.`,
-      );
-      continue;
-    }
-    const spreadMs = fire.spreadMs + deltaMs;
-    if (spreadMs < fireConfig.spreadIntervalMs) {
-      next = { ...next, fires: { ...next.fires, [station]: { ...fire, spreadMs } } };
-      continue;
-    }
-    next = {
-      ...next,
-      fires: { ...next.fires, [station]: { ...fire, spreadMs: 0 } },
-    };
-    // 이미 불이 났거나 화재 대상이 아닌 설비에는 옮겨붙지 않는다.
-    const victim = (Object.keys(next.fires) as StationInstanceId[]).find(
-      (id) =>
-        id !== station &&
-        !next.fires[id]!.onFire &&
-        isAdjacentStation(station, id),
-    );
-    if (victim) {
-      next = igniteStation(
-        next,
-        victim,
-        `${stationLabels[stationType(station)]}의 불이 ${withParticle(stationLabels[stationType(victim)], ["으로", "로"])} 옮겨붙었습니다.`,
-      );
-    }
-  }
-  return next;
-}
-
-export function tick(state: GameState, deltaMs = 1000): GameState {
-  if (state.phase !== "playing" || !Number.isFinite(deltaMs) || deltaMs <= 0) {
-    return state;
-  }
-  const elapsed = Math.min(deltaMs, state.timeLeftMs);
-  let next = state;
-  for (const actorId of Object.keys(next.actors) as ActorId[]) {
-    next = moveActor(next, actorId, elapsed);
-    if (next.phase !== "playing") break;
-  }
-  next = decayAlerts(next, elapsed);
-  next = advanceIngredients(next, elapsed);
-  next = advanceFires(next, elapsed);
-  if (next.phase === "won") return next;
-  const timeLeftMs = next.timeLeftMs - elapsed;
-  return timeLeftMs === 0
-    ? event(next, `${currentStage(next).id} 영업 종료 — 주문 ${next.filled}/${next.goal}건 완료`, {
-        phase: roundResult(next),
-        timeLeft: 0,
-        timeLeftMs: 0,
-      })
-    : { ...next, timeLeftMs, timeLeft: Math.ceil(timeLeftMs / 1000) };
 }

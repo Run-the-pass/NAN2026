@@ -16,7 +16,6 @@ import {
   itemIcons,
   stageInfoUiConfig,
   stationIcons,
-  type StageInfoNextStep,
 } from "./stage-info";
 
 const stationByTile = new Map(
@@ -169,7 +168,7 @@ export default function StageInfoScreen({
   onNext,
 }: {
   stage: Stage;
-  onNext: (step: StageInfoNextStep) => void;
+  onNext: () => void;
 }) {
   const config = stageInfoUiConfig[stage.id];
   const transitioning = useRef(false);
@@ -186,7 +185,7 @@ export default function StageInfoScreen({
     if (transitioning.current) return;
     transitioning.current = true;
     setIsTransitioning(true);
-    onNext(config.nextStep);
+    onNext();
   };
   return (
     <section

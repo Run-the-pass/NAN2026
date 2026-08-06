@@ -8,13 +8,18 @@ import {
   MAP_HEIGHT,
   KITCHEN_ROWS,
   initialState,
-  interactActors,
-  isWalkable,
-  moveActors,
+  interactActor,
+  moveActor,
+  moveTargets,
+  endTurn,
   pixelToTile,
   slimeTypes,
-  tick,
   tileCenter,
+  actionCost,
+  maxActionPoints,
+  stageRank,
+  upcomingOrders,
+  RUSH_TURNS_LEFT,
   INGREDIENT_MAX,
   stationInstances,
   stationType,
@@ -26,7 +31,6 @@ import {
   currentStage,
   isLastStage,
   nextStage,
-  recruitSlime,
   GOLD_PER_ORDER,
   dishConfig,
   incineratorConfig,
@@ -82,13 +86,8 @@ const AUTHORED_TEXTURE = { width: 348, height: 301 };
 const AUTHORED_SLIME_SCALE = SLIME_SCALE * 1.12;
 // 젓기만 손에 드는 것이 없어 따로 보여 줘야 한다.
 type Motion = "idle" | "walk" | "stir" | "pick";
-const alertIcons: Record<string, string> = {
-  WAITING: "⏳",
-  SOURCE_EMPTY: "🫙",
-  TARGET_FULL: "🚫",
-  INVALID_ROUTE: "❓",
-  WRONG_ELEMENT: "🔥",
-};
+// 행동 한 번은 즉시 끝나므로 모션도 잠깐만 재생하고 숨쉬기로 돌아간다.
+const MOTION_MS = 320;
 const workStatusLabels = {
   IDLE: "대기",
   MISSING_MATERIAL: "식재료 부족",
@@ -141,11 +140,6 @@ const carriedIcon = (carried: Carried) =>
         : "🍽️"
     : itemIcons[carried];
 
-const statRows = [
-  ["🔨", "작업 속도", "workSpeed"],
-  ["👟", "이동 속도", "moveSpeed"],
-] as const;
-
 type Metrics = {
   buttonCommands: number;
 };
@@ -163,32 +157,32 @@ const stationPanelInfo: Record<
   { description: string[]; required: SlimeTypeId[]; steps: string[] }
 > = {
   "ingredient-box": {
-    description: ["감자가 일정 시간마다 채워집니다.", "빈손이나 깨끗한 그릇으로 꺼냅니다."],
+    description: ["턴이 끝날 때마다 감자가 한 개 찹니다.", "빈손이나 깨끗한 그릇으로 꺼냅니다. (행동력 1)"],
     required: [],
     steps: ["🥔 감자 받기"],
   },
   stove: {
-    description: ["감자를 넣고 손질하면 요리가 됩니다.", "완성 음식은 깨끗한 그릇에 담습니다."],
-    required: [],
+    description: ["땅 슬라임만 감자를 썰 수 있습니다. (행동력 2)", "재료를 올리고 꺼내는 것은 누구나 합니다."],
+    required: ["earth"],
     steps: ["🥔 감자", "🔪 손질", "🍽️ 그릇"],
   },
   submission: {
-    description: ["주문 음식이 담긴 그릇을 제출합니다.", "제출한 그릇은 더러워집니다."],
+    description: ["주문 음식이 담긴 그릇을 제출합니다. (행동력 1)", "제출한 그릇은 더러워집니다."],
     required: [],
     steps: ["🍲 음식", "📬 제출"],
   },
   trash: {
-    description: ["쓰레기를 최대 5개까지 보관합니다.", "불 슬라임이 소각 작업으로 비웁니다."],
+    description: ["쓰레기를 최대 5개까지 보관합니다. (버리기 행동력 1)", "불 슬라임이 소각해 비웁니다. (행동력 2)"],
     required: ["fire"],
     steps: ["🗑️ 쓰레기 투입", "🔥 소각"],
   },
   "dish-rack": {
-    description: ["깨끗한 그릇을 꺼내는 곳입니다.", "생성대에는 그릇이 최대 3개 있습니다."],
+    description: ["깨끗한 그릇을 꺼내는 곳입니다. (행동력 1)", "생성대에는 그릇이 최대 3개 있습니다."],
     required: [],
     steps: ["🍽️ 그릇 받기"],
   },
   washer: {
-    description: ["더러운 그릇을 맡겨 세척합니다.", "물 슬라임이 세척을 완료할 수 있습니다."],
+    description: ["더러운 그릇을 맡깁니다. (행동력 1)", "물 슬라임만 세척할 수 있습니다. (행동력 2)"],
     required: ["water"],
     steps: ["🍽️ 더러운 그릇", "💧 세척"],
   },
@@ -204,71 +198,25 @@ const slimePortrait = (typeId: SlimeTypeId) =>
     ? "/slimes/water.svg"
     : authoredSlimeAssets[typeId] ?? slimeDataUri(typeId, "down");
 
-function StatGauges({ levels }: { levels: Record<string, number> }) {
+// 남은 행동력을 칸으로 보여 준다. 턴제에서 슬라임을 가르는 유일한 수치다.
+function ActionPoints({ actor }: { actor: { typeId: SlimeTypeId; actionPoints: number } }) {
+  const max = maxActionPoints(actor.typeId);
   return (
     <ul className="slime-stats">
-      {statRows.map(([icon, label, key]) => (
-        <li key={key}>
-          <span aria-hidden>{icon}</span>
-          <span>{label}</span>
-          <span
-            className="stat-gauge"
-            role="img"
-            aria-label={`${label} 레벨 ${levels[key]} / 5`}
-          >
-            {[0, 1, 2, 3, 4].map((cell) => (
-              <i key={cell} data-on={cell < levels[key] ? "" : undefined} />
-            ))}
-          </span>
-        </li>
-      ))}
+      <li>
+        <span aria-hidden>⚡</span>
+        <span>행동력</span>
+        <span
+          className="stat-gauge"
+          role="img"
+          aria-label={`남은 행동력 ${actor.actionPoints} / ${max}`}
+        >
+          {Array.from({ length: max }, (_, cell) => (
+            <i key={cell} data-on={cell < actor.actionPoints ? "" : undefined} />
+          ))}
+        </span>
+      </li>
     </ul>
-  );
-}
-
-function RecruitScreen({
-  picked,
-  onPick,
-  onConfirm,
-}: {
-  picked: SlimeTypeId;
-  onPick: (typeId: SlimeTypeId) => void;
-  onConfirm: () => void;
-}) {
-  return (
-    <section className="recruit-overlay" role="dialog" aria-modal="true" aria-labelledby="recruit-title">
-      <div className="recruit-screen">
-        <h2 id="recruit-title">추가할 슬라임을 선택하세요!</h2>
-        <div className="select-grid">
-          {allTypeIds.map((typeId) => {
-            const kind = slimeTypes[typeId];
-            return (
-              <button
-                key={typeId}
-                className="slime-select-card"
-                data-slime-type={typeId}
-                data-active={picked === typeId ? "" : undefined}
-                aria-pressed={picked === typeId}
-                onClick={() => onPick(typeId)}
-              >
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  className="slime-portrait"
-                  data-water={typeId === "water" ? "" : undefined}
-                  data-authored={authoredSlimeAssets[typeId] ? "" : undefined}
-                  src={slimePortrait(typeId)}
-                  alt=""
-                />
-                <strong>{kind.name} 슬라임</strong>
-                <small>{kind.role}</small>
-              </button>
-            );
-          })}
-        </div>
-        <p>선택: {slimeTypes[picked].name} 슬라임</p>
-        <button className="select-start" type="button" onClick={onConfirm}>확인</button>
-      </div>
-    </section>
   );
 }
 
@@ -288,27 +236,17 @@ function OrderDish({ foodId }: { foodId: ItemId }) {
 
 function OrderCards({ state }: { state: GameState }) {
   const orders = activeOrders(state);
-  const urgency = state.timeLeft <= 20 ? "danger" : state.timeLeft <= 40 ? "warn" : "ready";
-  // 카드 위 띠는 남은 영업 시간 게이지다. 주문별 제한 시간이 생기면
-  // 이 비율만 주문 기준으로 바꾸면 된다.
-  const left = Math.max(
-    0,
-    Math.min(100, (state.timeLeftMs / currentStage(state).timeLimitMs) * 100),
-  );
+  const upcoming = upcomingOrders(state);
   return (
     <section className="order-cards" aria-label="진행 중인 주문">
-      {[0, 1, 2].map((index) => {
+      {[0, 1].map((index) => {
         const order = orders[index];
         if (!order) return <span className="order-card order-card-empty" aria-hidden key={index} />;
         const recipe = recipes[order.foodId as keyof typeof recipes];
         return (
-          <article className="order-card" data-urgency={urgency} key={order.id}>
-            <span className="order-gauge" aria-hidden>
-              <i style={{ width: `${left}%` }} />
-            </span>
+          <article className="order-card" key={order.id}>
             <header>
               <b>주문 {index + 1}</b>
-              <span>영업 {state.timeLeft}초</span>
             </header>
             <strong className="order-food">
               <OrderDish foodId={order.foodId} />
@@ -326,6 +264,19 @@ function OrderCards({ state }: { state: GameState }) {
           </article>
         );
       })}
+      {/* 다음에 들어올 레시피는 현재 주문 오른쪽 위에 작게 붙인다. */}
+      <aside className="order-next" aria-label="다음 레시피">
+        <b>다음</b>
+        {upcoming.length ? (
+          upcoming.map((order) => (
+            <span key={order.id} title={itemLabel(order.foodId)}>
+              {itemIcons[order.foodId]}
+            </span>
+          ))
+        ) : (
+          <span className="order-next-empty">—</span>
+        )}
+      </aside>
     </section>
   );
 }
@@ -353,7 +304,7 @@ function GameInspector({
         <p className="eyebrow">SLIME INFO</p>
         <h2>{actor.name}</h2>
         <p className="inspector-copy">{type.trait}</p>
-        <StatGauges levels={actor.statLevels} />
+        <ActionPoints actor={actor} />
         <h3>가능한 일</h3>
         <div className="inspector-badges">
           {type.role.split(" · ").map((role) => <span key={role}>{role}</span>)}
@@ -371,7 +322,6 @@ function GameInspector({
       </button>
       <p className="eyebrow">STATION INFO</p>
       <h2>{stationLabels[type]}</h2>
-      <small>{target.id}</small>
       <div className="inspector-copy">
         {info.description.map((line) => <p key={line}>{line}</p>)}
       </div>
@@ -391,7 +341,7 @@ function GameInspector({
           <span key={step}>{index > 0 && <i aria-hidden>→</i>}<b>{step}</b></span>
         ))}
       </div>
-      <small className="inspector-hint">설비를 우클릭하면 선택한 슬라임에게 지시합니다.</small>
+      <small className="inspector-hint">옆 칸에 선 슬라임을 고르고 설비를 클릭하면 사용합니다.</small>
     </aside>
   );
 }
@@ -406,7 +356,7 @@ function StationHelp({ id, onClose }: { id: StationId; onClose: () => void }) {
           <p className="eyebrow">도구 인포</p>
           <h2 id="station-help-title">{stationLabels[id]}</h2>
           {info.description.map((line) => <p key={line}>{line}</p>)}
-          <p><b>조작:</b> 슬라임 선택 후 설비 타일을 우클릭</p>
+          <p><b>조작:</b> 설비 옆 칸의 슬라임을 고르고 설비 타일을 클릭</p>
         </section>
         <button type="button" onClick={onClose}>확인</button>
       </div>
@@ -416,22 +366,21 @@ function StationHelp({ id, onClose }: { id: StationId; onClose: () => void }) {
 
 export default function Game() {
   const [squad, setSquad] = useState<SlimeTypeId[] | null>(null);
-  // 일반 플레이는 첫 직원 한 마리, 상호작용 검증은 네 마리로 시작한다.
-  const [picked, setPicked] = useState<SlimeTypeId>("water");
   const [state, setState] = useState<GameState | null>(null);
-  const [selectedActors, setSelectedActors] = useState<ActorId[]>([]);
+  // 턴제는 한 마리씩 조작한다. 선택은 늘 0마리 아니면 1마리다.
+  const [selectedActor, setSelectedActor] = useState<ActorId | null>(null);
   const [inspected, setInspected] = useState<InspectorTarget | null>(null);
   const [helpStation, setHelpStation] = useState<StationId | null>(null);
   const [stageInfoOpen, setStageInfoOpen] = useState(false);
-  const [recruitOpen, setRecruitOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [resumeCount, setResumeCount] = useState<number | null>(null);
   const [banner, setBanner] = useState<keyof typeof bannerImages | null>(null);
-  const paused = stageInfoOpen || recruitOpen || settingsOpen || helpStation !== null || resumeCount !== null;
+  const [toast, setToast] = useState<string | null>(null);
+  const paused = stageInfoOpen || settingsOpen || helpStation !== null || resumeCount !== null;
 
   const [saved, setSaved] = useState("");
   const stateRef = useRef(state);
-  const selectedActorsRef = useRef(selectedActors);
+  const selectedActorRef = useRef(selectedActor);
   const view = useRef<View | null>(null);
   const metrics = useRef<Metrics>(emptyMetrics());
   const savedRef = useRef(false);
@@ -442,19 +391,19 @@ export default function Game() {
   }, [state]);
 
   useEffect(() => {
-    selectedActorsRef.current = selectedActors;
-  }, [selectedActors]);
+    selectedActorRef.current = selectedActor;
+  }, [selectedActor]);
 
   useEffect(() => {
-    setInspected((current) => selectedActors.length === 1
-      ? { kind: "actor", id: selectedActors[0] }
+    setInspected((current) => selectedActor
+      ? { kind: "actor", id: selectedActor }
       : current?.kind === "actor" ? null : current);
-  }, [selectedActors]);
+  }, [selectedActor]);
 
-  // 판이 시작되면 "영업 시작", 30초가 남으면 "마감 임박"을 한 번씩 띄운다.
+  // 판이 시작되면 "영업 시작", 남은 턴이 얼마 없으면 "마감 임박"을 한 번씩 띄운다.
   const startedStageId =
-    state?.phase === "playing" && !stageInfoOpen && !recruitOpen ? currentStage(state).id : null;
-  const closingSoon = state?.phase === "playing" && state.timeLeft <= 30;
+    state?.phase === "playing" && !stageInfoOpen ? currentStage(state).id : null;
+  const closingSoon = state?.phase === "playing" && state.turnsLeft <= RUSH_TURNS_LEFT;
   useEffect(() => {
     if (startedStageId) setBanner("start");
   }, [startedStageId]);
@@ -467,19 +416,20 @@ export default function Game() {
     return () => clearTimeout(timer);
   }, [banner]);
 
+  // 유효하지 않은 상호작용은 행동력을 쓰지 않고 이유만 토스트로 알린다.
+  const refusalSeq = state?.refusal?.seq ?? 0;
   useEffect(() => {
-    if (!squad || paused) return;
-    // 탭이 백그라운드로 가면 인터벌이 스로틀되므로 고정 50ms 대신
-    // 실제 경과 시간을 델타로 넘겨 게임 시간이 벽시계와 함께 흐르게 한다.
-    let last = performance.now();
-    const timer = window.setInterval(() => {
-      const now = performance.now();
-      const delta = now - last;
-      last = now;
-      setState((current) => (current ? tick(current, delta) : current));
-    }, 50);
-    return () => window.clearInterval(timer);
-  }, [squad, paused]);
+    const message = stateRef.current?.refusal?.message;
+    // 성공한 행동은 refusal을 지운다. 그때 바로 닫지 않으면 이 effect의
+    // 정리가 아래 타이머를 취소해 토스트가 그대로 남는다.
+    if (!refusalSeq || !message) {
+      setToast(null);
+      return;
+    }
+    setToast(message);
+    const timer = setTimeout(() => setToast(null), 2_200);
+    return () => clearTimeout(timer);
+  }, [refusalSeq]);
 
   useEffect(() => {
     if (resumeCount === null) return;
@@ -497,7 +447,7 @@ export default function Game() {
 
   useEffect(() => {
     if (state) view.current?.sync(state);
-  }, [state, selectedActors]);
+  }, [state, selectedActor]);
 
   // 한 판이 끝나면 요약 지표를 한 번만 저장한다.
   useEffect(() => {
@@ -513,7 +463,8 @@ export default function Game() {
         result: state.phase,
         booksSubmitted: state.filled,
         goal: state.goal,
-        elapsedMs: currentStage(state).timeLimitMs - state.timeLeftMs,
+        // 턴제라 벽시계 시간이 없다. 소모한 턴 수를 그대로 보낸다.
+        elapsedMs: currentStage(state).turnLimit - state.turnsLeft,
         voiceCommands: 0,
         buttonCommands: counts.buttonCommands,
         voiceFailures: 0,
@@ -553,7 +504,7 @@ export default function Game() {
             selected: Phaser.GameObjects.Arc;
             facing: Facing;
             last: { x: number; y: number };
-            mode: Motion;
+            acts: number;
             blinking: boolean;
             scale: number;
             motion: Phaser.Tweens.Tween;
@@ -872,16 +823,14 @@ export default function Game() {
               ) => {
                 inputEvent.stopPropagation();
                 if (!fromCanvas(pointer)) return;
-                if (pointer.leftButtonDown()) {
-                  setInspected({ kind: "station", id });
-                  return;
-                }
-                if (!pointer.rightButtonDown()) return;
+                if (!pointer.leftButtonDown()) return;
+                // 설비 클릭은 정보를 열고, 고른 슬라임이 있으면 사용까지 한다.
+                setInspected({ kind: "station", id });
+                const actorId = selectedActorRef.current;
+                if (!actorId) return;
                 metrics.current.buttonCommands += 1;
                 setState((value) =>
-                  value
-                    ? interactActors(value, selectedActorsRef.current, id)
-                    : value,
+                  value ? interactActor(value, actorId, id) : value,
                 );
               },
             );
@@ -899,9 +848,10 @@ export default function Game() {
             .setOrigin(0.5, authored ? 0.62 : 0.5);
           const faceLayer = authored ? this.add.graphics() : undefined;
           const visual = this.add.container(0, 0, faceLayer ? [art, faceLayer] : [art]);
+          const spot = tileCenter(actor);
           const container = this.add
-            .container(actor.x, actor.y, [visual])
-            .setDepth(actor.y)
+            .container(spot.x, spot.y, [visual])
+            .setDepth(spot.y)
             .setInteractive(
               new Phaser.Geom.Rectangle(-29, -23, 58, 45),
               Phaser.Geom.Rectangle.Contains,
@@ -917,26 +867,20 @@ export default function Game() {
                 inputEvent.stopPropagation();
                 if (!fromCanvas(pointer)) return;
                 if (!pointer.leftButtonDown()) return;
-                const additive =
-                  pointer.event instanceof MouseEvent && pointer.event.shiftKey;
-                setSelectedActors((selected) =>
-                  additive
-                    ? selected.includes(actorId)
-                      ? selected.filter((id) => id !== actorId)
-                      : [...selected, actorId]
-                    : [actorId],
+                setSelectedActor((selected) =>
+                  selected === actorId ? null : actorId,
                 );
               },
             );
           const carried = this.add
-            .text(actor.x, actor.y - 52, "", { fontSize: "24px", resolution: RENDER_SCALE })
+            .text(spot.x, spot.y - 52, "", { fontSize: "24px", resolution: RENDER_SCALE })
             .setOrigin(0.5)
-            .setDepth(actor.y + 2);
+            .setDepth(spot.y + 2);
           const selected = this.add
-            .circle(actor.x, actor.y + 14, 30)
+            .circle(spot.x, spot.y + 14, 30)
             .setStrokeStyle(3, typeColors[actor.typeId], 0.95)
             .setFillStyle(typeColors[actor.typeId], 0.12)
-            .setDepth(actor.y - 1)
+            .setDepth(spot.y - 1)
             .setVisible(false);
           this.slimes[actorId] = {
             typeId: actor.typeId,
@@ -947,8 +891,8 @@ export default function Game() {
             carried,
             selected,
             facing: "down",
-            last: { x: actor.x, y: actor.y },
-            mode: "idle",
+            last: { x: spot.x, y: spot.y },
+            acts: actor.acts,
             blinking: false,
             scale,
             motion: this.breathe(visual, scale),
@@ -976,106 +920,31 @@ export default function Game() {
         // 히트 테스트를 갱신한다.
         this.input.setPollAlways();
         this.input.mouse?.disableContextMenu();
-        const selectionBox = this.add
-          .rectangle(0, 0, 0, 0, 0x9fdcff, 0.16)
-          .setOrigin(0)
-          .setStrokeStyle(1, 0xd9f4ff, 0.95)
-          .setDepth(10_000)
-          .setVisible(false);
-        let dragStart: {
-          world: Phaser.Math.Vector2;
-          screenX: number;
-          screenY: number;
-          additive: boolean;
-        } | null = null;
-        // 커서가 브라우저 밖에서 놓이면 Phaser는 pointerup을 못 받는다.
-        // 마지막 지점을 들고 있다가 window 이벤트로 마무리한다.
-        let dragPoint: { x: number; y: number } | null = null;
+        // 바닥을 클릭했을 때. 이동 가능 표시가 뜬 칸이면 그리로 한 칸
+        // 가고, 아니면 선택을 푼다.
         this.input.on("pointerdown", (pointer: Phaser.Input.Pointer) => {
-          if (!fromCanvas(pointer)) return;
-          if (pointer.leftButtonDown()) {
-            dragPoint = null;
-            dragStart = {
-              world: this.cameras.main.getWorldPoint(pointer.x, pointer.y),
-              screenX: pointer.x,
-              screenY: pointer.y,
-              additive:
-                pointer.event instanceof MouseEvent && pointer.event.shiftKey,
-            };
-            return;
-          }
-          if (!pointer.rightButtonDown()) return;
+          if (!fromCanvas(pointer) || !pointer.leftButtonDown()) return;
           const point = this.cameras.main.getWorldPoint(pointer.x, pointer.y);
-          if (!isWalkable(pixelToTile(point.x, point.y))) return;
-          metrics.current.buttonCommands += 1;
-          setState((value) =>
-            value
-              ? moveActors(value, selectedActorsRef.current, { x: point.x, y: point.y })
-              : value,
-          );
-        });
-        this.input.on("pointermove", (pointer: Phaser.Input.Pointer) => {
-          if (!dragStart || !pointer.isDown) return;
+          const tile = pixelToTile(point.x, point.y);
+          const current = stateRef.current;
+          const actorId = selectedActorRef.current;
           if (
-            Math.hypot(pointer.x - dragStart.screenX, pointer.y - dragStart.screenY) <
-            dishConfig.dragThresholdPx
-          ) return;
-          const point = this.cameras.main.getWorldPoint(pointer.x, pointer.y);
-          dragPoint = { x: point.x, y: point.y };
-          const left = Math.min(dragStart.world.x, point.x);
-          const top = Math.min(dragStart.world.y, point.y);
-          selectionBox
-            .setPosition(left, top)
-            .setSize(Math.abs(point.x - dragStart.world.x), Math.abs(point.y - dragStart.world.y))
-            .setVisible(true);
-        });
-        // 캔버스 안에서 놓든 밖에서 놓든 같은 마무리를 탄다.
-        const endDrag = (point: { x: number; y: number } | null) => {
-          if (!dragStart) return;
-          const start = dragStart;
-          dragStart = null;
-          selectionBox.setVisible(false);
-          if (!point) {
-            setSelectedActors([]);
-            setInspected(null);
+            current &&
+            actorId &&
+            moveTargets(current, actorId).some(
+              (target) => target.col === tile.col && target.row === tile.row,
+            )
+          ) {
+            metrics.current.buttonCommands += 1;
+            setState((value) => (value ? moveActor(value, actorId, tile) : value));
             return;
           }
-          const left = Math.min(start.world.x, point.x);
-          const right = Math.max(start.world.x, point.x);
-          const top = Math.min(start.world.y, point.y);
-          const bottom = Math.max(start.world.y, point.y);
-          const inside = roster.filter((actorId) => {
-            const actor = stateRef.current?.actors[actorId];
-            return (
-              actor &&
-              actor.x >= left &&
-              actor.x <= right &&
-              actor.y >= top &&
-              actor.y <= bottom
-            );
-          });
+          setSelectedActor(null);
           setInspected(null);
-          setSelectedActors((selected) =>
-            start.additive ? [...new Set([...selected, ...inside])] : inside,
-          );
-        };
-        this.input.on("pointerup", (pointer: Phaser.Input.Pointer) => {
-          const dragged =
-            dragStart &&
-            Math.hypot(pointer.x - dragStart.screenX, pointer.y - dragStart.screenY) >=
-              dishConfig.dragThresholdPx;
-          endDrag(
-            dragged ? this.cameras.main.getWorldPoint(pointer.x, pointer.y) : null,
-          );
         });
-        // 브라우저 밖에서 버튼을 놓거나 창이 포커스를 잃어도 네모를 정리한다.
-        const finishOutside = () => endDrag(dragPoint);
-        window.addEventListener("pointerup", finishOutside);
-        window.addEventListener("blur", finishOutside);
-        this.events.once("shutdown", () => {
-          window.removeEventListener("pointerup", finishOutside);
-          window.removeEventListener("blur", finishOutside);
-        });
+
+        // 선택한 슬라임이 갈 수 있는 칸 표시. 클릭 판정은 바닥 핸들러가 한다.
+        const moveMarks = this.add.graphics().setDepth(3);
 
         view.current = {
           sync: (current) => {
@@ -1083,75 +952,88 @@ export default function Game() {
               const actor = current.actors[actorId];
               const sprite = this.slimes[actorId];
               if (!actor || !sprite) continue;
+              const spot = tileCenter(actor);
               const facing = facingFromDelta(
-                actor.x - sprite.last.x,
-                actor.y - sprite.last.y,
+                spot.x - sprite.last.x,
+                spot.y - sprite.last.y,
                 sprite.facing,
               );
               if (facing !== sprite.facing) {
                 sprite.facing = facing;
                 this.paintSlime(actorId);
               }
-              const mode: Motion =
-                actor.status === "MOVING"
-                  ? "walk"
-                  : actor.status === "WORKING"
-                    ? Object.values(current.workstations).some((workstation) => workstation?.workerId === actorId)
+              // 행동은 즉시 끝나므로 한 번 행동할 때마다 모션을 잠깐 재생하고
+              // 숨쉬기로 돌아간다. acts가 늘어난 것이 행동했다는 신호다.
+              if (actor.acts !== sprite.acts) {
+                sprite.acts = actor.acts;
+                const mode: Motion =
+                  actor.status === "MOVING"
+                    ? "walk"
+                    : actor.status === "WORKING"
                       ? "stir"
-                      : "pick"
-                    : "idle";
-              if (mode !== sprite.mode) {
-                sprite.mode = mode;
+                      : "pick";
                 sprite.motion.stop();
                 sprite.visual.setAngle(0).setY(0);
                 sprite.motion = this.startMotion(sprite.visual, mode, sprite.scale);
+                this.time.delayedCall(MOTION_MS, () => {
+                  const back = this.slimes[actorId];
+                  if (!back || back.acts !== actor.acts) return;
+                  back.motion.stop();
+                  back.visual.setAngle(0).setY(0);
+                  back.motion = this.breathe(back.visual, back.scale);
+                });
               }
-              sprite.last = { x: actor.x, y: actor.y };
-              sprite.body.setPosition(actor.x, actor.y).setDepth(actor.y);
+              sprite.last = { x: spot.x, y: spot.y };
+              sprite.body.setPosition(spot.x, spot.y).setDepth(spot.y);
               sprite.selected
-                .setPosition(actor.x, actor.y + 14)
-                .setDepth(actor.y - 1)
-                .setVisible(selectedActorsRef.current.includes(actorId));
-              const alerting = Boolean(actor.alert);
-              const icon = alerting
-                ? alertIcons[actor.alert!]
-                : actor.carrying.map(carriedIcon).join(" ");
+                .setPosition(spot.x, spot.y + 14)
+                .setDepth(spot.y - 1)
+                .setVisible(selectedActorRef.current === actorId);
               const hold = carryOffsets[sprite.facing];
               sprite.carried
-                .setText(icon ?? "")
-                .setPosition(
-                  actor.x + (alerting ? 0 : hold.x),
-                  actor.y + (alerting ? -52 : hold.y),
-                )
+                .setText(actor.carrying.map(carriedIcon).join(" ") ?? "")
+                .setPosition(spot.x + hold.x, spot.y + hold.y)
                 // 등을 돌렸을 때만 몸보다 뒤에 그린다. 선택 링(-1)보다는 앞이다.
-                .setDepth(actor.y + (!alerting && hold.behind ? -0.5 : 2));
+                .setDepth(spot.y + (hold.behind ? -0.5 : 2));
+            }
+            moveMarks.clear();
+            const selected = selectedActorRef.current;
+            if (selected) {
+              for (const tile of moveTargets(current, selected)) {
+                const { x, y } = tileCenter(tile);
+                moveMarks
+                  .fillStyle(0xffe9b8, 0.22)
+                  .fillRect(x - 24, y - 24, 48, 48)
+                  .lineStyle(2, 0xffe9b8, 0.85)
+                  .strokeRect(x - 24, y - 24, 48, 48);
+              }
             }
             for (const { id, type } of stationInstances) {
-              const fire = current.fires[id];
-              const label = fire?.onFire
-                ? // 불이 난 설비는 진화 진행도를 대신 보여 준다. 총 시간은
-                  // 붙은 슬라임의 작업 속도에 따라 달라져 화재 상태에 들어 있다.
-                  `🔥 ${fire.extinguishTotalMs ? Math.round((fire.extinguishMs / fire.extinguishTotalMs) * 100) : 0}%`
+              const washer = current.washers[id];
+              const incinerator = current.incinerators[id];
+              const workstation = current.workstations[id];
+              const label = current.fires[id]?.onFire
+                ? "🔥"
                 : type === "ingredient-box"
                   ? `${current.ingredients[id]!.stock}/${INGREDIENT_MAX}`
                   : type === "stove"
-                    ? current.workstations[id]!.status === "WORKING"
-                      ? `${workStatusLabels.WORKING} ${Math.round((current.workstations[id]!.progressMs / current.workstations[id]!.totalMs) * 100)}%`
-                      : workStatusLabels[current.workstations[id]!.status]
+                    ? workstation!.progress > 0
+                      ? `${workStatusLabels.WORKING} ${workstation!.progress}/${actionCost.chop}`
+                      : workStatusLabels[workstation!.status]
                     : type === "dish-rack"
                       ? `${current.dishRacks[id]!.length}/${dishConfig.rackCapacity}`
                       : type === "washer"
-                        ? current.washers[id]!.workerId
-                          ? `세척 ${Math.round((current.washers[id]!.progressMs / current.washers[id]!.totalMs) * 100)}%`
-                          : current.washers[id]!.dish
-                            ? current.washers[id]!.dish!.status === "clean" ? "세척 완료" : "세척 대기"
+                        ? washer!.progress > 0
+                          ? `세척 ${washer!.progress}/${actionCost.wash}`
+                          : washer!.dish
+                            ? washer!.dish!.status === "clean" ? "세척 완료" : "세척 대기"
                             : "비어 있음"
                         : type === "table"
                           ? current.tables[id]![0] ? carriedLabel(current.tables[id]![0]) : ""
                           : type === "trash"
-                            ? current.incinerators[id]!.workerId
-                              ? `소각 ${Math.round((current.incinerators[id]!.progressMs / current.incinerators[id]!.totalMs) * 100)}%`
-                              : `${current.incinerators[id]!.count}/${incineratorConfig.capacity}`
+                            ? incinerator!.progress > 0
+                              ? `소각 ${incinerator!.progress}/${actionCost.burn}`
+                              : `${incinerator!.count}/${incineratorConfig.capacity}`
                           : "";
               this.stations[id].setText(label);
             }
@@ -1193,32 +1075,21 @@ export default function Game() {
     savedRef.current = false;
     roundSeed.current = next.seed;
     setSaved("");
-    setSelectedActors([]);
+    setSelectedActor(null);
     setInspected(null);
     setHelpStation(null);
     setStageInfoOpen(true);
-    setRecruitOpen(false);
     setSettingsOpen(false);
     setResumeCount(null);
     setState(next);
     setSquad(list);
   }
 
-  const selectElement = useCallback((element: SlimeTypeId) => {
-    if (!squad) return;
-    const ids = squadActorIds(squad).filter(
-      (actorId) => stateRef.current?.actors[actorId]?.typeId === element,
-    );
-    setSelectedActors(ids);
-  }, [squad]);
+  const finishTurn = useCallback(() => {
+    setSelectedActor(null);
+    setState((value) => (value ? endTurn(value) : value));
+  }, []);
 
-  const selectEveryone = useCallback(() => {
-    if (!squad) return;
-    const ids = squadActorIds(squad);
-    setSelectedActors(ids);
-  }, [squad]);
-
-  // 속성 키와 전체 선택 키.
   useEffect(() => {
     if (!squad) return;
     const isTyping = (target: EventTarget | null) =>
@@ -1238,31 +1109,13 @@ export default function Game() {
           setResumeCount(next || stageInfoOpen || helpStation !== null ? null : 3);
           return next;
         });
-        return;
       }
-      if (stageInfoOpen || recruitOpen || settingsOpen) return;
-      const elementByKey = {
-        KeyQ: "water",
-        KeyW: "fire",
-        KeyE: "lightning",
-        KeyR: "earth",
-      } as const;
-      const element = elementByKey[event.code as keyof typeof elementByKey];
-      if (element) {
-        // 속성 키 하나가 그 속성의 모든 마리를 고른다.
-        selectElement(element);
-        return;
-      }
-      if (event.code !== "Space") return;
-      event.preventDefault();
-      selectEveryone();
     };
     window.addEventListener("keydown", down);
     return () => {
       window.removeEventListener("keydown", down);
     };
-    // 핸들러는 ref만 보므로 squad가 바뀔 때만 다시 건다.
-  }, [helpStation, recruitOpen, selectElement, selectEveryone, settingsOpen, squad, stageInfoOpen]);
+  }, [helpStation, settingsOpen, squad, stageInfoOpen]);
 
   // 첫 판은 네 속성을 모두 데리고 시작한다. 고르는 화면은 두지 않는다.
   if (!squad || !state) {
@@ -1280,18 +1133,21 @@ export default function Game() {
       : isLastStage(state)
         ? "모든 스테이지를 클리어했습니다!"
         : `${currentStage(state).id} 클리어!`;
-  const selectedElements = new Set(
-    selectedActors.flatMap((actorId) => {
-      const typeId = state.actors[actorId]?.typeId;
-      return typeId ? [typeId] : [];
-    }),
-  );
+  const roster = squadActorIds(squad);
+  // 아직 행동력이 남은 슬라임. 턴 종료 버튼이 이걸 알려 준다.
+  const readyCount = roster.filter(
+    (actorId) => (state.actors[actorId]?.actionPoints ?? 0) > 0,
+  ).length;
+  const rank = state.phase === "won" ? stageRank(state) : 0;
 
   return (
     <main className="stage">
-      <Music src={gameMusicSource(state.timeLeft, state.phase)} />
-      {!stageInfoOpen && !recruitOpen && (
-        <GameSoundEffects state={state} selectedActors={selectedActors} />
+      <Music src={gameMusicSource(state.turnsLeft, state.phase)} />
+      {!stageInfoOpen && (
+        <GameSoundEffects
+          state={state}
+          selectedActors={selectedActor ? [selectedActor] : []}
+        />
       )}
       <div className="stage-frame" data-inspector={inspected ? "" : undefined}>
         <div id="game-canvas" aria-label="탑다운 판타지 식당 게임 맵" />
@@ -1300,7 +1156,7 @@ export default function Game() {
           open={settingsOpen}
           onOpenChange={(open) => {
             setSettingsOpen(open);
-            setResumeCount(open || stageInfoOpen || recruitOpen || helpStation !== null ? null : 3);
+            setResumeCount(open || stageInfoOpen || helpStation !== null ? null : 3);
           }}
         />
         {resumeCount !== null && (
@@ -1325,8 +1181,11 @@ export default function Game() {
           <span className="hud-chip">
             🍽 {currentStage(state).id} {currentStage(state).name}
           </span>
-          <span className="hud-chip" data-warn={state.timeLeft <= 30 ? "" : undefined}>
-            ⏱ {state.timeLeft}
+          <span
+            className="hud-chip"
+            data-warn={state.turnsLeft <= RUSH_TURNS_LEFT ? "" : undefined}
+          >
+            🔄 {state.turnsLeft}턴
           </span>
           <span className="hud-chip hud-goal">
             📦 {state.filled} / {state.goal}
@@ -1334,35 +1193,44 @@ export default function Game() {
           <span className="hud-chip">💰 {state.gold}G</span>
         </div>
 
+        {toast && (
+          <p className="action-toast" role="status" aria-live="polite">
+            {toast}
+          </p>
+        )}
+
         <div className="hud-bottom">
-          <div className="control-keys" aria-label="슬라임 선택키">
-            {([
-              ["Q", "water"],
-              ["W", "fire"],
-              ["E", "lightning"],
-              ["R", "earth"],
-            ] as const).map(([key, typeId]) => (
-              <button
-                type="button"
-                key={key}
-                data-type={typeId}
-                aria-label={`${key}: ${slimeTypes[typeId].name} 슬라임 선택`}
-                aria-pressed={selectedElements.has(typeId)}
-                onClick={() => selectElement(typeId)}
-              >
-                <b>{key}</b>
-                <small>{slimeTypes[typeId].name}</small>
-              </button>
-            ))}
+          <div className="turn-bar" aria-label="슬라임 행동력">
+            {roster.map((actorId) => {
+              const actor = state.actors[actorId];
+              if (!actor) return null;
+              return (
+                <button
+                  type="button"
+                  key={actorId}
+                  data-type={actor.typeId}
+                  data-spent={actor.actionPoints === 0 ? "" : undefined}
+                  aria-label={`${actor.name} 선택, 남은 행동력 ${actor.actionPoints}`}
+                  aria-pressed={selectedActor === actorId}
+                  onClick={() =>
+                    setSelectedActor((current) => (current === actorId ? null : actorId))
+                  }
+                >
+                  <b>{slimeTypes[actor.typeId].name}</b>
+                  <small>
+                    ⚡{actor.actionPoints}/{maxActionPoints(actor.typeId)}
+                  </small>
+                </button>
+              );
+            })}
             <button
               type="button"
-              className="control-key-space"
-              aria-label="Space: 모든 슬라임 선택"
-              aria-pressed={selectedActors.length === squadActorIds(squad).length}
-              onClick={selectEveryone}
+              className="turn-end"
+              onClick={finishTurn}
+              aria-label={`턴 종료, 행동력이 남은 슬라임 ${readyCount}마리`}
             >
-              <b>Space</b>
-              <small>전체</small>
+              <b>턴 종료</b>
+              <small>{readyCount ? `${readyCount}마리 대기` : "모두 사용"}</small>
             </button>
           </div>
 
@@ -1392,27 +1260,11 @@ export default function Game() {
           <StageInfoScreen
             key={currentStage(state).id}
             stage={currentStage(state)}
-            onNext={(step) => {
-              setStageInfoOpen(false);
-              if (step === "RECRUIT") setRecruitOpen(true);
-            }}
+            onNext={() => setStageInfoOpen(false)}
           />
         )}
 
       </div>
-
-      {recruitOpen && (
-        <RecruitScreen
-          picked={picked}
-          onPick={setPicked}
-          onConfirm={() => {
-            const recruited = recruitSlime(state, picked);
-            setState(recruited);
-            setSquad(recruited.squad);
-            setRecruitOpen(false);
-          }}
-        />
-      )}
 
       {state.phase !== "playing" && (
         <section
@@ -1429,6 +1281,12 @@ export default function Game() {
               alt={state.phase === "lost" ? "게임 오버" : "영업 종료"}
             />
             <h2 id="result-title">{result}</h2>
+            {rank > 0 && (
+              <p className="stage-rank" aria-label={`스테이지 랭크 별 ${rank}개`}>
+                {"★".repeat(rank)}
+                <span aria-hidden>{"☆".repeat(3 - rank)}</span>
+              </p>
+            )}
             {/* 정산: 주문 성공은 골드로, 실수는 횟수만 보여 준다. */}
             <dl className="settle">
               <div>
@@ -1457,7 +1315,7 @@ export default function Game() {
                   onClick={() => {
                     savedRef.current = false;
                     setSaved("");
-                    setSelectedActors([]);
+                    setSelectedActor(null);
                     setState(nextStage(state));
                     setStageInfoOpen(true);
                   }}

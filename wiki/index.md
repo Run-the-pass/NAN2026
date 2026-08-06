@@ -1,7 +1,7 @@
 ---
 type: project
 status: current
-updated: 2026-08-03
+updated: 2026-08-06
 sources:
   - raw/project-brief.md
   - raw/home/home_reference.png
@@ -37,6 +37,7 @@ sources:
   - raw/references/map-ui-tool-panel.png
   - raw/references/map-ui-help-overlay.png
   - raw/references/map-ui-workflow-panel.png
+  - raw/턴제_전환_Claude_구현_명세.md
 ---
 
 # NAN 2026 Wiki
@@ -47,12 +48,12 @@ sources:
 - [음성 인식 실험실 계획](plan-voice-lab.md) — 초기 STT·로컬 사전·Gemini 비교 계획. Gemini 텍스트 재분석 범위가 대체됨.
 - [음성 실험실 매칭 근거·정리 계획](plan-voice-lab-diagnostics.md) — 사전 매칭 표현 표시, Gemini 텍스트 폴백 제거, 결과 개별 삭제 계획.
 - [현재 소지품 목적지 변경 명령 계획](plan-carried-discard-command.md) — `그거/들고 있는 거/가지고 있는 거`로 현재 운반 물품을 양조기·테이블·제출대·쓰레기통으로 전환.
-- [마우스·키보드 조작 전환 계획](plan-pointer-controls.md) — 음성을 제거하고 클릭·속성 키로 선택·이동·상호작용하는 구현 범위와 완료 조건.
+- [마우스·키보드 조작 전환 계획](plan-pointer-controls.md) — 음성을 제거하고 클릭·속성 키로 선택·이동·상호작용하던 범위. 턴제 전환이 조작을 대체했다.
 - [상호작용 코어 완성 계획](plan-interaction-core.md) — 복수 상호작용과 불 속성 조리, 버섯 구이 제작·제출 흐름의 범위와 완료 조건.
 - [식당 테마 전환 계획](plan-restaurant-theme.md) — 속성 슬라임·주방 설비·음악·물 슬라임 아트로 교체하는 범위와 완료 조건.
 - [홈·물 슬라임·이동·음악 설정 보정 계획](plan-controls-audio-home-polish.md) — 홈 복원, 음악 설정, 물 슬라임 보정과 직선 이동의 범위와 완료 조건.
 - [충돌·깊이·설정 일시정지 보정 계획](plan-collision-depth-pause-settings.md) — 설비 히트박스 우회, y좌표 깊이 정렬, 중앙 설정과 재개 카운트다운의 범위와 완료 조건.
-- [주문 시스템·화재 시스템 계획](plan-orders-and-fire.md) — 주문 목록·제출 판정·라운드 판정과 방치 발화·전파·물 슬라임 진화의 범위, 미정 사항의 설정값 분리.
+- [주문 시스템·화재 시스템 계획](plan-orders-and-fire.md) — 주문 목록·제출 판정·라운드 판정과 방치 발화·전파·물 슬라임 진화의 범위. 화재는 턴제 전환으로 후순위가 되었다.
 - [효과음·불 슬라임·미사용 client 에셋 정리 계획](plan-sfx-fire-slime-cleanup.md) — 구현 이벤트 효과음, 불 슬라임 몸통 크기·애니메이션, 미사용 public 에셋 삭제 범위.
 - [그릇·테이블·편의 선택·인게임 불 슬라임 계획](plan-dishes-table-selection-fire-game.md) — 그릇 순환, 한 칸 테이블, Shift·드래그 선택, 실제 게임 불 슬라임와 배포 완료 조건.
 - [전체 화면 레이아웃 보정 계획](plan-full-viewport-layout.md) — 홈·게임의 뷰포트 채움, 긴 화면 배경, 설정 안 홈 이동과 낮은 가로 화면 HUD 완료 조건.
@@ -69,7 +70,8 @@ sources:
 - [인게임 맵 장식 제거 계획](plan-map-decoration-cleanup.md) — 상시 노출되던 중앙 띠·소품·반투명 원과 작업칸 점 제거 범위.
 - [테이블 조합·14×8 맵 계획](plan-table-map-14x8.md) — 감자·빈 접시 양방향 조합, 빈 테이블 표시 제거와 맵·에디터 축소 범위.
 - [배포 맵·영입·소각기·접시 제출 계획](plan-deploy-recruit-incinerator-dish.md) — 현재 맵 배포 보장, 스테이지 사이 추가 영입, 5칸 소각과 접시 필수 제출 범위.
-- [작업대 여러 대 설치 계획](plan-multi-station.md) — 설비를 종류마다 여러 대 놓기 위한 인스턴스 상태 모델, 작업 위치 자동 선택과 고정 수단. 아직 미구현.
+- [작업대 여러 대 설치 계획](plan-multi-station.md) — 설비를 종류마다 여러 대 놓기 위한 인스턴스 상태 모델, 작업 위치 자동 선택과 고정 수단. 구현 완료.
+- [턴제 전환 계획](plan-turn-based.md) — 행동력·턴 루프·슬라임 충돌·속성 제한 기구·랭크로 바꾼 범위와 확정된 결정. 구현 완료.
 - [작업 로그](log.md) — ingest, 계획, 구현, 검증의 시간순 기록.
 
 원문: [감자·도마·접시 에셋](../raw/assets_0/), [화면 문구 이미지](../raw/text/), [추가본 정리](../raw/%EC%B6%94%EA%B0%80%EB%B3%B8_%EC%A0%95%EB%A6%AC/) (덱 `raw/추가본.pptx`의 화면별 기획과 2026-08-02 확정·미정), [클로드 담당 작업: 주문과 화재](../raw/%ED%81%B4%EB%A1%9C%EB%93%9C_%EB%8B%B4%EB%8B%B9_%EC%9E%91%EC%97%85_%EC%A3%BC%EB%AC%B8%EA%B3%BC_%ED%99%94%EC%9E%AC.md), [프로젝트 브리프](../raw/project-brief.md), [홈 화면 v2 참고 이미지](../raw/home%20v2/home_reference.png), [홈 화면 v2 에셋](../raw/home%20v2/), [성장 선택 카드 참고 이미지](../raw/references/upgrade-choice-cards.png), [슬라임 스탯·가격·패널티](../raw/slime-stats-pricing-and-penalties.md), [펀테스트 변경 사항](../raw/fun-test-design-changes.md), [음성인식 시스템 논의](../raw/voice-command-discussion-summary-revised.md), [자원·제작 시스템 기획](../raw/slime-workshop-resource-production-design.md), [그릇·테이블·편의 선택 추가 명세](../raw/%E1%84%80%E1%85%B3%E1%84%85%E1%85%B3%E1%86%BA_%E1%84%90%E1%85%A6%E1%84%8B%E1%85%B5%E1%84%87%E1%85%B3%E1%86%AF_%E1%84%91%E1%85%A7%E1%86%AB%E1%84%8B%E1%85%B4%E1%84%89%E1%85%A5%E1%86%AB%E1%84%90%E1%85%A2%E1%86%A8_%E1%84%8E%E1%85%AE%E1%84%80%E1%85%A1_%E1%84%86%E1%85%A7%E1%86%BC%E1%84%89%E1%85%A6.md)
