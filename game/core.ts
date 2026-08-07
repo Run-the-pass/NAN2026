@@ -910,25 +910,37 @@ export const defaultStages = (): Stage[] =>
     };
   });
 
-// 선택 화면에 놓이는 칸. 튜토리얼은 0, 무한은 ∞로 적어 번호와 한 줄에 선다.
-export type StageSlot = {
-  id: string;
-  label: string;
-  kind: "tutorial" | "normal" | "endless";
-  // 별을 매기는 칸만 true. 튜토리얼과 무한은 등수가 없다.
-  ranked: boolean;
-  // 규칙이 아직 없어 열 수 없는 칸.
+// 첫 화면에서 고르는 두 가지. 아르바이트는 스테이지를 처음부터 끝까지
+// 이어서 도는 한 판이고, 무한은 그것을 끝내야 열린다.
+export type GameMode = {
+  id: "shift" | "endless";
+  name: string;
+  detail: string;
+  // 규칙이 아직 없어 열 수 없는 모드.
   ready: boolean;
 };
 
-export const stageSlots: StageSlot[] = [
-  { id: "0", label: "0", kind: "tutorial", ranked: false, ready: true },
-  { id: "1", label: "1", kind: "normal", ranked: true, ready: true },
-  { id: "2", label: "2", kind: "normal", ranked: true, ready: true },
-  { id: "3", label: "3", kind: "normal", ranked: true, ready: true },
-  // ponytail: 무한 모드 규칙(턴 제한·주문 유입·종료 조건)이 정해지면 ready를 켠다.
-  { id: "endless", label: "∞", kind: "endless", ranked: false, ready: false },
+export const gameModes: GameMode[] = [
+  {
+    id: "shift",
+    name: "아르바이트 모드",
+    detail: "튜토리얼부터 마지막 영업까지 이어서 돕니다.",
+    ready: true,
+  },
+  // ponytail: 무한 모드 규칙(주문 유입·종료 조건)이 정해지면 ready를 켠다.
+  {
+    id: "endless",
+    name: "무한 모드",
+    detail: "아르바이트를 끝내면 열립니다.",
+    ready: false,
+  },
 ];
+
+// 아르바이트를 끝까지 깼는지. 마지막 스테이지에서 별을 하나라도 받으면 된다.
+export const shiftCleared = (progress: Record<string, number>) => {
+  const last = defaultStages().at(-1);
+  return Boolean(last && (progress[last.id] ?? 0) > 0);
+};
 
 export const stageIndexOf = (id: string) =>
   defaultStages().findIndex((stage) => stage.id === id);

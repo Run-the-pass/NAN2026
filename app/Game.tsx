@@ -152,13 +152,13 @@ const blenderArt = {
   ready: "/stations/blender-ready.png",
   done: "/stations/blender-full.png",
 } as const;
-// 도마 위에서 움직이는 칼. board.png와 한 장이었던 것을 떼어 낸 것이라
-// 아래 값은 원본 도마 그림(167×172) 좌표계 기준이다.
+// 도마 위에서 움직이는 칼. 도마와 칼은 같은 캔버스에 그려 온 그림이라
+// 서로의 자리가 이미 맞다. 아래 값은 board.png(201×256) 좌표계다.
 const KNIFE_ART = "/food/knife.png";
 // 칼자루 끝. 여기를 축으로 날이 내려온다.
-const KNIFE_PIVOT = { x: 0.921, y: 0.072 };
+const KNIFE_PIVOT = { x: 0.925, y: 0.071 };
 // 도마 그림 한가운데에서 칼자루 끝까지의 거리(도마 그림 픽셀).
-const KNIFE_OFFSET = { x: 67.5, y: -53, span: 172 };
+const KNIFE_OFFSET = { x: 121.7, y: -108.7 };
 // ingredient-box.png(179×185) 가운데 흰 원. 알파값에서 실제 원 범위를 재서
 // 얻은 값이다. 내용물은 이 원 안에 앉는다.
 const BOX_BADGE = { dx: 0, dy: -7, diameter: 59 };
@@ -166,7 +166,6 @@ const BOX_BADGE = { dx: 0, dy: -7, diameter: 59 };
 // 그만큼 되민다. 값은 그림의 긴 변 대비 %라 인게임과 정보 패널이 같은
 // 숫자를 쓴다.
 const artAnchor: Record<string, { x: number; y: number }> = {
-  "/food/board.png": { x: 6.1, y: 0 },
   "/food/doma.png": { x: 5.2, y: 1 },
   "/food/potato.png": { x: 3.3, y: 2.7 },
   "/stations/trash.png": { x: 0.2, y: -1.1 },
@@ -181,8 +180,9 @@ const stationArtStyle: Partial<
 > = {
   // 도마는 조리대 위에 놓인 판이라 칸을 다 채우면 오히려 크다.
   stove: { onTable: true, lift: 14, grow: 0.76 },
-  // 믹서기는 칸을 조금 넘되 슬라임보다 커 보이지 않을 만큼만.
-  blender: { onTable: true, lift: 11, grow: 1.14 },
+  // 믹서기는 칸을 조금 넘되 슬라임보다 커 보이지 않을 만큼만. 조리대에
+  // 얹힌 것으로 보이려면 도마보다 더 올려야 한다.
+  blender: { onTable: true, lift: 19, grow: 1.02 },
 };
 // 판이 시작할 때와 마감이 다가올 때 잠깐 띄우는 큰 문구.
 const bannerImages = {
@@ -323,6 +323,23 @@ const slimePortrait = (typeId: SlimeTypeId) =>
     ? "/slimes/water.svg"
     : authoredSlimeAssets[typeId] ?? slimeDataUri(typeId, "down");
 
+// 정산 숫자는 0에서부터 올라간다. 한 번에 찍히면 정산을 본 느낌이 없다.
+function CountUp({ value, delay = 0, ms = 620 }: { value: number; delay?: number; ms?: number }) {
+  const [shown, setShown] = useState(0);
+  useEffect(() => {
+    let frame = 0;
+    const start = performance.now() + delay;
+    const step = (now: number) => {
+      const ratio = Math.min(1, Math.max(0, (now - start) / ms));
+      setShown(Math.round(value * ratio));
+      if (ratio < 1) frame = requestAnimationFrame(step);
+    };
+    frame = requestAnimationFrame(step);
+    return () => cancelAnimationFrame(frame);
+  }, [value, delay, ms]);
+  return <>{shown}</>;
+}
+
 // 남은 행동력을 칸으로 보여 준다. 턴제에서 슬라임을 가르는 유일한 수치다.
 function ActionPoints({ actor }: { actor: { typeId: SlimeTypeId; actionPoints: number } }) {
   const max = maxActionPoints(actor.typeId);
@@ -420,17 +437,23 @@ const methodArt = (station: StationId): string[] =>
 // 주문 카드 한 장. 큰 칸에 완성 그림, 그 아래 재료, 그 아래 조리 방법이다.
 function OrderCard({ order, next }: { order: Order; next?: boolean }) {
   const recipe = recipes[order.foodId];
+  // 다음 주문은 무엇이 올지만 알리면 된다. 재료와 조리법까지 적으면 지금
+  // 만들 것과 헷갈린다.
+  if (next) {
+    return (
+      <article className="order-next" aria-label={`다음 주문 ${itemLabel(order.foodId)}`}>
+        <OrderDish foodId={order.foodId} />
+      </article>
+    );
+  }
   return (
-    <article
-      className={next ? "order-card order-card-next" : "order-card"}
-      aria-label={`${itemLabel(order.foodId)} 주문`}
-    >
+    <article className="order-card" aria-label={`${itemLabel(order.foodId)} 주문`}>
       <span className="order-plate">
         <OrderDish foodId={order.foodId} />
       </span>
       {recipe && (
         <>
-          <span className="order-part" aria-hidden>
+          <span className="order-part order-part-item" aria-hidden>
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src={foodImages[recipe.ingredient.itemId]}
@@ -1218,11 +1241,10 @@ export default function Game() {
           if (type === "stove") {
             // 칼은 도마에서 떼어 낸 조각이라 도마 그림 좌표로 자리를 잡는다.
             // 칼자루 끝을 축으로 두어 날만 내려오게 한다.
-            const span = Math.max(art.width, art.height) / KNIFE_OFFSET.span;
             const knife = this.add
               .image(
-                art.x + KNIFE_OFFSET.x * span * art.scaleX,
-                art.y + KNIFE_OFFSET.y * span * art.scaleY,
+                art.x + KNIFE_OFFSET.x * art.scaleX,
+                art.y + KNIFE_OFFSET.y * art.scaleY,
                 KNIFE_ART,
               )
               .setOrigin(KNIFE_PIVOT.x, KNIFE_PIVOT.y)
@@ -1868,7 +1890,8 @@ export default function Game() {
         <Music src="/music/home.mp3" />
         <StageSelect
           progress={progress}
-          onPick={(id) => startRound(allTypeIds, id)}
+          // 아르바이트는 첫 스테이지부터 끝까지 이어서 돈다.
+          onPick={() => startRound(allTypeIds, "0")}
           onBack={() => window.location.assign("/")}
         />
       </>
@@ -2021,23 +2044,30 @@ export default function Game() {
               alt={state.phase === "lost" ? "게임 오버" : "영업 종료"}
             />
             <h2 id="result-title">{result}</h2>
-            {rank > 0 && (
-              <p className="stage-rank" aria-label={`스테이지 랭크 별 ${rank}개`}>
-                {"★".repeat(rank)}
-                <span aria-hidden>{"☆".repeat(3 - rank)}</span>
-              </p>
-            )}
-            {/* 정산: 채운 주문과 실수를 횟수로만 보여 준다. */}
+            {/* 별은 하나씩 차례로 찍힌다. 받은 개수만 밝다. */}
+            <p className="stage-rank" aria-label={`스테이지 랭크 별 ${rank}개`}>
+              {[0, 1, 2].map((index) => (
+                <i
+                  key={index}
+                  aria-hidden
+                  data-on={index < rank ? "" : undefined}
+                  style={{ animationDelay: `${400 + index * 260}ms` }}
+                >
+                  ★
+                </i>
+              ))}
+            </p>
+            {/* 정산: 채운 주문과 실수를 횟수로 센다. 숫자는 올라간다. */}
             <dl className="settle">
               <div>
                 <dt>주문 성공</dt>
                 <dd />
-                <dd>{state.filled}번</dd>
+                <dd><CountUp value={state.filled} />번</dd>
               </div>
               <div>
                 <dt>주문 실수</dt>
                 <dd />
-                <dd>{state.misses}번</dd>
+                <dd><CountUp value={state.misses} delay={420} />번</dd>
               </div>
             </dl>
             <p className="mic-state">{saved}</p>
@@ -2066,7 +2096,7 @@ export default function Game() {
                   setStageId(null);
                 }}
               >
-                스테이지 선택
+                모드 선택
               </button>
             </div>
           </div>

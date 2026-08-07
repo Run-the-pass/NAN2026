@@ -358,54 +358,86 @@ button:disabled { cursor: var(--cursor-arrow); }
   top: 10px;
   left: 12px;
   display: flex;
+  align-items: start;
   gap: 10px;
   pointer-events: none;
 }
 
-/* 주문 카드 한 장: 큰 칸에 완성 그림, 그 아래 재료, 그 아래 조리 방법. */
+/* 주문 카드는 주문서 그림이 그대로 판형이다. 칸 경계(17.4% / 53.4% / 75.9%)는
+   그림에 그려진 가로줄 자리를 재서 맞췄다. 위 칸에 완성 그림, 가운데에 재료,
+   아래에 조리 방법이 온다. */
 .order-card {
   display: grid;
-  grid-template-rows: 1fr auto auto;
-  width: clamp(88px, 9vw, 118px);
-  height: 172px;
-  overflow: hidden;
-  border: 3px solid #5f3a1c;
-  border-radius: 8px;
-  background: linear-gradient(#f4e6c6, #e2cb9f);
-  box-shadow: inset 0 0 0 2px #fff8e466, 0 7px 0 #221208, 0 10px 18px #0006;
+  grid-template-rows: 17.4% 36% 22.5% 24.1%;
+  width: clamp(104px, 10.5vw, 122px);
+  aspect-ratio: 352 / 512;
+  /* 칸 안 그림 크기를 카드 높이(cqh)로 적기 위해 컨테이너로 삼는다.
+     퍼센트 높이는 그리드 칸 안에서 기준이 잡히지 않아 어긋난다. */
+  container-type: size;
+  background: url("/ui/order-ticket.png") center / 100% 100% no-repeat;
   color: #2c1a0e;
+  filter: drop-shadow(0 6px 5px #0007);
+  /* 새 주문은 오른쪽에서 스르륵 밀려 들어온다. */
+  animation: order-slide-in 420ms cubic-bezier(.22, 1, .36, 1) both;
 }
-/* 다음에 나올 주문은 한 걸음 뒤로 물러나 보이게 둔다. */
-.order-card-next { transform: scale(.86); transform-origin: top left; filter: saturate(.85) brightness(.95); }
 .order-card-empty { visibility: hidden; }
+
+@keyframes order-slide-in {
+  from { opacity: 0; transform: translateX(230%) rotate(6deg); }
+  to { opacity: 1; transform: none; }
+}
+
+/* 다음 주문은 무엇이 올지만 알린다. 음식 그림 하나만 둔다. */
+.order-next {
+  display: grid;
+  place-items: center;
+  width: clamp(52px, 5.2vw, 68px);
+  aspect-ratio: 1;
+  margin-top: 10px;
+  border: 3px solid #2b1a0c;
+  border-radius: 50%;
+  background: #fffdf6;
+  box-shadow: 0 5px 0 #221208, 0 8px 14px #0006;
+  animation: order-slide-in 420ms cubic-bezier(.22, 1, .36, 1) both;
+}
+.order-next .order-dish { width: 42px; height: 34px; }
 
 /* 각 칸은 흰 접시 같은 원 위에 그림 하나. 원 크기가 정해져 있어 그림이
    들쭉날쭉해 보이지 않는다. */
+/* 칸 순서는 주문서에 그려진 줄에 맞춰 못 박는다. 자동 배치에 맡기면 재료가
+   맨 윗 띠로 올라간다. 크기는 카드 크기를 따라가도록 모두 비율로 적는다. */
 .order-plate,
 .order-part {
   position: relative;
   display: grid;
   place-items: center;
-  padding: 5px;
+  min-height: 0;
 }
+.order-plate { grid-row: 2; }
+.order-part-item { grid-row: 3; }
+.order-method { grid-row: 4; }
 .order-plate::before,
 .order-part::before {
   content: "";
   position: absolute;
-  border: 3px solid #2b1a0c;
+  width: auto;
+  aspect-ratio: 1;
+  border: 2px solid #2b1a0c;
   border-radius: 50%;
   background: #fff;
 }
-.order-plate::before { width: 72px; height: 72px; }
-.order-part::before { width: 44px; height: 44px; }
+.order-plate::before { height: 31cqh; }
+.order-part::before { height: 18.5cqh; }
 .order-plate > *,
 .order-part > * { position: relative; }
-.order-plate { border-bottom: 2px solid #b18a56; }
-.order-part + .order-part { border-top: 2px solid #b18a5666; }
-.order-plate .order-dish { width: 60px; height: 49px; }
-.order-part img { width: 32px; height: 32px; object-fit: contain; }
-.order-method { display: flex; align-items: center; justify-content: center; gap: 1px; }
-.order-method img { width: 25px; height: 25px; }
+.order-plate .order-dish { width: auto; height: 22cqh; aspect-ratio: 202 / 163; }
+.order-part img { width: auto; height: 13cqh; object-fit: contain; }
+.order-method { display: flex; align-items: center; justify-content: center; gap: 2px; }
+.order-method img { height: 12cqh; }
+
+@media (prefers-reduced-motion: reduce) {
+  .order-card, .order-next { animation: none; }
+}
 
 /* 완성 음식은 빈 접시 위에 얹어 보여 준다. 접시를 바닥에 깔고 음식을 그
    위에 얹는다. 칸 비율을 접시 그림(202×163)에 맞춰 두면 접시가 칸을 그대로
@@ -478,48 +510,52 @@ button:disabled { cursor: var(--cursor-arrow); }
 .hud-right { display: grid; justify-items: end; gap: 8px; }
 
 /* 슬라임별 남은 행동력과 턴 종료 */
-.turn-bar { display: flex; align-items: end; gap: clamp(5px, .8vw, 10px); }
+.turn-bar { display: flex; align-items: end; gap: clamp(11px, 1.5vw, 18px); padding-bottom: 18px; }
 /* 슬라임 몸이 버튼 배경이다. 표정 없이 조금 어둡게 깔고, 그 위에 남은
    에너지만 얹는다. */
 .stage-frame .turn-bar button {
   position: relative;
   display: grid;
-  grid-template-rows: 1fr auto;
-  width: clamp(60px, 6.6vw, 84px);
-  aspect-ratio: 4 / 5;
-  overflow: hidden;
+  place-items: center;
+  width: clamp(56px, 6.2vw, 80px);
+  aspect-ratio: 1;
   border: 3px solid #ffffff8c;
-  border-radius: 14px;
-  padding: 0;
+  border-radius: 50%;
+  padding: 4px;
   background: #3d67aeec;
   box-shadow: 0 7px 18px #0007;
   transform: none;
 }
 .roster-slime {
-  grid-row: 1;
   width: 100%;
   height: 100%;
-  padding: 4px 4px 0;
   object-fit: contain;
 }
-/* 이름표는 몸 아래 칸에 따로 둔다. 몸 위에 겹치면 둘 다 안 보인다. */
+/* 이름표는 동그라미 아래에 걸쳐 놓는다. 안에 넣으면 몸을 가린다. */
 .roster-name {
-  grid-row: 2;
-  padding: 2px 0 3px;
-  background: #1a0e06cc;
+  position: absolute;
+  top: 100%;
+  right: -8px;
+  left: -8px;
+  margin-top: -6px;
+  border-radius: 3px;
+  background: #1a0e06d9;
   color: #ffeecb;
   font-size: clamp(9px, .92vw, 12px);
   font-weight: 400;
-  line-height: 1.15;
+  line-height: 1.35;
   white-space: nowrap;
 }
-/* 남은 에너지는 몸 왼쪽 위에 세로로 세운다. */
+/* 남은 에너지는 동그라미 위쪽에 어두운 알약을 깔고 얹어 크게 보인다. */
 .turn-bar .energy-row {
   position: absolute;
-  top: 3px;
-  left: 3px;
-  flex-direction: column;
+  top: -7px;
   gap: 1px;
+  border: 2px solid #1a0e06;
+  border-radius: 999px;
+  padding: 2px 5px;
+  background: #2a1809ee;
+  box-shadow: 0 2px 0 #0007;
 }
 .stage-frame .turn-bar button[data-type="fire"] { background: #a74435ec; }
 .stage-frame .turn-bar button[data-type="lightning"] { background: #9b771fec; }
@@ -559,8 +595,22 @@ button:disabled { cursor: var(--cursor-arrow); }
 }
 
 /* 스테이지 랭크 별 */
-.stage-rank { margin: 0 0 4px; color: var(--gold); font-size: 30px; letter-spacing: 4px; }
-.stage-rank span { opacity: .35; }
+.stage-rank { display: flex; justify-content: center; gap: 8px; margin: 0 0 8px; font-size: 34px; }
+.stage-rank i {
+  color: #6b4a1e;
+  font-style: normal;
+  opacity: .4;
+  transform: scale(.6);
+  animation: rank-star 320ms cubic-bezier(.2, 1.5, .4, 1) both;
+}
+.stage-rank i[data-on] { color: var(--gold); opacity: 1; text-shadow: 0 0 12px #ffd46b88; }
+@keyframes rank-star {
+  from { opacity: 0; transform: scale(1.9) rotate(-25deg); }
+  to { transform: scale(1); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .stage-rank i { animation: none; transform: none; }
+}
 
 /* 맵과 겹치지 않는 우측 선택 정보 레일 */
 .info-rail {
@@ -579,11 +629,10 @@ button:disabled { cursor: var(--cursor-arrow); }
   width: 100%;
   height: 100%;
   overflow-y: auto;
-  border: 7px solid #5f381d;
-  padding: clamp(18px, 3vh, 32px);
-  background: linear-gradient(#efd9aa, #c99c62);
+  border: 0;
+  padding: clamp(26px, 4vh, 42px) clamp(22px, 3vh, 34px);
+  background: url("/ui/info-panel.png") center / 100% 100% no-repeat;
   color: var(--paper-ink);
-  box-shadow: inset 0 0 0 2px #fff0c366;
   text-align: center;
 }
 .stage-frame .inspector-close {
@@ -759,7 +808,7 @@ button:disabled { cursor: var(--cursor-arrow); }
 /* 행동력은 밝은 번개와 어두운 번개로 보여 준다. 칸 게이지는 쓰지 않는다. */
 .energy-row { display: inline-flex; align-items: center; gap: 3px; }
 .energy-icon { width: 1.05em; height: 1.4em; object-fit: contain; }
-.turn-bar .energy-icon { width: 13px; height: 17px; filter: drop-shadow(0 1px 2px #000a); }
+.turn-bar .energy-icon { width: 15px; height: 20px; filter: drop-shadow(0 1px 2px #000a); }
 .game-inspector .energy-icon { width: 22px; height: 29px; }
 .stat-count { color: #6c4523; font-size: 12px; font-variant-numeric: tabular-nums; }
 .stat-gauge { display: inline-flex; gap: 3px; }
@@ -1292,8 +1341,7 @@ button:disabled { cursor: var(--cursor-arrow); }
   .home-cauldron, .home-cauldron-bubble { animation: none; }
 }
 
-/* 스테이지 선택: 0 · 1 · 2 · 3 · ∞ 다섯 칸을 한 줄에 놓는다.
-   글자 라벨은 두지 않는다. 번호와 별만으로 읽힌다. */
+/* 모드 선택: 아르바이트와 무한, 두 판만 놓는다. 나무 판 그림이 버튼이다. */
 .stage-select {
   position: relative;
   display: grid;
@@ -1336,60 +1384,29 @@ button:disabled { cursor: var(--cursor-arrow); }
 .stage-select-back:hover { border-color: var(--gold); }
 .stage-select-bar .music-settings-game { position: static; }
 
-.stage-slots {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: center;
-  gap: clamp(10px, 2vw, 22px);
-}
+.mode-plates { display: grid; gap: clamp(14px, 3vh, 28px); justify-items: center; }
 
-.stage-slot {
-  position: relative;
+/* 나무 판 그림 하나가 버튼 전체다. 테두리·배경은 그림에 이미 있다. */
+.mode-plate {
   display: grid;
-  place-content: center;
+  align-content: center;
   justify-items: center;
-  gap: 8px;
-  width: clamp(96px, 13vw, 150px);
-  aspect-ratio: 3 / 4;
-  border: 4px solid #8d592c;
-  border-radius: 10px;
-  padding: 10px;
-  background: linear-gradient(#efd9aa, #cda56d);
-  box-shadow: 0 8px 0 #2b1608, 0 14px 30px #0007;
-  color: var(--paper-ink);
-  cursor: var(--cursor-hand);
-  transition: transform 120ms ease, box-shadow 120ms ease;
+  gap: 2px;
+  width: clamp(300px, 44vw, 520px);
+  aspect-ratio: 639 / 256;
+  border: 0;
+  padding: 0 12% 2%;
+  background: url("/ui/mode-plate.png") center / 100% 100% no-repeat;
+  color: #ffeec4;
+  filter: drop-shadow(0 8px 0 #1b0d05aa) drop-shadow(0 14px 22px #0008);
+  transition: transform 120ms ease, filter 120ms ease;
 }
-.stage-slot:hover:not(:disabled) { transform: translateY(-4px); box-shadow: 0 12px 0 #2b1608, 0 18px 34px #0008; }
-.stage-slot:focus-visible { outline: 4px solid var(--gold); outline-offset: 3px; }
-
-/* 튜토리얼과 무한만 색을 달리해 번호 스테이지와 구분한다. */
-.stage-slot[data-kind="tutorial"] { background: linear-gradient(#cfe6bf, #9dc487); border-color: #5d7f45; }
-.stage-slot[data-kind="endless"] { background: linear-gradient(#d9cdec, #a894c9); border-color: #6b5590; }
-
-.stage-slot[data-locked] { filter: grayscale(.7) brightness(.75); cursor: var(--cursor-deny); box-shadow: 0 6px 0 #2b1608; }
-.stage-slot[data-locked]:hover { transform: none; }
-
-.stage-slot-label { font-size: clamp(38px, 6vw, 64px); line-height: 1; }
-
-.stage-slot-stars { display: flex; gap: 5px; }
-.stage-slot-stars i {
-  width: 17px;
-  height: 17px;
-  background: #7a5a33;
-  opacity: .35;
-  /* 별 모양은 이미지 없이 clip-path로 낸다. */
-  clip-path: polygon(50% 0, 61% 35%, 98% 35%, 68% 57%, 79% 91%, 50% 70%, 21% 91%, 32% 57%, 2% 35%, 39% 35%);
-}
-.stage-slot-stars i[data-on] { background: #e8a41d; opacity: 1; }
-
-.stage-slot-mark { position: absolute; top: 7px; right: 10px; color: #3d6b2a; font-size: 20px; }
-
-@media (max-width: 620px) {
-  .stage-slot { width: clamp(78px, 26vw, 120px); }
-  .stage-slot-stars i { width: 13px; height: 13px; }
-}
+.mode-plate b { font-size: clamp(20px, 2.8vw, 34px); text-shadow: 0 3px 0 #4a2411, 0 0 12px #00000088; }
+.mode-plate small { color: #ffdca6; font-size: clamp(11px, 1.2vw, 15px); text-shadow: 0 2px 0 #3a1c0b; }
+.mode-plate:hover:not(:disabled) { transform: translateY(-4px) scale(1.02); filter: drop-shadow(0 12px 0 #1b0d05aa) brightness(1.06); }
+.mode-plate:focus-visible { outline: 4px solid var(--gold); outline-offset: 6px; border-radius: 20px; }
+.mode-plate[data-locked] { filter: grayscale(.75) brightness(.6); cursor: var(--cursor-deny); }
+.mode-plate[data-locked]:hover { transform: none; }
 
 /* 행동력 한 줄. 스탯이 여러 개이던 시절의 3열 배치는 한 줄에는 벌어져
    보여서, 아이콘·이름·칸을 가운데로 모은다. */
