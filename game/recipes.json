@@ -1,5 +1,5 @@
 {
-  "note": "레시피 원본. 밸런스는 코드가 아니라 이 파일에서 조절한다. station/workers/ingredient는 game/core.ts의 StationId·SlimeElement·ItemId여야 하고, 어긋나면 시작할 때 오류가 난다. 같은 재료가 여러 기구에 쓰일 수 있고, 한 기구 안에서는 재료 하나가 결과 하나만 낸다. workers는 한 명 이상이며, 그 중 아무 속성이나 조리할 수 있다.",
+  "note": "레시피 원본. 밸런스는 코드가 아니라 이 파일에서 조절한다. station/workers/ingredient는 game/core.ts의 StationId·SlimeElement·ItemId여야 하고, 어긋나면 시작할 때 오류가 난다. 같은 재료가 여러 기구에 쓰일 수 있고, 한 기구 안에서는 재료 하나가 결과 하나만 낸다. workers는 한 명 이상이며, 그 중 아무 속성이나 조리할 수 있다. servedInDish가 false면 그릇 없이 손에 들고 제출한다(스무디처럼 컵째 나가는 것). 적지 않으면 true다.",
   "recipes": [
     {
       "foodId": "shredded-potato",
@@ -31,7 +31,8 @@
       "station": "blender",
       "workers": [
         "lightning"
-      ]
+      ],
+      "servedInDish": false
     },
     {
       "foodId": "strawberry-smoothie",
@@ -39,7 +40,8 @@
       "station": "blender",
       "workers": [
         "lightning"
-      ]
+      ],
+      "servedInDish": false
     },
     {
       "foodId": "fried-potato",

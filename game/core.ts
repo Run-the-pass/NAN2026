@@ -255,11 +255,12 @@ function readRecipes(): Partial<Record<ItemId, Recipe>> {
   // 한 기구 안에서 같은 재료가 두 결과를 내면 어느 쪽인지 정할 수 없다.
   const perStation = new Set<string>();
   for (const row of recipeData.recipes) {
-    const { foodId, ingredient, station, workers } = row as {
+    const { foodId, ingredient, station, workers, servedInDish } = row as {
       foodId: ItemId;
       ingredient: ItemId;
       station: StationId;
       workers: SlimeElement[];
+      servedInDish?: boolean;
     };
     if (
       !allItems.includes(foodId) ||
@@ -279,7 +280,8 @@ function readRecipes(): Partial<Record<ItemId, Recipe>> {
       ingredient: { itemId: ingredient, count: 1 },
       station,
       workers: [...workers],
-      requiresCleanDish: true,
+      // 적지 않으면 그릇에 담아 낸다. 스무디처럼 컵째 나가는 것만 false다.
+      requiresCleanDish: servedInDish !== false,
       submissionStation: "submission",
     };
   }
@@ -297,6 +299,10 @@ export const recipeAt = (station: StationId, item: ItemId) =>
   allRecipes.find(
     (recipe) => recipe.station === station && recipe.ingredient.itemId === item,
   ) ?? null;
+
+// 그릇 없이 그대로 내는 음식인지. 스무디는 컵째 나간다.
+export const servedBare = (item: ItemId) =>
+  allRecipes.some((recipe) => recipe.foodId === item && !recipe.requiresCleanDish);
 
 // 완성 음식인지. 도마에서 회수할 수 있는 것은 이것뿐이다.
 export const isCookedFood = (item: ItemId) =>
@@ -1338,7 +1344,10 @@ function atCooktop(
 
   // 완성 음식 회수. 이것도 물건 분류라 누구나 할 수 있다.
   if (onBoard && isCookedFood(onBoard)) {
-    const clean = dishIndex(actor, (dish) => dish.status === "clean");
+    // 그릇 없이 내는 음식은 그릇에 담지 않고 그대로 든다.
+    const clean = servedBare(onBoard)
+      ? -1
+      : dishIndex(actor, (dish) => dish.status === "clean");
     if (clean < 0 && !canCarry(actor, onBoard)) {
       return refuse(state, actor, "완성 음식을 들 자리가 없습니다.");
     }
@@ -1429,7 +1438,10 @@ function atBlender(
 
   // 완성한 스무디 회수. 물건 분류라 누구나 할 수 있다.
   if (blender.food) {
-    const clean = dishIndex(actor, (dish) => dish.status === "clean");
+    // 스무디는 컵째 나가므로 그릇에 담지 않는다.
+    const clean = servedBare(blender.food)
+      ? -1
+      : dishIndex(actor, (dish) => dish.status === "clean");
     if (clean < 0 && !canCarry(actor, blender.food)) {
       return refuse(state, actor, "완성 음식을 들 자리가 없습니다.");
     }
@@ -1811,10 +1823,17 @@ function atSubmission(
     (dish) => dish.status === "filled" && dish.content !== null,
   );
   const dish = actor.carrying[filledDish];
-  if (filledDish < 0 || !dish || !isDish(dish) || !dish.content) {
-    return refuse(state, actor, "접시에 담긴 완성 음식만 제출할 수 있습니다.");
+  if (filledDish >= 0 && dish && isDish(dish) && dish.content) {
+    return submitFood(state, actorId, actor, filledDish, dish.content);
   }
-  return submitFood(state, actorId, actor, filledDish, dish.content);
+  // 그릇 없이 내는 음식(스무디처럼 컵째 나가는 것)은 손에 든 채로 받는다.
+  const bare = actor.carrying.findIndex(
+    (carried) => !isDish(carried) && servedBare(carried),
+  );
+  if (bare >= 0) {
+    return submitFood(state, actorId, actor, bare, actor.carrying[bare] as ItemId);
+  }
+  return refuse(state, actor, "접시에 담긴 완성 음식만 제출할 수 있습니다.");
 }
 
 function submitFood(

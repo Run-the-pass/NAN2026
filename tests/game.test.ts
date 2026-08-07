@@ -110,7 +110,8 @@ test("레시피는 recipes.json을 그대로 읽어 온다", () => {
     ingredient: { itemId: "banana", count: 1 },
     station: "blender",
     workers: ["lightning"],
-    requiresCleanDish: true,
+    // 스무디는 컵째 나간다.
+    requiresCleanDish: false,
     submissionStation: "submission",
   });
   assert.equal(allRecipes.length, recipeData.recipes.length);
@@ -354,6 +355,30 @@ test("기구를 돌릴 수 있는 속성은 여럿일 수 있다", () => {
       }
     }
   }
+});
+
+test("스무디는 그릇 없이 손에 들고 제출한다", () => {
+  const bananaBoxId = stationInstancesByType["banana-box"][0].id;
+  const blenderId = stationInstancesByType.blender[0].id;
+  let state = initialState(1, ["water", "lightning"], oneStage([
+    { id: "a", foodId: "banana-smoothie", targetCount: 1, submittedCount: 0 },
+  ]));
+  state = actAt(state, "lightning-1", bananaBoxId);
+  state = actAt(state, "lightning-1", blenderId);
+  state = actAt(state, "water-1", blenderId);
+  state = actAt(state, "lightning-1", blenderId);
+  // 그릇에 담기지 않고 손에 그대로 들린다.
+  state = actAt(state, "lightning-1", blenderId);
+  assert.deepEqual(state.actors["lightning-1"]!.carrying, ["banana-smoothie"]);
+
+  state = actAt(state, "lightning-1", "submission");
+  assert.equal(state.filled, 1);
+  assert.deepEqual(state.actors["lightning-1"]!.carrying, []);
+  // 그릇을 낸 것이 아니므로 반납대로 돌아갈 그릇도 없다.
+  assert.deepEqual(state.pendingReturns, []);
+  assert.equal(recipes["banana-smoothie"]!.requiresCleanDish, false);
+  // 도마 음식은 그대로 그릇이 필요하다.
+  assert.equal(recipes["shredded-potato"]!.requiresCleanDish, true);
 });
 
 test("도마와 믹서기는 서로의 재료를 받지 않는다", () => {

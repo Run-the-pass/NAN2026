@@ -43,6 +43,7 @@ import {
   carriedLabel,
   isDish,
   blenderStage,
+  servedBare,
   stationElements,
   allRecipes,
   type ActorId,
@@ -149,6 +150,9 @@ const BLENDER_ART = "/stations/blender.png";
 // 기준으로 잰 값이라 그림을 칸에 맞춘 배율만 곱하면 된다.
 const BLENDER_JAR = { dx: -14.5, dy: -47, width: 88, height: 78 };
 const BLENDER_WATER = { dx: -14.5, dy: -38, width: 88, height: 60 };
+// ingredient-box.png(179×185) 가운데 흰 원. 알파값에서 실제 원 범위를 재서
+// 얻은 값이다. 내용물은 이 원 안에 앉는다.
+const BOX_BADGE = { dx: 0, dy: -7, diameter: 59 };
 
 // 도마·믹서기는 조리대 위에 놓인 물건이다. 아래에 테이블을 깔고 그림을
 // 위로 올려 얹힌 것처럼 보이게 한다. 칸을 넘어가도 되고, 앞뒤 순서는
@@ -340,10 +344,19 @@ function ActionPoints({ actor }: { actor: { typeId: SlimeTypeId; actionPoints: n
   );
 }
 
-// 완성 음식은 빈 접시 위에 올려 보여 준다. 그림이 없는 음식은 이모지로 남긴다.
+// 완성 음식은 빈 접시 위에 올려 보여 준다. 그릇 없이 내는 음식(스무디)은
+// 접시를 깔지 않는다. 그림이 없는 음식은 이모지로 남긴다.
 function OrderDish({ foodId }: { foodId: ItemId }) {
   const art = foodImages[foodId];
   if (!art) return <span aria-hidden>{itemIcons[foodId]}</span>;
+  if (servedBare(foodId)) {
+    return (
+      <span className="order-dish order-dish-bare" aria-hidden>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src={art} alt="" />
+      </span>
+    );
+  }
   return (
     <span className="order-dish" aria-hidden>
       {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -1123,9 +1136,14 @@ export default function Game() {
           }
           const itemArt = stationBadgeArt[type];
           if (itemArt) {
-            // 상자 그림 가운데 흰 원 자리에 내용물을 얹는다.
-            const badge = this.add.image(x, y + 2 - lift, itemArt).setDepth(y + 2);
-            badge.setScale(24 / Math.max(badge.width, badge.height));
+            // 상자 그림 가운데 흰 원 자리에 내용물을 얹는다. 원 지름과 위치를
+            // 그림 배율에 맞춰 재므로 어떤 재료 그림이든 원 안에 들어간다.
+            const k = art.scaleX;
+            const badge = this.add
+              .image(x + BOX_BADGE.dx * k, y - lift + BOX_BADGE.dy * k, itemArt)
+              .setDepth(y + 2);
+            const room = BOX_BADGE.diameter * k * 0.82;
+            badge.setScale(Math.min(room / badge.width, room / badge.height));
           }
           // 재료·그릇·쓰레기 수는 숫자 대신 게이지로 보여 준다. 정확한 수는
           // 설비를 클릭했을 때 정보 패널에서 본다.
