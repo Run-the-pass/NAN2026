@@ -3,7 +3,6 @@
   "stages": [
     {
       "id": "0",
-      "name": "튜토리얼",
       "turnLimit": 40,
       "stars": [
         1,
@@ -18,7 +17,6 @@
     },
     {
       "id": "1",
-      "name": "첫 영업",
       "turnLimit": 60,
       "stars": [
         3,
@@ -36,7 +34,6 @@
     },
     {
       "id": "2",
-      "name": "점심 러시",
       "turnLimit": 70,
       "stars": [
         5,
@@ -57,7 +54,6 @@
     },
     {
       "id": "3",
-      "name": "저녁 마감",
       "turnLimit": 80,
       "stars": [
         7,

@@ -11,7 +11,7 @@ import {
   interactActor,
   isBesideStation,
   moveActor,
-  moveTargets,
+  moveOptions,
   nextReadyActor,
   endTurn,
   pixelToTile,
@@ -35,7 +35,6 @@ import {
   nextStage,
   defaultStages,
   stageIndexOf,
-  GOLD_PER_ORDER,
   dishConfig,
   incineratorConfig,
   isBoxStation,
@@ -66,7 +65,6 @@ import {
 import Music, { MusicSettings } from "./Music";
 import { gameMusicSource } from "./music-source";
 import { GameSoundEffects } from "./SoundEffects";
-import { itemIcons, stationIcons } from "./stage-info";
 import StageSelect from "./StageSelect";
 import { readProgress, withResult, writeProgress, type StageProgress } from "./progress";
 
@@ -105,7 +103,8 @@ const MOTION_MS = 320;
 // globals.css의 --cursor-arrow / --cursor-hand와 같은 값이어야 한다.
 const CURSOR_ARROW = 'url("/ui/cursor.png") 2 0, auto';
 const CURSOR_HAND = 'url("/ui/cursor-click.png") 9 0, pointer';
-const CURSOR_DENY = 'url("/ui/cursor.png") 2 0, not-allowed';
+// 지금은 쓸 수 없는 설비. 금지 표시 대신 "?"를 붙인 화살표로 알린다.
+const CURSOR_ASK = 'url("/ui/cursor-help.png") 2 0, help';
 const workStatusLabels = {
   IDLE: "대기",
   MISSING_MATERIAL: "식재료 부족",
@@ -120,7 +119,8 @@ const stationArt: Record<StationId, string> = {
   "banana-box": "/stations/ingredient-box.png",
   "strawberry-box": "/stations/ingredient-box.png",
   "mushroom-box": "/stations/ingredient-box.png",
-  stove: "/food/doma.png",
+  // 도마는 칼을 따로 떼어 두고 얹는다. 썰 때 칼만 움직여야 해서다.
+  stove: "/food/board.png",
   oven: "/stations/oven.png",
   fryer: "/stations/fryer.png",
   blender: "/stations/blender.png",
@@ -143,28 +143,34 @@ const stationBadgeArt: Partial<Record<StationId, string>> = {
   "mushroom-box": "/food/mushroom.png",
 };
 
-// 믹서기는 빈 그림 하나만 쓰고 안에 든 것을 그 위에 겹쳐 그린다. 과일마다
-// 그림을 따로 만들면 레시피가 늘 때마다 에셋이 필요해서, 재료·완성품이
-// 이미 가진 그림을 유리병 자리에 얹는 방식으로 둔다.
-const BLENDER_ART = "/stations/blender.png";
-// blender.png(205×256) 안에서 유리병 안쪽 칸과 물이 차는 칸. 그림 가운데를
-// 기준으로 잰 값이라 그림을 칸에 맞춘 배율만 곱하면 된다.
-const BLENDER_JAR = { dx: -14.5, dy: -47, width: 88, height: 78 };
-const BLENDER_WATER = { dx: -14.5, dy: -38, width: 88, height: 60 };
+// 믹서기는 단계마다 전용 그림이 있다. 그림과 그림을 겹쳐 만들지 않는다.
+// 네 장 모두 같은 자리·같은 배율로 다시 구워 두어 그림이 바뀔 때 기계가
+// 흔들리지 않는다.
+const blenderArt = {
+  empty: "/stations/blender.png",
+  "needs-water": "/stations/blender-fruit.png",
+  ready: "/stations/blender-ready.png",
+  done: "/stations/blender-full.png",
+} as const;
+// 도마 위에서 움직이는 칼. board.png와 한 장이었던 것을 떼어 낸 것이라
+// 아래 값은 원본 도마 그림(167×172) 좌표계 기준이다.
+const KNIFE_ART = "/food/knife.png";
+// 칼자루 끝. 여기를 축으로 날이 내려온다.
+const KNIFE_PIVOT = { x: 0.921, y: 0.072 };
+// 도마 그림 한가운데에서 칼자루 끝까지의 거리(도마 그림 픽셀).
+const KNIFE_OFFSET = { x: 67.5, y: -53, span: 172 };
 // ingredient-box.png(179×185) 가운데 흰 원. 알파값에서 실제 원 범위를 재서
 // 얻은 값이다. 내용물은 이 원 안에 앉는다.
 const BOX_BADGE = { dx: 0, dy: -7, diameter: 59 };
-// 그림마다 알맹이가 한가운데에 있지 않다. 소각기는 왼쪽 아래로, 화로는
-// 아래로, 믹서기는 손잡이 때문에 왼쪽으로 쏠려 있다. 알파의 무게중심을
-// 재서 그만큼 되밀어 칸 한가운데에 오게 한다. 값은 그림 픽셀 단위다.
+// 그림마다 알맹이가 캔버스 한가운데에 있지 않다. 알파 범위의 가운데를 재서
+// 그만큼 되민다. 값은 그림의 긴 변 대비 %라 인게임과 정보 패널이 같은
+// 숫자를 쓴다.
 const artAnchor: Record<string, { x: number; y: number }> = {
-  "/stations/trash.png": { x: 6.7, y: -11 },
-  "/stations/trash-full.png": { x: 6.7, y: -11 },
-  "/stations/blender.png": { x: 17, y: 1.7 },
-  "/stations/oven.png": { x: 0.4, y: -15.5 },
-  "/stations/submission.png": { x: 0, y: 8.4 },
-  "/stations/table.png": { x: 0.1, y: 4.4 },
-  "/food/doma.png": { x: 8.5, y: 1.1 },
+  "/food/board.png": { x: 6.1, y: 0 },
+  "/food/doma.png": { x: 5.2, y: 1 },
+  "/food/potato.png": { x: 3.3, y: 2.7 },
+  "/stations/trash.png": { x: 0.2, y: -1.1 },
+  "/stations/trash-full.png": { x: 0.2, y: -1.1 },
 };
 
 // 도마·믹서기는 조리대 위에 놓인 물건이다. 아래에 테이블을 깔고 그림을
@@ -173,11 +179,10 @@ const artAnchor: Record<string, { x: number; y: number }> = {
 const stationArtStyle: Partial<
   Record<StationId, { onTable?: boolean; lift?: number; grow?: number }>
 > = {
-  stove: { onTable: true, lift: 16, grow: 0.92 },
+  // 도마는 조리대 위에 놓인 판이라 칸을 다 채우면 오히려 크다.
+  stove: { onTable: true, lift: 14, grow: 0.76 },
   // 믹서기는 칸을 조금 넘되 슬라임보다 커 보이지 않을 만큼만.
-  blender: { onTable: true, lift: 18, grow: 1.18 },
-  // 소각기는 칸을 꽉 채우는데도 어두워서 작아 보인다. 살짝 키워 세운다.
-  trash: { lift: 5, grow: 1.14 },
+  blender: { onTable: true, lift: 11, grow: 1.14 },
 };
 // 판이 시작할 때와 마감이 다가올 때 잠깐 띄우는 큰 문구.
 const bannerImages = {
@@ -185,8 +190,9 @@ const bannerImages = {
   closing: "/text/closing-soon-title.png",
 } as const;
 const BANNER_MS = 1600;
-// 주문 카드에 빈 접시 위로 얹어 그리는 완성 음식.
-const foodImages: Partial<Record<ItemId, string>> = {
+// 재료와 완성 음식 그림. 모든 아이템에 그림이 있어 이모지로 대신할 자리는
+// 없다.
+const foodImages: Record<ItemId, string> = {
   potato: "/food/potato.png",
   "shredded-potato": "/food/shredded-potato.png",
   carrot: "/food/carrot.png",
@@ -230,89 +236,73 @@ type InspectorTarget =
 
 const stationPanelInfo: Record<
   StationId,
-  { description: string[]; required: SlimeTypeId[]; steps: { art: string; text: string }[] }
+  { description: string[]; steps: { art: string; text: string }[] }
 > = {
   "potato-box": {
     description: ["턴이 끝날 때마다 감자가 한 개 찹니다.", "빈손이나 깨끗한 그릇으로 꺼냅니다. (행동력 1)"],
-    required: [],
     steps: [{ art: "/food/potato.png", text: "감자 받기" }],
   },
   "carrot-box": {
     description: ["턴이 끝날 때마다 당근이 한 개 찹니다.", "빈손이나 깨끗한 그릇으로 꺼냅니다. (행동력 1)"],
-    required: [],
     steps: [{ art: "/food/carrot.png", text: "당근 받기" }],
   },
   "cabbage-box": {
     description: ["턴이 끝날 때마다 양배추가 한 개 찹니다.", "빈손이나 깨끗한 그릇으로 꺼냅니다. (행동력 1)"],
-    required: [],
     steps: [{ art: "/food/cabbage.png", text: "양배추 받기" }],
   },
   "banana-box": {
     description: ["바나나를 꺼냅니다. (행동력 1)", "빈손이나 깨끗한 그릇으로 꺼냅니다."],
-    required: [],
     steps: [{ art: "/food/banana.png", text: "바나나 받기" }],
   },
   "strawberry-box": {
     description: ["딸기를 꺼냅니다. (행동력 1)", "빈손이나 깨끗한 그릇으로 꺼냅니다."],
-    required: [],
     steps: [{ art: "/food/strawberry.png", text: "딸기 받기" }],
   },
   "mushroom-box": {
     description: ["버섯을 꺼냅니다. (행동력 1)", "빈손이나 깨끗한 그릇으로 꺼냅니다."],
-    required: [],
     steps: [{ art: "/food/mushroom.png", text: "버섯 받기" }],
   },
   oven: {
     description: ["불 슬라임만 구울 수 있습니다. (행동력 1)", "재료를 올리고 꺼내는 것은 누구나 합니다."],
-    required: ["fire"],
     steps: [{ art: "/food/mushroom.png", text: "버섯" }, { art: "/stations/oven.png", text: "불 슬라임이 굽기" }, { art: "/food/plate.png", text: "그릇에 담기" }],
   },
   "dish-return": {
     description: ["제출한 그릇이 한 턴 뒤 더러운 채로 나옵니다.", "집어서 세척대로 옮깁니다. (행동력 1)"],
-    required: [],
     steps: [{ art: "/food/dirty-plate.png", text: "더러운 그릇 회수" }, { art: "/stations/washer.png", text: "세척대로" }],
   },
   fryer: {
-    description: ["불 슬라임만 튀길 수 있습니다. (행동력 1)", "감자와 버섯을 튀깁니다."],
-    required: ["fire"],
-    steps: [{ art: "/food/potato.png", text: "감자·버섯" }, { art: "/stations/fryer.png", text: "불 슬라임이 튀기기" }, { art: "/food/plate.png", text: "그릇에 담기" }],
+    description: ["번개 슬라임만 튀길 수 있습니다. (행동력 1)", "감자와 버섯을 튀깁니다."],
+    steps: [{ art: "/food/potato.png", text: "감자·버섯" }, { art: "/stations/fryer.png", text: "번개 슬라임이 튀기기" }, { art: "/food/plate.png", text: "그릇에 담기" }],
   },
   blender: {
     description: [
       "과일 → 물 → 가동 순서로 스무디를 만듭니다.",
       "넣은 과일은 뺄 수 없고, 물을 먼저 채울 수도 없습니다.",
     ],
-    required: ["water", "lightning"],
-    steps: [{ art: "/food/banana.png", text: "과일 넣기" }, { art: "/ui/water.png", text: "물 슬라임이 물" }, { art: "/ui/energy.png", text: "번개 슬라임이 가동" }],
+    steps: [{ art: "/food/banana.png", text: "과일 넣기" }, { art: "/ui/water.png", text: "물 슬라임이 물" }, { art: "/stations/blender-full.png", text: "번개 슬라임이 가동" }],
   },
   stove: {
     description: ["땅 슬라임만 재료를 썰 수 있습니다. (행동력 1)", "감자·당근·양배추를 채썹니다."],
-    required: ["earth"],
-    steps: [{ art: "/food/potato.png", text: "감자·당근·양배추" }, { art: "/food/doma.png", text: "땅 슬라임이 썰기" }, { art: "/food/plate.png", text: "그릇에 담기" }],
+    steps: [{ art: "/food/potato.png", text: "감자·당근·양배추" }, { art: KNIFE_ART, text: "땅 슬라임이 썰기" }, { art: "/food/plate.png", text: "그릇에 담기" }],
   },
   submission: {
     description: ["주문 음식이 담긴 그릇을 제출합니다. (행동력 1)", "그릇은 한 턴 뒤 반납대로 갑니다."],
-    required: [],
     steps: [{ art: "/food/plate.png", text: "완성 음식" }, { art: "/stations/submission.png", text: "제출" }],
   },
   trash: {
-    description: ["쓰레기를 최대 5개까지 보관합니다. (버리기 행동력 1)", "불 슬라임이 소각해 비웁니다. (행동력 1)"],
-    required: ["fire"],
+    description: [`쓰레기를 최대 ${incineratorConfig.capacity}개까지 보관합니다. (버리기 행동력 1)`, "불 슬라임이 소각해 비웁니다. (행동력 1)"],
     steps: [{ art: "/stations/trash-full.png", text: "쓰레기 투입" }, { art: "/stations/trash.png", text: "불 슬라임이 소각" }],
   },
   "dish-rack": {
-    description: ["깨끗한 그릇을 꺼냅니다. (행동력 1)", "상자에는 그릇이 최대 3개고 새로 생기지 않습니다."],
-    required: [],
+    description: ["깨끗한 그릇을 꺼냅니다. (행동력 1)", `상자에는 그릇이 최대 ${dishConfig.rackCapacity}개고 새로 생기지 않습니다.`],
     steps: [{ art: "/food/plate.png", text: "깨끗한 그릇 받기" }],
   },
   washer: {
     description: ["더러운 그릇을 맡깁니다. (행동력 1)", "물 슬라임만 세척할 수 있습니다. (행동력 1)"],
-    required: ["water"],
     steps: [{ art: "/food/dirty-plate.png", text: "더러운 그릇 넣기" }, { art: "/stations/washer-water.png", text: "물 슬라임이 세척" }],
   },
   table: {
     description: ["재료나 그릇을 한 칸 보관합니다.", "다른 슬라임에게 물건을 인계할 수 있습니다."],
-    required: [],
     steps: [{ art: "/stations/table.png", text: "잠깐 올려 두기" }, { art: "/food/plate.png", text: "다시 집기" }],
   },
 };
@@ -324,13 +314,9 @@ const traitArt: Record<string, string> = {
   "cook-heat": "/stations/oven.png",
   burn: "/stations/trash.png",
   "double-move": "/ui/energy.png",
-  power: "/stations/blender.png",
-  chop: "/food/doma.png",
+  power: "/stations/blender-full.png",
+  chop: KNIFE_ART,
 };
-
-// 버튼에 쓸 표정 없는 몸. 그려 온 SVG는 얼굴이 따로라 그대로 쓰면 된다.
-const facelessSlime = (typeId: SlimeTypeId) =>
-  authoredSlimeAssets[typeId] ?? slimeDataUri(typeId, "down", { faceless: true });
 
 const slimePortrait = (typeId: SlimeTypeId) =>
   typeId === "water"
@@ -366,11 +352,19 @@ function ActionPoints({ actor }: { actor: { typeId: SlimeTypeId; actionPoints: n
   );
 }
 
-// 완성 음식은 빈 접시 위에 올려 보여 준다. 그릇 없이 내는 음식(스무디)은
-// 접시를 깔지 않는다. 그림이 없는 음식은 이모지로 남긴다.
+// 알맹이가 캔버스 한가운데에 있지 않은 그림은 그만큼 되민다. artAnchor의
+// 값이 긴 변 대비 %라, 칸을 꽉 쓰는 contain 그림에서는 그대로 %로 옮기면
+// 된다.
+function anchorStyle(art: string) {
+  const off = artAnchor[art];
+  if (!off) return undefined;
+  return { transform: `translate(${off.x}%, ${off.y}%)` };
+}
+
+// 완성 음식은 빈 접시에 올려 보여 준다. 그릇 없이 내는 음식(스무디)은
+// 접시를 깔지 않는다.
 function OrderDish({ foodId }: { foodId: ItemId }) {
   const art = foodImages[foodId];
-  if (!art) return <span aria-hidden>{itemIcons[foodId]}</span>;
   if (servedBare(foodId)) {
     return (
       <span className="order-dish order-dish-bare" aria-hidden>
@@ -389,74 +383,88 @@ function OrderDish({ foodId }: { foodId: ItemId }) {
   );
 }
 
-// 조리 흐름 한 칸. 게임에 쓰는 그림을 그대로 쓰고, 그림이 없을 때만
-// 이모지로 대신한다.
-function FlowIcon({ art, fallback }: { art?: string; fallback: string }) {
-  if (!art) return <span aria-hidden>{fallback}</span>;
-  // eslint-disable-next-line @next/next/no-img-element
-  return <img className="flow-icon" src={art} alt="" aria-hidden />;
-}
-
 // 설비를 대표하는 아이콘. 상자류는 담긴 재료 그림을 쓰고, 나머지는 설비
-// 그림을 그대로 쓴다. 인게임과 같은 그림이라 이모지보다 바로 알아본다.
+// 그림을 그대로 쓴다. 인게임과 같은 그림이라 바로 알아본다.
 // 세척대·제출대처럼 가로로 긴 그림은 동그라미 안에서 유난히 작아 보인다.
 // 그런 그림만 여백을 줄여 크게 앉힌다.
 const wideStationArt: StationId[] = ["washer", "submission"];
+// 인게임에서는 칼을 따로 움직여야 해서 도마를 판만 그린다. 판만 있으면
+// 무엇인지 알기 어려우니 아이콘으로는 칼이 놓인 원래 그림을 쓴다.
+const stationIconArt: Partial<Record<StationId, string>> = {
+  stove: "/food/doma.png",
+};
 
 function StationIcon({ id }: { id: StationId }) {
-  const art = stationBadgeArt[id] ?? stationArt[id];
-  // eslint-disable-next-line @next/next/no-img-element
-  return <img src={art} alt="" aria-hidden data-wide={wideStationArt.includes(id) ? "" : undefined} />;
+  const art = stationIconArt[id] ?? stationBadgeArt[id] ?? stationArt[id];
+  return (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img
+      src={art}
+      alt=""
+      aria-hidden
+      style={anchorStyle(art)}
+      data-wide={wideStationArt.includes(id) ? "" : undefined}
+    />
+  );
 }
 
-// 재료 → (믹서기라면 물) → 기구 순서. 주문 카드 두 종류가 같이 쓴다.
-function OrderFlow({ foodId }: { foodId: ItemId }) {
-  const recipe = recipes[foodId];
-  if (!recipe) return null;
+// 이 요리를 어떻게 만드는지 한눈에 알리는 그림. 도마는 칼로, 믹서기는
+// 물과 믹서기로 말한다.
+const methodArt = (station: StationId): string[] =>
+  station === "stove"
+    ? [KNIFE_ART]
+    : station === "blender"
+      ? ["/ui/water.png", blenderArt.empty]
+      : [stationArt[station]];
+
+// 주문 카드 한 장. 큰 칸에 완성 그림, 그 아래 재료, 그 아래 조리 방법이다.
+function OrderCard({ order, next }: { order: Order; next?: boolean }) {
+  const recipe = recipes[order.foodId];
   return (
-    <div className="order-process" aria-label="조리 흐름">
-      <FlowIcon
-        art={foodImages[recipe.ingredient.itemId]}
-        fallback={itemIcons[recipe.ingredient.itemId]}
-      />
-      {recipe.station === "blender" ? (
+    <article
+      className={next ? "order-card order-card-next" : "order-card"}
+      aria-label={`${itemLabel(order.foodId)} 주문`}
+    >
+      <span className="order-plate">
+        <OrderDish foodId={order.foodId} />
+      </span>
+      {recipe && (
         <>
-          <i aria-hidden>+</i>
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img className="flow-icon" src="/ui/water.png" alt="" aria-hidden />
+          <span className="order-part" aria-hidden>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={foodImages[recipe.ingredient.itemId]}
+              alt=""
+              style={anchorStyle(foodImages[recipe.ingredient.itemId])}
+            />
+          </span>
+          <span className="order-part order-method" aria-hidden>
+            {methodArt(recipe.station).map((art) => (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img key={art} src={art} alt="" style={anchorStyle(art)} />
+            ))}
+          </span>
         </>
-      ) : null}
-      <i aria-hidden>→</i>
-      <FlowIcon
-        art={stationArt[recipe.station]}
-        fallback={stationIcons[recipe.station]}
-      />
-    </div>
+      )}
+    </article>
   );
 }
 
 function OrderCards({ state }: { state: GameState }) {
   const orders = activeOrders(state);
   const upcoming = upcomingOrders(state);
-  // 카드에는 무엇을 만들지만 둔다. 번호·개수·기구 이름은 그림과 조리 흐름이
-  // 이미 말해 주고 있어 글자로 또 적으면 읽을 것만 늘어난다.
-  const card = (order: Order, next = false) => (
-    <article className={next ? "order-card order-card-next" : "order-card"} key={order.id}>
-      <strong className="order-food">
-        <OrderDish foodId={order.foodId} />
-        {itemLabel(order.foodId)}
-      </strong>
-      <OrderFlow foodId={order.foodId} />
-    </article>
-  );
+  // 카드에는 무엇을 만들지만 둔다. 번호·개수·이름은 그림이 이미 말해 주고
+  // 있어 글자로 또 적으면 읽을 것만 늘어난다.
   return (
     <section className="order-cards" aria-label="진행 중인 주문">
       {[0, 1].map((index) => {
         const order = orders[index];
         if (!order) return <span className="order-card order-card-empty" aria-hidden key={index} />;
-        return card(order);
+        return <OrderCard order={order} key={order.id} />;
       })}
-      {upcoming.map((order) => card(order, true))}
+      {upcoming.map((order) => (
+        <OrderCard order={order} next key={order.id} />
+      ))}
     </section>
   );
 }
@@ -473,7 +481,7 @@ function stationStock(state: GameState, id: StationInstanceId) {
     return { label: "쌓인 쓰레기", have: state.incinerators[id]!.count, max: incineratorConfig.capacity };
   }
   if (type === "dish-return") {
-    return { label: "반납된 그릇", have: state.dishReturns[id]!.length, max: dishConfig.rackCapacity };
+    return { label: "반납된 그릇", have: state.dishReturns[id]!.length, max: dishConfig.returnCapacity };
   }
   return null;
 }
@@ -495,6 +503,46 @@ function StationStock({ state, id }: { state: GameState; id: StationInstanceId }
         ))}
       </span>
       <small>{stock.have} / {stock.max}</small>
+    </div>
+  );
+}
+
+// 지금 이 설비에 올라와 있는 것. 테이블·조리대·세척대처럼 물건을 하나
+// 얹어 두는 설비만 값이 나온다.
+function stationHolding(state: GameState, id: StationInstanceId): Carried | null {
+  const type = stationType(id);
+  if (type === "table") return state.tables[id]![0] ?? null;
+  if (isCooktop(type)) return state.stoves[id]![0] ?? null;
+  if (type === "washer") return state.washers[id]!.dish;
+  if (type === "blender") {
+    const blender = state.blenders[id]!;
+    return blender.food ?? blender.fruit;
+  }
+  if (type === "dish-return") return state.dishReturns[id]![0] ?? null;
+  return null;
+}
+
+// 올려 둔 물건은 글자가 아니라 그림으로 보여 준다.
+function CarriedArt({ carried }: { carried: Carried }) {
+  const art = carriedArt(carried);
+  return (
+    <span className="carried-art" aria-hidden>
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      {art.bg && <img src={art.bg} alt="" />}
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      {art.fg && <img src={art.fg} alt="" style={art.bg ? undefined : anchorStyle(art.fg)} />}
+    </span>
+  );
+}
+
+function StationHolding({ state, id }: { state: GameState; id: StationInstanceId }) {
+  const held = stationHolding(state, id);
+  if (!held) return null;
+  return (
+    <div className="station-holding">
+      <b>올려 둔 것</b>
+      <CarriedArt carried={held} />
+      <small>{carriedLabel(held)}</small>
     </div>
   );
 }
@@ -535,11 +583,11 @@ function GameInspector({
         <h3>특징</h3>
         <div className="inspector-badges">
           {type.traits.map((one) => (
-            // 자세한 설명은 마우스를 올렸을 때만 보여 준다. 패널이 길어지면
-            // 정작 봐야 할 행동력과 재고가 밀린다.
-            <span key={one.id} title={one.detail}>
+            // 자세한 설명은 마우스를 올리거나 키보드로 짚었을 때만 보여
+            // 준다. 패널이 길어지면 정작 봐야 할 행동력과 재고가 밀린다.
+            <span key={one.id} className="has-tip" data-tip={one.detail} tabIndex={0}>
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={traitArt[one.id]} alt="" aria-hidden />
+              <img src={traitArt[one.id]} alt="" aria-hidden style={anchorStyle(traitArt[one.id])} />
               {one.name}
             </span>
           ))}
@@ -561,6 +609,7 @@ function GameInspector({
         {info.description.map((line) => <p key={line}>{line}</p>)}
       </div>
       <StationStock state={state} id={target.id} />
+      <StationHolding state={state} id={target.id} />
       <h3>필요 슬라임</h3>
       <div className="required-slimes">
         {required.length ? required.map((typeId) => (
@@ -573,11 +622,12 @@ function GameInspector({
       </div>
       <h3>가능한 작업</h3>
       <div className="station-workflow">
-        {info.steps.map((step, index) => (
+        {info.steps.map((step) => (
           <span key={step.text}>
-            {index > 0 && <i aria-hidden>→</i>}
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={step.art} alt="" aria-hidden />
+            <i aria-hidden>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={step.art} alt="" style={anchorStyle(step.art)} />
+            </i>
             <b>{step.text}</b>
           </span>
         ))}
@@ -758,15 +808,20 @@ export default function Game() {
         >
       >;
       stations!: Record<StationInstanceId, Phaser.GameObjects.Text>;
-      // 믹서기만 단계에 따라 그림이 바뀌어 따로 들고 있는다.
+      // 믹서기만 단계에 따라 그림이 통째로 바뀌어 따로 들고 있는다.
       blenders!: Partial<Record<StationInstanceId, {
         art: Phaser.GameObjects.Image;
-        fit: () => void;
-        water: Phaser.GameObjects.Rectangle;
-        contents: Phaser.GameObjects.Image;
-        showContents: (key: string) => void;
+        show: (key: string) => void;
       }>>;
       blenderHints!: Partial<Record<StationInstanceId, Phaser.GameObjects.Image>>;
+      // 설비에 올라와 있는 재료·그릇 그림. 도마·화로·튀김기·테이블이 쓴다.
+      holdings!: Partial<Record<StationInstanceId, {
+        bg: Phaser.GameObjects.Image;
+        fg: Phaser.GameObjects.Image;
+        room: number;
+      }>>;
+      // 도마 위의 칼. 썰 때만 내려찍는다.
+      knives!: Partial<Record<StationInstanceId, Phaser.GameObjects.Image>>;
       // 재고 게이지와, 골랐을 때만 뜨는 이름표.
       gauges!: Partial<Record<StationInstanceId, Phaser.GameObjects.Graphics>>;
       stationNames!: Partial<Record<StationInstanceId, Phaser.GameObjects.Text>>;
@@ -777,6 +832,14 @@ export default function Game() {
       // 지금 고른 슬라임이 각 설비를 쓸 수 있는지. 커서 모양이 이걸 본다.
       usable!: Partial<Record<StationInstanceId, boolean>>;
       sparks!: Phaser.GameObjects.Particles.ParticleEmitter;
+
+      // 그림을 정해진 칸 안에 넣는다. 긴 쪽을 기준으로 줄여 비율은
+      // 그대로 둔다. 늘리거나 눌러 담지 않는다.
+      fitInto(image: Phaser.GameObjects.Image, width: number, height = width) {
+        return image.setScale(
+          Math.min(width / image.width, height / image.height),
+        );
+      }
 
       // 게이지 한 줄. 남은 양을 칸으로 나눠 그린다. 이어 붙은 막대는 눈대중
       // 으로 세야 해서 칸마다 떨어뜨려 그린다.
@@ -804,6 +867,22 @@ export default function Game() {
             .lineStyle(1, 0x000000, 0.35)
             .strokeRoundedRect(cx, y, cell, height, 1.5);
         }
+      }
+
+      // 도마질. 칼자루를 축으로 날을 들었다 내려찍고 제자리로 돌아온다.
+      chop(id: StationInstanceId) {
+        const knife = this.knives[id];
+        if (!knife) return;
+        this.tweens.killTweensOf(knife);
+        knife.setAngle(0);
+        this.tweens.chain({
+          targets: knife,
+          tweens: [
+            { angle: -34, duration: 130, ease: "Quad.easeOut" },
+            { angle: 6, duration: 90, ease: "Quad.easeIn" },
+            { angle: 0, duration: 140, ease: "Sine.easeOut" },
+          ],
+        });
       }
 
       // 이펙트는 점 하나짜리 텍스처를 색만 바꿔 재사용한다. 라이브러리를
@@ -985,9 +1064,11 @@ export default function Game() {
         for (const url of new Set([
           ...Object.values(stationArt),
           ...Object.values(stationBadgeArt),
-          BLENDER_ART,
+          ...Object.values(blenderArt),
           ...Object.values(foodImages),
+          KNIFE_ART,
           DIRTY_PLATE_ART,
+          "/stations/trash-full.png",
           "/ui/question.png",
           "/ui/water.png",
         ])) {
@@ -1066,6 +1147,8 @@ export default function Game() {
         this.stations = {} as Record<StationInstanceId, Phaser.GameObjects.Text>;
         this.blenders = {};
         this.blenderHints = {};
+        this.holdings = {};
+        this.knives = {};
         this.gauges = {};
         this.stationNames = {};
         this.stationMarks = {};
@@ -1091,13 +1174,15 @@ export default function Game() {
           // 앞뒤 순서는 슬라임과 같은 규칙으로 정렬된다.
           const lift = style.lift ?? 0;
           this.stationLift[id] = lift;
-          // 그림 한가운데가 아니라 알맹이 한가운데를 칸에 맞춘다.
+          // 그림 한가운데가 아니라 알맹이 한가운데를 칸에 맞춘다. artAnchor는
+          // 긴 변 대비 %라 그림을 칸에 맞춘 배율과 함께 곱한다.
           const nudge = (image: Phaser.GameObjects.Image, key: string) => {
             const off = artAnchor[key];
             if (!off) return image;
+            const span = Math.max(image.width, image.height) / 100;
             return image.setPosition(
-              image.x + off.x * image.scaleX,
-              image.y + off.y * image.scaleY,
+              image.x + off.x * span * image.scaleX,
+              image.y + off.y * span * image.scaleY,
             );
           };
           if (style.onTable) {
@@ -1111,50 +1196,52 @@ export default function Game() {
           fit(art);
           nudge(art, stationArt[type]);
           if (type === "blender") {
-            // 유리병 안쪽 자리. 그림을 칸에 맞춘 배율만큼 같이 줄이고,
-            // 무게중심 보정으로 옮긴 만큼 함께 옮긴다.
-            const k = art.scaleX;
-            const jarX = art.x + BLENDER_JAR.dx * k;
-            const jarY = art.y + BLENDER_JAR.dy * k;
-            const jarW = BLENDER_JAR.width * k;
-            const jarH = BLENDER_JAR.height * k;
-            // 물은 유리병 아래쪽만 채운다. 병 전체를 덮으면 물인지
-            // 유리인지 알아볼 수 없다. 과일 뒤에 깔아 잠긴 것처럼 보인다.
-            const water = this.add
-              .rectangle(
-                art.x + BLENDER_WATER.dx * k,
-                art.y + BLENDER_WATER.dy * k,
-                BLENDER_WATER.width * k,
-                BLENDER_WATER.height * k,
-                0x6ec8ff,
-                0.67,
-              )
-              .setDepth(y + 1.2)
-              .setVisible(false);
-            const contents = this.add
-              .image(jarX, jarY, BLENDER_ART)
-              .setDepth(y + 1.4)
-              .setVisible(false);
+            // 단계마다 전용 그림으로 통째로 갈아 끼운다. 네 장이 같은 자리·
+            // 같은 크기라 갈아 끼워도 기계가 움직이지 않는다.
             this.blenders[id] = {
               art,
-              fit: () => fit(art),
-              water,
-              contents,
-              // 내용물 그림마다 크기가 달라 넣을 때마다 유리병에 맞춘다.
-              showContents: (key: string) => {
-                contents.setTexture(key).setVisible(true);
-                contents.setScale(
-                  Math.min(jarW / contents.width, jarH / contents.height) * 0.8,
-                );
+              show: (key: string) => {
+                if (art.texture.key === key) return;
+                art.setTexture(key);
+                fit(art);
               },
             };
-            // 물이 필요할 때 띄우는 안내 아이콘.
-            this.blenderHints[id] = this.add
+            // 물이 필요할 때 띄우는 안내 아이콘. 물방울 그림 비율 그대로.
+            const hint = this.add
               .image(x + TILE_SIZE / 2 - 6, y - lift - 10, "/ui/water.png")
               .setOrigin(0.5)
-              .setDisplaySize(16, 18)
               .setDepth(y + 3)
               .setVisible(false);
+            this.fitInto(hint, 16, 20);
+            this.blenderHints[id] = hint;
+          }
+          if (type === "stove") {
+            // 칼은 도마에서 떼어 낸 조각이라 도마 그림 좌표로 자리를 잡는다.
+            // 칼자루 끝을 축으로 두어 날만 내려오게 한다.
+            const span = Math.max(art.width, art.height) / KNIFE_OFFSET.span;
+            const knife = this.add
+              .image(
+                art.x + KNIFE_OFFSET.x * span * art.scaleX,
+                art.y + KNIFE_OFFSET.y * span * art.scaleY,
+                KNIFE_ART,
+              )
+              .setOrigin(KNIFE_PIVOT.x, KNIFE_PIVOT.y)
+              .setScale(art.scaleX)
+              .setDepth(y + 2.5);
+            this.knives[id] = knife;
+          }
+          // 재료·완성품·그릇을 올려 두는 설비는 올라온 것을 그림으로 보여
+          // 준다. 그릇은 접시 위에 음식을 얹어 두 장으로 그린다.
+          if (isCooktop(type) || type === "table" || type === "washer") {
+            // 기구 그림이 칸 한가운데에서 밀려 있으면 올려 둔 것도 같이
+            // 밀려야 기구 위에 놓인 것처럼 보인다.
+            const room = TILE_SIZE * (type === "table" ? 0.5 : 0.42);
+            const spot = { x: art.x, y: art.y - (isCooktop(type) ? 2 : 0) };
+            this.holdings[id] = {
+              bg: this.add.image(spot.x, spot.y, DIRTY_PLATE_ART).setDepth(y + 2.2).setVisible(false),
+              fg: this.add.image(spot.x, spot.y, DIRTY_PLATE_ART).setDepth(y + 2.3).setVisible(false),
+              room,
+            };
           }
           const itemArt = stationBadgeArt[type];
           if (itemArt) {
@@ -1164,8 +1251,9 @@ export default function Game() {
             const badge = this.add
               .image(art.x + BOX_BADGE.dx * k, art.y + BOX_BADGE.dy * k, itemArt)
               .setDepth(y + 2);
-            const room = BOX_BADGE.diameter * k * 0.82;
-            badge.setScale(Math.min(room / badge.width, room / badge.height));
+            this.fitInto(badge, BOX_BADGE.diameter * k * 0.82);
+            // 감자처럼 알맹이가 캔버스 한가운데에 없는 그림은 되민다.
+            nudge(badge, itemArt);
           }
           // 재료·그릇·쓰레기 수는 숫자 대신 게이지로 보여 준다. 정확한 수는
           // 설비를 클릭했을 때 정보 패널에서 본다.
@@ -1201,12 +1289,12 @@ export default function Game() {
             .zone(x, y, width, height)
             .setDepth(4)
             .setInteractive()
-            // 쓸 수 있으면 손, 옆에 서 있는데 안 되면 금지 표시, 그 밖에는
-            // 기본 화살표. 상호작용 테두리 색과 같은 판정을 쓴다.
+            // 쓸 수 있으면 손, 옆에 서 있는데 안 되면 "?", 그 밖에는 기본
+            // 화살표. 상호작용 테두리 색과 같은 판정을 쓴다.
             .on("pointerover", () => {
               const ok = this.usable[id];
               this.input.setDefaultCursor(
-                ok === undefined ? CURSOR_ARROW : ok ? CURSOR_HAND : CURSOR_DENY,
+                ok === undefined ? CURSOR_ARROW : ok ? CURSOR_HAND : CURSOR_ASK,
               );
             })
             .on("pointerout", () => this.input.setDefaultCursor(CURSOR_ARROW))
@@ -1294,9 +1382,11 @@ export default function Game() {
             );
           // 손에 든 것 표시 칸. 한 번에 하나만 들지만 배열로 두면 표시
           // 코드가 그대로다.
+          // 그림마다 가로세로가 달라 칸에 맞춰 줄이기만 한다. 늘려 담으면
+          // 버섯이나 딸기가 길쭉해진다.
           const carried = Array.from({ length: 1 }, () => ({
-            bg: this.add.image(spot.x, spot.y, stationBadgeArt["dish-rack"]!).setOrigin(0.5).setDisplaySize(18, 18).setVisible(false),
-            fg: this.add.image(spot.x, spot.y, stationBadgeArt["dish-rack"]!).setOrigin(0.5).setDisplaySize(14, 14).setVisible(false),
+            bg: this.add.image(spot.x, spot.y, stationBadgeArt["dish-rack"]!).setOrigin(0.5).setVisible(false),
+            fg: this.add.image(spot.x, spot.y, stationBadgeArt["dish-rack"]!).setOrigin(0.5).setVisible(false),
           }));
           const selected = this.add
             .circle(spot.x, spot.y + 14, 30)
@@ -1308,10 +1398,10 @@ export default function Game() {
           const idleMark = this.add
             .image(spot.x + 18, spot.y - 30, "/ui/question.png")
             .setOrigin(0.5)
-            .setDisplaySize(13, 20)
             .setAlpha(0.9)
             .setDepth(spot.y + 3)
             .setVisible(false);
+          this.fitInto(idleMark, 14, 20);
           const nameTag = this.add
             .text(spot.x, spot.y + 26, actor.name, {
               color: "#fff4dc",
@@ -1364,8 +1454,8 @@ export default function Game() {
         // 히트 테스트를 갱신한다.
         this.input.setPollAlways();
         this.input.mouse?.disableContextMenu();
-        // 바닥을 클릭했을 때. 이동 가능 표시가 뜬 칸이면 그리로 한 칸
-        // 가고, 아니면 선택을 푼다.
+        // 바닥을 클릭했을 때. 이동 가능 표시가 뜬 칸이면 그리로 가고,
+        // 아니면 선택을 푼다.
         this.input.on("pointerdown", (pointer: Phaser.Input.Pointer) => {
           if (!fromCanvas(pointer) || !pointer.leftButtonDown()) return;
           const point = this.cameras.main.getWorldPoint(pointer.x, pointer.y);
@@ -1375,7 +1465,7 @@ export default function Game() {
           if (
             current &&
             actorId &&
-            moveTargets(current, actorId).some(
+            moveOptions(current, actorId).some(
               (target) => target.col === tile.col && target.row === tile.row,
             )
           ) {
@@ -1389,6 +1479,9 @@ export default function Game() {
 
         // 선택한 슬라임이 갈 수 있는 칸 표시. 클릭 판정은 바닥 핸들러가 한다.
         const moveMarks = this.add.graphics().setDepth(3);
+        // 설비 상호작용 표시는 설비 그림 위에 그린다. 바닥에 깔면 도마처럼
+        // 칸을 덮는 기구에서는 테두리가 그림에 가려 보이지 않는다.
+        const hitMarks = this.add.graphics().setDepth(700);
 
         view.current = {
           sync: (current) => {
@@ -1457,9 +1550,9 @@ export default function Game() {
                 const held = actor.carrying[index];
                 const art = held ? carriedArt(held) : null;
                 slot.bg.setVisible(Boolean(art?.bg));
-                if (art?.bg) slot.bg.setTexture(art.bg);
+                if (art?.bg) this.fitInto(slot.bg.setTexture(art.bg), 18);
                 slot.fg.setVisible(Boolean(art?.fg));
-                if (art?.fg) slot.fg.setTexture(art.fg);
+                if (art?.fg) this.fitInto(slot.fg.setTexture(art.fg), art.bg ? 13 : 17);
               });
               sprite.selected.setVisible(selectedActorRef.current === actorId);
               // 이름표는 정보 패널이 보고 있는 대상에만 붙인다. 슬라임을 고른
@@ -1476,17 +1569,21 @@ export default function Game() {
               );
             }
             moveMarks.clear();
+            hitMarks.clear();
             const selected = selectedActorRef.current;
             // 지금 고른 슬라임이 쓸 수 있는 설비. 코어를 한 번 돌려 보고
             // 거절당하는지로 판단해서, 화면이 규칙을 따로 흉내내지 않는다.
             this.usable = {};
             if (selected) {
-              for (const tile of moveTargets(current, selected)) {
+              // 번개 슬라임은 행동력이 2라 두 칸까지 닿는다. 한 칸 더 가는
+              // 자리는 조금 옅게 그려 몇 칸짜리인지 눈으로 알게 한다.
+              for (const tile of moveOptions(current, selected)) {
                 const { x, y } = tileCenter(tile);
+                const far = tile.cost > actionCost.move;
                 moveMarks
-                  .fillStyle(0xffe9b8, 0.22)
+                  .fillStyle(0xffe9b8, far ? 0.12 : 0.22)
                   .fillRect(x - 24, y - 24, 48, 48)
-                  .lineStyle(2, 0xffe9b8, 0.85)
+                  .lineStyle(2, 0xffe9b8, far ? 0.5 : 0.85)
                   .strokeRect(x - 24, y - 24, 48, 48);
               }
               const actor = current.actors[selected];
@@ -1499,13 +1596,13 @@ export default function Game() {
                 const last = tileCenter(station.tiles[station.tiles.length - 1]);
                 const x = (first.x + last.x) / 2;
                 const y = (first.y + last.y) / 2;
-                const width = Math.abs(last.x - first.x) + TILE_SIZE - 12;
-                const height = Math.abs(last.y - first.y) + TILE_SIZE - 12;
-                moveMarks
-                  .fillStyle(ok ? 0x8ed07a : 0xd75f4c, ok ? 0.2 : 0.16)
-                  .fillRect(x - width / 2, y - height / 2, width, height)
-                  .lineStyle(2, ok ? 0x8ed07a : 0xd75f4c, 0.9)
-                  .strokeRect(x - width / 2, y - height / 2, width, height);
+                const width = Math.abs(last.x - first.x) + TILE_SIZE - 8;
+                const height = Math.abs(last.y - first.y) + TILE_SIZE - 8;
+                hitMarks
+                  .lineStyle(3, ok ? 0x8ed07a : 0xd75f4c, 0.95)
+                  .strokeRect(x - width / 2, y - height / 2, width, height)
+                  .lineStyle(1, 0x1c0f07, 0.5)
+                  .strokeRect(x - width / 2 - 2, y - height / 2 - 2, width + 4, height + 4);
               }
             }
             for (const station of stationInstances) {
@@ -1529,13 +1626,11 @@ export default function Game() {
                       : washer!.dish
                         ? washer!.dish.status === "clean" ? "세척 완료" : "세척 대기"
                         : ""
-                    : type === "table"
-                      ? current.tables[id]![0] ? carriedLabel(current.tables[id]![0]) : ""
-                      : type === "dish-return"
-                        ? current.dishReturns[id]!.length
-                          ? `${current.dishReturns[id]!.length}개`
-                          : ""
-                        : "";
+                    : type === "dish-return"
+                      ? current.dishReturns[id]!.length
+                        ? `${current.dishReturns[id]!.length}개`
+                        : ""
+                      : "";
               this.stations[id].setText(label);
               // 재고가 있는 설비만 게이지를 띄운다.
               const stock = isBoxStation(type)
@@ -1556,16 +1651,32 @@ export default function Game() {
               const blender = current.blenders[id];
               const view = this.blenders[id];
               if (blender && view) {
+                // 빈 병 → 과일 → 과일과 물 → 스무디. 단계마다 전용 그림이다.
                 const stage = blenderStage(blender);
-                // 무엇이 들어 있는지 그대로 보여 준다. 딸기만 넣었으면
-                // 딸기가, 완성했으면 그 스무디가 유리병에 보인다.
-                const inside = blender.food ?? blender.fruit;
-                const art = inside ? foodImages[inside] : undefined;
-                if (art) view.showContents(art);
-                else view.contents.setVisible(false);
-                view.water.setVisible(blender.water);
+                view.show(blenderArt[stage]);
                 // 과일만 들어간 믹서기는 물이 필요하다는 것을 아이콘으로 알린다.
                 this.blenderHints[id]!.setVisible(stage === "needs-water");
+              }
+              // 설비에 올라온 물건. 튀김기에 넣은 감자도, 테이블에 둔 그릇도
+              // 글자가 아니라 그림으로 보인다.
+              const holding = this.holdings[id];
+              if (holding) {
+                const held =
+                  type === "table"
+                    ? current.tables[id]![0]
+                    : type === "washer"
+                      ? current.washers[id]!.dish
+                      : current.stoves[id]![0];
+                const art = held ? carriedArt(held) : null;
+                for (const [slot, key] of [
+                  [holding.bg, art?.bg],
+                  [holding.fg, art?.fg],
+                ] as const) {
+                  slot.setVisible(Boolean(key));
+                  if (!key) continue;
+                  slot.setTexture(key);
+                  this.fitInto(slot, holding.room);
+                }
               }
             }
             // 설비에서 무슨 일이 일어났는지 파티클로 한 번 보여 준다.
@@ -1574,8 +1685,8 @@ export default function Game() {
               const { id, type, tiles } = station;
               const seen = this.stationMarks[id];
               const now =
-                type === "stove"
-                  ? `${current.stoves[id]!.join()}/${current.workstations[id]!.status}`
+                isCooktop(type)
+                  ? `${current.stoves[id]!.join()}/${current.workstations[id]!.status}/${current.workstations[id]!.progress}`
                   : type === "blender"
                     ? blenderStage(current.blenders[id]!)
                     : type === "washer"
@@ -1589,8 +1700,15 @@ export default function Game() {
               if (seen === undefined || seen === now || !now) continue;
               const spot = tileCenter(tiles[0]);
               const y = spot.y - (this.stationLift[id] ?? 0);
-              if (type === "stove" && current.workstations[id]!.status === "COMPLETE") {
-                this.burst(spot.x, y, 0xfff0b8, 12);
+              if (isCooktop(type)) {
+                // 도마는 칼이 실제로 내려찍는다. 썰고 있을 때만이다.
+                const status = current.workstations[id]!.status;
+                if (type === "stove" && (status === "WORKING" || status === "COMPLETE")) {
+                  this.chop(id);
+                }
+                if (current.workstations[id]!.status === "COMPLETE") {
+                  this.burst(spot.x, y, 0xfff0b8, 12);
+                }
               } else if (type === "blender") {
                 const stage = blenderStage(current.blenders[id]!);
                 if (stage === "ready") this.burst(spot.x, y, 0x7fd4ff, 10);
@@ -1640,17 +1758,28 @@ export default function Game() {
     setProgress(readProgress());
   }, []);
 
-  // 한 마리가 행동력을 다 쓰면 아직 남은 다음 슬라임으로 넘어간다. 단
-  // 한 번 넘긴 뒤에는 다시 뺏지 않는다. 행동력이 없어도 눌러서 정보를
-  // 볼 수 있어야 한다.
+  // 캔버스 글자는 웹폰트를 알아서 받아 오지 못한다. 구글 폰트는 글자 묶음별로
+  // 파일이 갈려 있어, DOM에 안 쓰인 글자("땅" 같은)만 다른 글꼴로 튀어 보인다.
+  // 캔버스에 그릴 글자를 미리 한 번 받아 둔다.
+  useEffect(() => {
+    const words = [
+      ...Object.values(stationLabels),
+      ...allTypeIds.map((typeId) => `${slimeTypes[typeId].name} 슬라임`),
+      ...Object.values(workStatusLabels),
+      "1234567890호개세척완료대기중",
+    ].join("");
+    document.fonts?.load(`12px Jua`, words).catch(() => {});
+  }, []);
+
+  // 방금 행동력을 다 쓴 슬라임만 다음 마리에게 넘긴다. 행동력이 0인 마리를
+  // 손으로 고른 것은 정보를 보려는 것이니 그대로 둔다. 그래서 "남아 있다가
+  // 0이 된" 순간만 본다.
   useEffect(() => {
     if (!state || !squad || !selectedActor) return;
-    if ((state.actors[selectedActor]?.actionPoints ?? 0) > 0) {
-      handedOff.current = null;
-      return;
-    }
-    if (handedOff.current === selectedActor) return;
-    handedOff.current = selectedActor;
+    const left = state.actors[selectedActor]?.actionPoints ?? 0;
+    const had = handedOff.current;
+    handedOff.current = left > 0 ? selectedActor : null;
+    if (left > 0 || had !== selectedActor) return;
     const next = nextReadyActor(state, squadActorIds(squad), selectedActor);
     if (next) setSelectedActor(next);
   }, [state, selectedActor, squad]);
@@ -1751,7 +1880,7 @@ export default function Game() {
       ? "영업 종료. 주문을 다 채우지 못했습니다."
       : isLastStage(state)
         ? "모든 스테이지를 클리어했습니다!"
-        : `${currentStage(state).id} 클리어!`;
+        : `${currentStage(state).id} 스테이지 클리어!`;
   const roster = squadActorIds(squad);
   // 아직 행동력이 남은 슬라임. 턴 종료 버튼이 이걸 알려 준다.
   const readyCount = roster.filter(
@@ -1799,7 +1928,7 @@ export default function Game() {
             className="hud-chip"
             data-warn={state.turnsLeft <= RUSH_TURNS_LEFT ? "" : undefined}
           >
-            🔄 {state.turnsLeft}턴
+            남은 턴 <b>{state.turnsLeft}</b>
           </span>
         </div>
 
@@ -1826,12 +1955,13 @@ export default function Game() {
                     setSelectedActor((current) => (current === actorId ? null : actorId))
                   }
                 >
-                  {/* 표정 없는 몸이 버튼 배경이다. 위에는 남은 에너지만 얹는다. */}
+                  {/* 슬라임 몸이 버튼 배경이다. 얼굴 그대로 두고 위에는
+                      남은 에너지만 얹는다. */}
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
                     className="roster-slime"
-                    src={facelessSlime(actor.typeId)}
-                    alt={slimeTypes[actor.typeId].name}
+                    src={slimePortrait(actor.typeId)}
+                    alt=""
                     aria-hidden
                   />
                   <span className="energy-row">
@@ -1846,6 +1976,7 @@ export default function Game() {
                       />
                     ))}
                   </span>
+                  <b className="roster-name">{actor.name}</b>
                 </button>
               );
             })}
@@ -1896,24 +2027,17 @@ export default function Game() {
                 <span aria-hidden>{"☆".repeat(3 - rank)}</span>
               </p>
             )}
-            {/* 정산: 주문 성공은 골드로, 실수는 횟수만 보여 준다. */}
+            {/* 정산: 채운 주문과 실수를 횟수로만 보여 준다. */}
             <dl className="settle">
               <div>
-                <dt>주문 성공 횟수</dt>
-                <dd>
-                  {state.filled}번 × {GOLD_PER_ORDER}G
-                </dd>
-                <dd>{state.filled * GOLD_PER_ORDER}G</dd>
+                <dt>주문 성공</dt>
+                <dd />
+                <dd>{state.filled}번</dd>
               </div>
               <div>
-                <dt>주문 실수 횟수</dt>
-                <dd>{state.misses}번</dd>
-                <dd aria-hidden>—</dd>
-              </div>
-              <div className="settle-total">
-                <dt>합계</dt>
+                <dt>주문 실수</dt>
                 <dd />
-                <dd>{state.gold}G</dd>
+                <dd>{state.misses}번</dd>
               </div>
             </dl>
             <p className="mic-state">{saved}</p>

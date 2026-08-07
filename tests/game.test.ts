@@ -22,6 +22,7 @@ import {
   isWalkable,
   maxActionPoints,
   moveActor,
+  moveOptions,
   moveTargets,
   nextReadyActor,
   occupantOf,
@@ -75,7 +76,7 @@ const oneStage = (
   pass = orders.length,
 ): Stage[] => [
   // 별 기준은 오름차순 셋이어야 하므로 통과 기준 뒤로 한 칸씩 벌려 둔다.
-  { id: "1-1", name: "테스트", orders, turnLimit, stars: [pass, pass + 1, pass + 2] },
+  { id: "1-1", orders, turnLimit, stars: [pass, pass + 1, pass + 2] },
 ];
 
 // 한 마리가 감자 하나를 굽고 제출하는 한 바퀴. 손에 그릇이 남아 있으면
@@ -142,9 +143,9 @@ test("스테이지는 stages.json에 적힌 순서 그대로 주문을 낸다", 
   });
 });
 
-test("스테이지 제목은 30자를 넘길 수 없다", () => {
+test("스테이지 번호가 없으면 판을 열지 않는다", () => {
   const stages = defaultStages();
-  stages[0] = { ...stages[0]!, name: "가".repeat(31) };
+  stages[0] = { ...stages[0]!, id: "" };
   assert.throws(() => initialState(1, ["water"], stages));
 });
 
@@ -244,14 +245,14 @@ test("튀김기와 화로는 도마와 같은 규칙으로 돈다", () => {
   const ovenId = stationInstancesByType.oven[0].id;
   const mushroomBoxId = stationInstancesByType["mushroom-box"][0].id;
 
-  // 버섯을 튀김기에 올리고 불 슬라임이 튀긴다.
-  let state = initialState(1, ["fire"], oneStage([
+  // 버섯을 튀김기에 올리고 번개 슬라임이 튀긴다.
+  let state = initialState(1, ["lightning"], oneStage([
     { id: "a", foodId: "fried-mushroom", targetCount: 1, submittedCount: 0 },
   ]));
-  state = actAt(state, "fire-1", mushroomBoxId);
-  state = actAt(state, "fire-1", fryerId);
+  state = actAt(state, "lightning-1", mushroomBoxId);
+  state = actAt(state, "lightning-1", fryerId);
   assert.deepEqual(state.stoves[fryerId], ["mushroom"]);
-  state = actAt(state, "fire-1", fryerId);
+  state = actAt(state, "lightning-1", fryerId);
   assert.deepEqual(state.stoves[fryerId], ["fried-mushroom"]);
 
   // 같은 버섯이 화로에서는 구이가 된다.
@@ -263,14 +264,14 @@ test("튀김기와 화로는 도마와 같은 규칙으로 돈다", () => {
   oven = actAt(oven, "fire-1", ovenId);
   assert.deepEqual(oven.stoves[ovenId], ["grilled-mushroom"]);
 
-  // 불이 아니면 돌릴 수 없다.
+  // 레시피가 정한 속성이 아니면 돌릴 수 없다.
   let wrong = initialState(1, ["fire", "water"], oneStage([
     { id: "a", foodId: "fried-mushroom", targetCount: 1, submittedCount: 0 },
   ]));
   wrong = actAt(wrong, "fire-1", mushroomBoxId);
   wrong = actAt(wrong, "fire-1", fryerId);
   wrong = actAt(wrong, "water-1", fryerId);
-  assert.ok(wrong.refusal?.message.includes("불 슬라임만"));
+  assert.ok(wrong.refusal?.message.includes("번개 슬라임만"));
 });
 
 test("쓸 수 없는 재료를 들고 오면 그 사정을 알려 준다", () => {
@@ -428,11 +429,12 @@ test("턴이 끝나면 행동력이 초기화되고 전기만 두 번 움직인�
   assert.equal(turned.actors["water-1"]!.actionPoints, 1);
 });
 
-test("이동은 상하좌우 한 칸이고 벽·설비 칸은 후보에 없다", () => {
+test("갈 수 있는 칸은 남은 행동력만큼 뻗고 벽·설비 칸은 후보에 없다", () => {
   const state = initialState(1, ["water"]);
   const actor = state.actors["water-1"]!;
   const targets = moveTargets(state, "water-1");
   assert.ok(targets.length > 0);
+  // 행동력이 1인 슬라임은 한 칸까지만 닿는다.
   for (const tile of targets) {
     assert.equal(
       Math.abs(tile.col - actor.col) + Math.abs(tile.row - actor.row),
@@ -446,11 +448,31 @@ test("이동은 상하좌우 한 칸이고 벽·설비 칸은 후보에 없다",
   assert.equal(moved.actors["water-1"]!.row, targets[0].row);
   assert.equal(moved.actors["water-1"]!.actionPoints, 1 - actionCost.move);
 
-  // 두 칸 떨어진 칸이나 설비 칸은 거절하고 행동력을 쓰지 않는다.
+  // 행동력으로 닿지 않는 칸은 거절하고 행동력을 쓰지 않는다.
   const far = { col: actor.col + 2, row: actor.row };
   const refused = moveActor(state, "water-1", far);
   assert.equal(refused.actors["water-1"]!.actionPoints, 1);
-  assert.ok(refused.refusal?.message.includes("한 칸"));
+  assert.ok(refused.refusal !== null);
+});
+
+// 번개 슬라임은 행동력이 2라 두 칸까지 표시되고, 한 번에 갈 수 있다.
+test("행동력이 2면 두 칸 범위가 후보에 들어오고 두 칸을 한 번에 간다", () => {
+  const state = initialState(1, ["lightning"]);
+  const actor = state.actors["lightning-1"]!;
+  const options = moveOptions(state, "lightning-1");
+  assert.ok(options.some((tile) => tile.cost === 2));
+  for (const tile of options) {
+    const away = Math.abs(tile.col - actor.col) + Math.abs(tile.row - actor.row);
+    assert.ok(away <= 2 && tile.cost <= 2);
+    // 돌아가야 하는 칸은 거리보다 비용이 클 수 있지만 그 반대는 없다.
+    assert.ok(tile.cost >= away);
+  }
+  const twoAway = options.find((tile) => tile.cost === 2)!;
+  const moved = moveActor(state, "lightning-1", twoAway);
+  assert.equal(moved.actors["lightning-1"]!.col, twoAway.col);
+  assert.equal(moved.actors["lightning-1"]!.actionPoints, 0);
+  // 행동력을 다 쓰면 갈 수 있는 칸이 사라진다.
+  assert.equal(moveOptions(moved, "lightning-1").length, 0);
 });
 
 test("다른 슬라임이 선 칸으로는 갈 수 없고 행동력도 줄지 않는다", () => {
@@ -648,7 +670,6 @@ test("감자를 썰어 제출하면 주문 수가 오른다", () => {
     ], 400, 2)),
   );
   assert.equal(state.filled, 1);
-  assert.equal(state.gold, 100);
   // 제출한 그릇은 손을 떠나 다음 턴 반납대로 나온다.
   assert.deepEqual(state.actors["earth-1"]!.carrying, []);
   assert.equal(state.pendingReturns.length, 1);
@@ -970,7 +991,7 @@ test("라운드 주문 목록을 주입하고 제출마다 진행도가 오른�
   assert.equal(state.phase, "won");
 });
 
-test("주문은 두 개만 노출하고 다음 레시피 두 개를 미리 보여 준다", () => {
+test("주문은 두 개만 노출하고 다음 레시피 하나를 미리 보여 준다", () => {
   const orders: Order[] = ["a", "b", "c", "d", "e"].map((id) => ({
     id,
     foodId: "shredded-potato" as const,
@@ -980,7 +1001,7 @@ test("주문은 두 개만 노출하고 다음 레시피 두 개를 미리 보�
   const state = initialState(1, ["earth"], oneStage(orders, 400, 3));
   assert.equal(orderConfig.activeOrderCount, 2);
   assert.deepEqual(activeOrders(state).map((order) => order.id), ["a", "b"]);
-  assert.deepEqual(upcomingOrders(state).map((order) => order.id), ["c", "d"]);
+  assert.deepEqual(upcomingOrders(state).map((order) => order.id), ["c"]);
 
   // 하나를 처리하면 다음이 올라오고 미리보기도 밀린다.
   const done: GameState = {
@@ -991,7 +1012,7 @@ test("주문은 두 개만 노출하고 다음 레시피 두 개를 미리 보�
     ),
   };
   assert.deepEqual(activeOrders(done).map((order) => order.id), ["b", "c"]);
-  assert.deepEqual(upcomingOrders(done).map((order) => order.id), ["d", "e"]);
+  assert.deepEqual(upcomingOrders(done).map((order) => order.id), ["d"]);
 });
 
 test("주문에 없는 음식은 설정대로 처리하고 진행도를 올리지 않는다", () => {
@@ -1029,7 +1050,7 @@ test("스테이지가 정한 세 지점에서 별이 하나씩 오른다", () =>
   }));
   // 통과 2건, 별 2개는 4건, 별 3개는 5건인 스테이지.
   const stage: Stage[] = [
-    { id: "s", name: "별", orders, turnLimit: 400, stars: [2, 4, 5] },
+    { id: "s", orders, turnLimit: 400, stars: [2, 4, 5] },
   ];
   const base = initialState(1, ["earth"], stage);
   assert.equal(base.goal, 2);
@@ -1074,18 +1095,16 @@ test("턴을 다 쓰면 스테이지가 판정으로 끝난다", () => {
   assert.equal(moveActor(state, "water-1", moveTargets(state, "water-1")[0] ?? spawnTiles.water), state);
 });
 
-test("스테이지를 깨면 골드와 스쿼드를 이어 다음 스테이지로 넘어간다", () => {
+test("스테이지를 깨면 스쿼드를 이어 다음 스테이지로 넘어간다", () => {
   const stages: Stage[] = [
     {
       id: "1-1",
-      name: "첫 판",
       orders: [{ id: "a", foodId: "shredded-potato", targetCount: 1, submittedCount: 0 }],
       turnLimit: 400,
       stars: [1, 2, 3],
     },
     {
       id: "1-2",
-      name: "둘째 판",
       orders: [{ id: "b", foodId: "shredded-potato", targetCount: 1, submittedCount: 0 }],
       turnLimit: 120,
       stars: [1, 2, 3],
@@ -1097,14 +1116,12 @@ test("스테이지를 깨면 골드와 스쿼드를 이어 다음 스테이지�
 
   state = cookAndSubmit(state);
   assert.equal(state.phase, "won");
-  assert.equal(state.gold, 100);
 
   const second = nextStage(state);
   assert.equal(currentStage(second).id, "1-2");
   assert.equal(second.phase, "playing");
   assert.equal(isLastStage(second), true);
-  // 골드와 스쿼드는 잇고 주문·턴·설비는 새로 시작한다.
-  assert.equal(second.gold, 100);
+  // 스쿼드는 잇고 주문·턴·설비는 새로 시작한다.
   assert.deepEqual(second.squad, ["earth"]);
   assert.equal(second.filled, 0);
   assert.equal(second.turnsLeft, 120);
@@ -1113,12 +1130,11 @@ test("스테이지를 깨면 골드와 스쿼드를 이어 다음 스테이지�
 
   const cleared = cookAndSubmit(second);
   assert.equal(cleared.phase, "won");
-  assert.equal(cleared.gold, 200);
   // 마지막 스테이지에서는 더 넘어가지 않는다.
   assert.equal(nextStage(cleared), cleared);
 });
 
-test("주문에 없는 음식 제출은 실수로 세고 골드는 깎지 않는다", () => {
+test("주문에 없는 음식 제출은 실수로만 센다", () => {
   let state = initialState(1, ["earth"], oneStage([
     { id: "a", foodId: "shredded-potato", targetCount: 1, submittedCount: 0 },
   ]));
@@ -1127,12 +1143,10 @@ test("주문에 없는 음식 제출은 실수로 세고 골드는 깎지 않는
   state = actAt(state, "earth-1", potatoBoxId);
   state = actAt(state, "earth-1", "submission");
   assert.equal(state.misses, 1);
-  assert.equal(state.gold, 0);
   assert.equal(state.filled, 0);
   // 정상 제출은 실수로 세지 않는다.
   const ok = cookAndSubmit(state);
   assert.equal(ok.misses, 1);
-  assert.equal(ok.gold, 100);
 });
 
 test("플레이테스트 세션은 위조된 요약을 저장 전에 거부한다", () => {

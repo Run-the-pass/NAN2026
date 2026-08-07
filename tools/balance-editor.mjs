@@ -77,15 +77,14 @@ function validate({ balance, recipes, stages }, list) {
   say(whole(dish.rackCapacity, 1), "그릇 상자 용량은 1 이상이어야 합니다.");
   say(whole(dish.initialCount, 0) && dish.initialCount <= dish.rackCapacity, "초기 그릇 수는 0 이상이고 상자 용량 이하여야 합니다.");
   say(whole(dish.washerCapacity, 1), "세척대 용량은 1 이상이어야 합니다.");
+  say(whole(dish.returnCapacity, 1), "반납대 용량은 1 이상이어야 합니다.");
   say(whole(dish.tableCapacity, 1), "테이블 용량은 1 이상이어야 합니다.");
   say(whole(balance.incinerator?.capacity, 1), "소각기 용량은 1 이상이어야 합니다.");
   const orders = balance.orders ?? {};
   say(whole(orders.activeOrderCount, 1), "동시 노출 주문 수는 1 이상이어야 합니다.");
-  say(whole(orders.previewCount, 0), "미리 보기 주문 수는 0 이상이어야 합니다.");
   say(["reject", "discard"].includes(orders.invalidSubmission), "잘못된 제출 처리 값이 올바르지 않습니다.");
   say(typeof orders.endRoundWhenOrdersDone === "boolean", "주문 소진 시 종료 값이 올바르지 않습니다.");
   say(whole(balance.rushTurnsLeft, 0), "마감 임박 턴은 0 이상이어야 합니다.");
-  say(whole(balance.goldPerOrder, 0), "주문당 골드는 0 이상이어야 합니다.");
 
   const foods = new Set();
   const perStation = new Set();
@@ -112,7 +111,6 @@ function validate({ balance, recipes, stages }, list) {
   for (const stage of stages ?? []) {
     const where = stage?.id ?? "(번호 없음)";
     say(text(stage?.id, 12), `${where}: 번호는 1~12자여야 합니다.`);
-    say(text(stage?.name), `${where}: 이름은 1~30자여야 합니다.`);
     say(!ids.has(stage?.id), `${where}: 번호가 겹칩니다.`);
     ids.add(stage?.id);
     say(whole(stage?.turnLimit, 1), `${where}: 제한 턴은 1 이상이어야 합니다.`);

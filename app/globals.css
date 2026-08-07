@@ -33,6 +33,8 @@ button, select { font: inherit; }
   --cursor-arrow: url("/ui/cursor.png") 2 0, auto;
   --cursor-hand: url("/ui/cursor-click.png") 9 0, pointer;
   --cursor-deny: url("/ui/cursor.png") 2 0, not-allowed;
+  /* 지금은 쓸 수 없는 것. 금지 표시 대신 "?"를 붙인 화살표를 쓴다. */
+  --cursor-ask: url("/ui/cursor-help.png") 2 0, help;
   /* 나뭇결. 원래보다 대비를 크게 낮춰 배경이 튀지 않게 한다. 산만하면
      두 색을 더 가깝게, 밋밋하면 더 벌리면 된다. 여기 한곳만 만진다. */
   --plank-wall: repeating-linear-gradient(0deg, #33200f 0 58px, #2b1a0c 59px 63px);
@@ -353,55 +355,61 @@ button:disabled { cursor: var(--cursor-arrow); }
 .order-cards {
   position: absolute;
   z-index: 7;
-  top: 12px;
+  top: 10px;
   left: 12px;
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 8px;
-  width: min(64vw, 760px);
+  display: flex;
+  gap: 10px;
   pointer-events: none;
 }
 
+/* 주문 카드 한 장: 큰 칸에 완성 그림, 그 아래 재료, 그 아래 조리 방법. */
 .order-card {
   display: grid;
-  grid-template-rows: 1fr auto;
-  align-content: center;
-  min-width: 0;
-  min-height: 118px;
+  grid-template-rows: 1fr auto auto;
+  width: clamp(88px, 9vw, 118px);
+  height: 172px;
   overflow: hidden;
-  position: relative;
-  border: 2px solid #815329;
-  border-radius: 4px;
-  padding: 8px 0;
-  background: linear-gradient(#f0ddb3, #d7b77e);
-  box-shadow: inset 0 0 0 2px #fff3ce66, 0 7px 0 #221208, 0 10px 18px #0006;
+  border: 3px solid #5f3a1c;
+  border-radius: 8px;
+  background: linear-gradient(#f4e6c6, #e2cb9f);
+  box-shadow: inset 0 0 0 2px #fff8e466, 0 7px 0 #221208, 0 10px 18px #0006;
   color: #2c1a0e;
 }
+/* 다음에 나올 주문은 한 걸음 뒤로 물러나 보이게 둔다. */
+.order-card-next { transform: scale(.86); transform-origin: top left; filter: saturate(.85) brightness(.95); }
+.order-card-empty { visibility: hidden; }
 
-/* 다음에 들어올 레시피. 현재 주문 오른쪽 위에 작게 붙는다. */
-.order-next {
-  align-self: start;
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  border: 2px solid #815329;
-  border-radius: 4px;
-  padding: 5px 8px;
-  background: #4b2b17e0;
-  box-shadow: 0 4px 0 #221208;
-  color: #fff0c8;
-  font-size: 18px;
+/* 각 칸은 흰 접시 같은 원 위에 그림 하나. 원 크기가 정해져 있어 그림이
+   들쭉날쭉해 보이지 않는다. */
+.order-plate,
+.order-part {
+  position: relative;
+  display: grid;
+  place-items: center;
+  padding: 5px;
 }
-.order-next b { font-size: 10px; opacity: .85; }
-.order-next-empty { font-size: 13px; opacity: .6; }
-.order-food { display: grid; grid-template-columns: auto 1fr; align-items: center; gap: 7px; padding: 4px 10px; font-size: 15px; }
-.order-food > span { font-size: 34px; }
-.order-food small { color: #8b3f1f; font-size: 13px; }
-/* 완성 음식은 빈 접시 위에 얹어 보여 준다. */
-/* 접시를 바닥에 깔고 음식을 그 위에 얹는다. 그림은 모두 여백을 잘라 둬서
-   접시 테두리와 음식 밑변이 맞물린다. */
-/* 칸 비율을 접시 그림(202×163)에 맞춰 두면 접시가 칸을 그대로 채우고,
-   음식 자리를 접시 그림 좌표로 바로 적을 수 있다. */
+.order-plate::before,
+.order-part::before {
+  content: "";
+  position: absolute;
+  border: 3px solid #2b1a0c;
+  border-radius: 50%;
+  background: #fff;
+}
+.order-plate::before { width: 72px; height: 72px; }
+.order-part::before { width: 44px; height: 44px; }
+.order-plate > *,
+.order-part > * { position: relative; }
+.order-plate { border-bottom: 2px solid #b18a56; }
+.order-part + .order-part { border-top: 2px solid #b18a5666; }
+.order-plate .order-dish { width: 60px; height: 49px; }
+.order-part img { width: 32px; height: 32px; object-fit: contain; }
+.order-method { display: flex; align-items: center; justify-content: center; gap: 1px; }
+.order-method img { width: 25px; height: 25px; }
+
+/* 완성 음식은 빈 접시 위에 얹어 보여 준다. 접시를 바닥에 깔고 음식을 그
+   위에 얹는다. 칸 비율을 접시 그림(202×163)에 맞춰 두면 접시가 칸을 그대로
+   채우고, 음식 자리를 접시 그림 좌표로 바로 적을 수 있다. */
 .order-dish { position: relative; width: 48px; height: 39px; flex: none; }
 .order-dish img { position: absolute; object-fit: contain; }
 .order-dish img:first-child { inset: 0; width: 100%; height: 100%; }
@@ -417,12 +425,6 @@ button:disabled { cursor: var(--cursor-arrow); }
 /* 그릇 없이 내는 음식은 접시가 없다. 컵처럼 키가 큰 그림이 접시에 담긴
    음식과 비슷한 덩치로 보이도록 위로 조금 넘겨 그린다. */
 .order-dish-bare img { top: -28%; right: 0; bottom: 0; left: 0; width: 100%; height: 128%; object-position: center bottom; }
-.order-process { display: flex; align-items: center; justify-content: center; gap: 8px; padding: 4px; color: #3b2415; }
-.order-process span { display: grid; place-items: center; min-width: 30px; min-height: 30px; border: 1px solid #986634; border-radius: 50%; background: #c99f62; }
-.order-process i { color: #7c5128; font-style: normal; }
-/* 조리 흐름은 게임에 쓰는 그림을 그대로 쓴다. 이모지는 그림이 없을 때만이다. */
-.order-process .flow-icon { width: 30px; height: 30px; object-fit: contain; }
-.order-card-empty { visibility: hidden; }
 
 /* 설비가 들고 있는 수량. 캔버스 게이지와 같은 값을 숫자까지 보여 준다. 칸
    나눈 표시는 행동력 게이지(.stat-gauge)와 같은 모양을 쓰고 색만 바꾼다. */
@@ -435,7 +437,7 @@ button:disabled { cursor: var(--cursor-arrow); }
 /* 영업 시작·마감 임박 문구. 잠깐 크게 떴다가 사라진다. */
 .stage-banner {
   position: absolute;
-  z-index: 9;
+  z-index: 30;
   top: 34%;
   left: 50%;
   width: min(46vw, 520px);
@@ -482,27 +484,43 @@ button:disabled { cursor: var(--cursor-arrow); }
 .stage-frame .turn-bar button {
   position: relative;
   display: grid;
-  place-items: center;
-  width: clamp(54px, 6vw, 78px);
-  aspect-ratio: 1;
+  grid-template-rows: 1fr auto;
+  width: clamp(60px, 6.6vw, 84px);
+  aspect-ratio: 4 / 5;
   overflow: hidden;
   border: 3px solid #ffffff8c;
-  border-radius: 50%;
-  padding: 5px;
+  border-radius: 14px;
+  padding: 0;
   background: #3d67aeec;
   box-shadow: 0 7px 18px #0007;
   transform: none;
 }
 .roster-slime {
-  position: absolute;
-  inset: -6%;
-  width: 112%;
-  height: 112%;
+  grid-row: 1;
+  width: 100%;
+  height: 100%;
+  padding: 4px 4px 0;
   object-fit: contain;
-  filter: brightness(.62) saturate(.9);
 }
-.stage-frame .turn-bar button[aria-pressed="true"] .roster-slime { filter: none; }
-.turn-bar .energy-row { position: relative; }
+/* 이름표는 몸 아래 칸에 따로 둔다. 몸 위에 겹치면 둘 다 안 보인다. */
+.roster-name {
+  grid-row: 2;
+  padding: 2px 0 3px;
+  background: #1a0e06cc;
+  color: #ffeecb;
+  font-size: clamp(9px, .92vw, 12px);
+  font-weight: 400;
+  line-height: 1.15;
+  white-space: nowrap;
+}
+/* 남은 에너지는 몸 왼쪽 위에 세로로 세운다. */
+.turn-bar .energy-row {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  flex-direction: column;
+  gap: 1px;
+}
 .stage-frame .turn-bar button[data-type="fire"] { background: #a74435ec; }
 .stage-frame .turn-bar button[data-type="lightning"] { background: #9b771fec; }
 .stage-frame .turn-bar button[data-type="earth"] { background: #647832ec; }
@@ -510,9 +528,11 @@ button:disabled { cursor: var(--cursor-arrow); }
 .stage-frame .turn-bar button:hover { border-color: var(--gold); transform: translateY(-2px); }
 /* 행동력을 다 쓴 슬라임은 흐리게 둔다. 고를 수는 있다. */
 .stage-frame .turn-bar button[data-spent] { opacity: .5; }
-.turn-bar b { font-size: clamp(13px, 1.5vw, 18px); }
+.turn-bar .turn-end b { font-size: clamp(13px, 1.5vw, 18px); }
 .turn-bar small { font-size: 10px; opacity: .9; }
 .stage-frame .turn-bar .turn-end {
+  display: grid;
+  place-items: center;
   width: clamp(76px, 8.5vw, 108px);
   aspect-ratio: auto;
   min-height: clamp(54px, 6vw, 78px);
@@ -609,10 +629,58 @@ button:disabled { cursor: var(--cursor-arrow); }
 .required-slimes > span { border: 2px solid #7b4a24; border-radius: 3px; padding: 8px 12px; background: #4b2b17; color: #fff0c8; }
 .required-slimes > span:not(.any-slime) { display: grid; grid-template-columns: 34px auto; align-items: center; gap: 5px; }
 .required-slimes img { width: 34px; height: 34px; object-fit: contain; }
-.station-workflow { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; }
-.station-workflow span { display: contents; }
-.station-workflow i { align-self: center; color: #805126; font-style: normal; }
-.station-workflow b { border: 1px solid #9b6735; border-radius: 3px; padding: 8px 10px; background: #f2ddb2; font-size: 12px; }
+.station-workflow { display: grid; gap: 6px; }
+.station-workflow span { display: grid; grid-template-columns: 46px 1fr; align-items: center; gap: 9px; text-align: left; }
+.station-workflow i {
+  display: grid;
+  place-items: center;
+  width: 46px;
+  height: 46px;
+  overflow: hidden;
+  border: 2px solid #fff;
+  border-radius: 50%;
+  background: #fff;
+}
+.station-workflow i img { width: 100%; height: 100%; padding: 12%; object-fit: contain; box-sizing: border-box; }
+.station-workflow b { border: 1px solid #9b6735; border-radius: 3px; padding: 7px 10px; background: #f2ddb2; font-size: 12px; }
+.inspector-badges img { width: 26px; height: 26px; object-fit: contain; }
+.inspector-badges span { display: grid; grid-template-columns: 26px auto; align-items: center; gap: 6px; }
+
+/* 설비에 올라와 있는 물건 */
+.station-holding { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 8px; margin: 8px 0 2px; }
+.station-holding b { font-size: 12px; color: #4a2d17; }
+.station-holding small { font-size: 12px; color: #6c4523; }
+.carried-art { position: relative; display: block; width: 44px; height: 36px; margin: 0 auto; }
+.carried-art img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
+.carried-art img + img { top: 18%; left: 22%; width: 57%; height: 52%; object-position: center bottom; }
+
+/* 마우스를 올리거나 키보드로 짚었을 때만 뜨는 설명. title 속성은 뜨는 데
+   시간이 걸리고 터치에서는 아예 안 떠서 직접 그린다. */
+.has-tip { position: relative; }
+.has-tip::after {
+  content: attr(data-tip);
+  position: absolute;
+  z-index: 40;
+  bottom: calc(100% + 8px);
+  left: 50%;
+  width: max-content;
+  max-width: 220px;
+  border: 2px solid #815329;
+  border-radius: 5px;
+  padding: 6px 9px;
+  background: #2c1a0ef2;
+  color: #ffe9b8;
+  font-size: 12px;
+  line-height: 1.4;
+  white-space: normal;
+  text-align: left;
+  opacity: 0;
+  transform: translateX(-50%);
+  transition: opacity .12s ease;
+  pointer-events: none;
+}
+.has-tip:hover::after,
+.has-tip:focus-visible::after { opacity: 1; }
 .inspector-hint { display: block; margin-top: 28px; color: #67401f; line-height: 1.4; }
 
 
@@ -691,7 +759,7 @@ button:disabled { cursor: var(--cursor-arrow); }
 /* 행동력은 밝은 번개와 어두운 번개로 보여 준다. 칸 게이지는 쓰지 않는다. */
 .energy-row { display: inline-flex; align-items: center; gap: 3px; }
 .energy-icon { width: 1.05em; height: 1.4em; object-fit: contain; }
-.turn-bar .energy-icon { width: 15px; height: 20px; filter: drop-shadow(0 1px 2px #000a); }
+.turn-bar .energy-icon { width: 13px; height: 17px; filter: drop-shadow(0 1px 2px #000a); }
 .game-inspector .energy-icon { width: 22px; height: 29px; }
 .stat-count { color: #6c4523; font-size: 12px; font-variant-numeric: tabular-nums; }
 .stat-gauge { display: inline-flex; gap: 3px; }
@@ -945,9 +1013,7 @@ button:disabled { cursor: var(--cursor-arrow); }
 .settle dt { text-align: left; }
 .settle dd { margin: 0; text-align: right; color: #57351c; }
 .settle dd:last-child { color: #8b3f1f; font-weight: 700; }
-.settle-total { margin-top: 6px; border-top: 2px solid var(--accent) !important; }
-.settle-total dt { font-weight: 700; }
-.settle-total dd:last-child { font-size: 1.5rem; }
+.settle dd:last-child { font-size: 1.2rem; }
 
 .voice-lab {
   min-height: 100svh;
@@ -1152,20 +1218,11 @@ button:disabled { cursor: var(--cursor-arrow); }
   }
   .hud-top { top: 5px; right: 69px; gap: 4px; }
   .hud-chip { padding: 4px 9px; font-size: 12px; }
-  .order-cards { top: 5px; left: 5px; grid-template-columns: 1fr; gap: 4px; width: 150px; }
-  .order-card { min-height: 104px; border-radius: 8px; padding-top: 6px; }
-  .order-card > header { padding: 2px 5px; font-size: 7px; }
-  .order-card > footer { padding: 2px 4px; font-size: 7px; }
-  .order-card > footer span { font-size: 12px; }
-  .order-card { min-height: 84px; }
-  .order-food { gap: 3px; padding: 2px 5px; font-size: 10px; }
-  .order-food > span { font-size: 21px; }
-  .order-food small { font-size: 9px; }
-  .order-process { gap: 3px; padding: 2px; font-size: 10px; }
-  .order-process span { min-width: 20px; min-height: 20px; }
-  .order-process .flow-icon { width: 20px; height: 20px; }
+  /* 낮은 화면에서는 카드를 눕히지 않고 통째로 줄인다. 칸 순서(완성품 →
+     재료 → 조리 방법)는 그대로다. */
+  .order-cards { top: 5px; left: 5px; gap: 5px; transform: scale(.62); transform-origin: top left; }
   .hud-bottom { right: calc(var(--game-info-rail) + 7px); bottom: 7px; left: 167px; }
-  .stage-frame .turn-bar button { width: 44px; border-width: 2px; padding: 3px; }
+  .stage-frame .turn-bar button { width: 44px; border-width: 2px; }
   .stage-frame .turn-bar .turn-end { width: 62px; min-height: 44px; }
   .turn-bar b { font-size: 11px; }
   .turn-bar small, .feed { font-size: 7px; }
@@ -1219,7 +1276,7 @@ button:disabled { cursor: var(--cursor-arrow); }
   .result-overlay h2 { margin: 2px 0 10px; font-size: 20px; }
   .result-overlay .settle { margin-bottom: 6px; }
   .result-overlay .settle > div { gap: 7px; padding: 4px; font-size: 11px; }
-  .result-overlay .settle-total dd:last-child { font-size: 16px; }
+  .result-overlay .settle dd:last-child { font-size: 14px; }
   .result-overlay .mic-state { min-height: 0; margin: 4px 0; font-size: 9px; }
   .result-overlay button { padding: 5px 10px; font-size: 10px; }
 }
@@ -1346,13 +1403,5 @@ button:disabled { cursor: var(--cursor-arrow); }
 .game-inspector .stat-gauge { gap: 5px; }
 .game-inspector .stat-gauge i { width: 20px; height: 14px; border-radius: 3px; }
 
-.inspector-badges img,
-.station-workflow img { width: 22px; height: 22px; object-fit: contain; vertical-align: -5px; }
-.inspector-badges span { cursor: help; }
-/* 특징 배지 안의 아이콘을 글자에서 떼어 둔다. */
-.inspector-badges span { display: inline-flex; align-items: center; gap: 6px; }
-.inspector-badges i { font-style: normal; font-size: 16px; }
-
-/* 다음 주문 카드는 같은 판형에 흐리게. 아직 받은 주문이 아니다. */
-.order-card-next { opacity: .62; }
+.inspector-badges span { cursor: var(--cursor-ask); }
 

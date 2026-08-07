@@ -48,7 +48,7 @@
       "ingredient": "potato",
       "station": "fryer",
       "workers": [
-        "fire"
+        "lightning"
       ]
     },
     {
@@ -56,7 +56,7 @@
       "ingredient": "mushroom",
       "station": "fryer",
       "workers": [
-        "fire"
+        "lightning"
       ]
     },
     {
