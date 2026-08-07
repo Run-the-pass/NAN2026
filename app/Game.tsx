@@ -66,6 +66,8 @@ import Music, { MusicSettings } from "./Music";
 import { gameMusicSource } from "./music-source";
 import { GameSoundEffects } from "./SoundEffects";
 import StageSelect from "./StageSelect";
+import Dialogue from "./Dialogue";
+import { openingLines } from "./dialogue-script";
 import { readProgress, withResult, writeProgress, type StageProgress } from "./progress";
 
 type View = {
@@ -425,14 +427,11 @@ function StationIcon({ id }: { id: StationId }) {
   );
 }
 
-// 이 요리를 어떻게 만드는지 한눈에 알리는 그림. 도마는 칼로, 믹서기는
-// 물과 믹서기로 말한다.
+// 이 요리를 어떻게 만드는지 한눈에 알리는 그림. 믹서기만 물이 같이 든다.
 const methodArt = (station: StationId): string[] =>
-  station === "stove"
-    ? [KNIFE_ART]
-    : station === "blender"
-      ? ["/ui/water.png", blenderArt.empty]
-      : [stationArt[station]];
+  station === "blender"
+    ? ["/ui/water.png", blenderArt.empty]
+    : [stationIconArt[station] ?? stationArt[station]];
 
 // 주문 카드 한 장. 큰 칸에 완성 그림, 그 아래 재료, 그 아래 조리 방법이다.
 function OrderCard({ order, next }: { order: Order; next?: boolean }) {
@@ -460,12 +459,16 @@ function OrderCard({ order, next }: { order: Order; next?: boolean }) {
               alt=""
               style={anchorStyle(foodImages[recipe.ingredient.itemId])}
             />
+            <b>{itemLabel(recipe.ingredient.itemId)}</b>
           </span>
           <span className="order-part order-method" aria-hidden>
-            {methodArt(recipe.station).map((art) => (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img key={art} src={art} alt="" style={anchorStyle(art)} />
-            ))}
+            <i>
+              {methodArt(recipe.station).map((art) => (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img key={art} src={art} alt="" style={anchorStyle(art)} />
+              ))}
+            </i>
+            <b>{stationLabels[recipe.station]}</b>
           </span>
         </>
       )}
@@ -671,8 +674,10 @@ export default function Game() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [resumeCount, setResumeCount] = useState<number | null>(null);
   const [banner, setBanner] = useState<keyof typeof bannerImages | null>(null);
+  // 아르바이트를 시작할 때 한 번 나오는 인사. 이게 떠 있는 동안은 조작을 막는다.
+  const [intro, setIntro] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
-  const paused = settingsOpen || resumeCount !== null;
+  const paused = settingsOpen || resumeCount !== null || intro;
 
   const [saved, setSaved] = useState("");
   const stateRef = useRef(state);
@@ -709,9 +714,10 @@ export default function Game() {
   const startedStageId =
     state?.phase === "playing" ? currentStage(state).id : null;
   const closingSoon = state?.phase === "playing" && state.turnsLeft <= RUSH_TURNS_LEFT;
+  // 인사가 끝난 뒤에 "영업 시작"을 띄운다. 대사 위에 겹쳐 뜨면 둘 다 묻힌다.
   useEffect(() => {
-    if (startedStageId) setBanner("start");
-  }, [startedStageId]);
+    if (startedStageId && !intro) setBanner("start");
+  }, [startedStageId, intro]);
   useEffect(() => {
     if (closingSoon) setBanner("closing");
   }, [closingSoon]);
@@ -1891,7 +1897,10 @@ export default function Game() {
         <StageSelect
           progress={progress}
           // 아르바이트는 첫 스테이지부터 끝까지 이어서 돈다.
-          onPick={() => startRound(allTypeIds, "0")}
+          onPick={() => {
+            setIntro(true);
+            startRound(allTypeIds, "0");
+          }}
           onBack={() => window.location.assign("/")}
         />
       </>
@@ -1941,6 +1950,14 @@ export default function Game() {
             key={banner}
             src={bannerImages[banner]}
             alt={banner === "start" ? "영업 시작" : "마감 임박"}
+          />
+        )}
+
+        {intro && (
+          <Dialogue
+            lines={openingLines}
+            portrait={slimePortrait}
+            onDone={() => setIntro(false)}
           />
         )}
 
@@ -2017,12 +2034,18 @@ export default function Game() {
         </div>
 
         <div className="info-rail" role="complementary" aria-label="선택 정보 영역">
-          {inspected && (
+          {inspected ? (
             <GameInspector
               state={state}
               target={inspected}
               onClose={() => setInspected(null)}
             />
+          ) : (
+            // 아무것도 안 고른 동안에도 창틀은 그대로 둔다. 빈 나무판만
+            // 남으면 화면 오른쪽이 뚫린 것처럼 보인다.
+            <aside className="game-inspector game-inspector-empty">
+              <p className="inspector-copy">슬라임이나 설비를 누르면 여기에 설명이 나옵니다.</p>
+            </aside>
           )}
         </div>
 

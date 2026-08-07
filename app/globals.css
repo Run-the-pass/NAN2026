@@ -336,20 +336,22 @@ button:disabled { cursor: var(--cursor-arrow); }
 .hud-top { top: 12px; right: 96px; }
 
 .hud-chip {
-  display: flex;
+  display: grid;
   align-items: center;
-  gap: 6px;
-  border: 2px solid #8d592c;
-  border-radius: 3px;
-  padding: 6px 14px;
-  background: linear-gradient(#4b2c19, #28160c);
-  box-shadow: inset 0 0 0 1px #d9a55b33, 0 4px 0 #120904;
-  color: #ffeccd;
-  font-size: 15px;
+  justify-items: center;
+  width: 150px;
+  aspect-ratio: 516 / 192;
+  /* 나무판 그림에 시계가 그려져 있다. 글자는 판의 왼쪽 나무 부분에만 온다. */
+  padding-right: 33%;
+  background: url("/ui/turn-plate.png") center / 100% 100% no-repeat;
+  color: #fff3d8;
+  font-size: 13px;
+  line-height: 1.05;
   white-space: nowrap;
+  text-shadow: 0 2px 0 #63340f, 0 0 6px #2a1409;
 }
-
-.hud-chip[data-warn] { border-color: #d07135; background: #6f2316; color: #ffe0bd; }
+.hud-chip b { font-size: 21px; }
+.hud-chip[data-warn] { filter: hue-rotate(-22deg) saturate(1.5) brightness(.95); color: #fff0e0; }
 .hud-goal { color: var(--gold); }
 
 .order-cards {
@@ -408,32 +410,26 @@ button:disabled { cursor: var(--cursor-arrow); }
    맨 윗 띠로 올라간다. 크기는 카드 크기를 따라가도록 모두 비율로 적는다. */
 .order-plate,
 .order-part {
-  position: relative;
   display: grid;
   place-items: center;
   min-height: 0;
 }
 .order-plate { grid-row: 2; }
+/* 재료와 도구는 그림 옆에 이름을 붙인다. 그림만으로는 감자인지 고구마인지
+   가른다고 장담할 수 없다. */
+.order-part {
+  grid-auto-flow: column;
+  grid-template-columns: auto auto;
+  gap: 4cqw;
+  padding: 0 6cqw;
+  color: #3a2413;
+}
 .order-part-item { grid-row: 3; }
 .order-method { grid-row: 4; }
-.order-plate::before,
-.order-part::before {
-  content: "";
-  position: absolute;
-  width: auto;
-  aspect-ratio: 1;
-  border: 2px solid #2b1a0c;
-  border-radius: 50%;
-  background: #fff;
-}
-.order-plate::before { height: 31cqh; }
-.order-part::before { height: 18.5cqh; }
-.order-plate > *,
-.order-part > * { position: relative; }
-.order-plate .order-dish { width: auto; height: 24cqh; aspect-ratio: 251 / 256; }
-.order-part img { width: auto; height: 13cqh; object-fit: contain; }
-.order-method { display: flex; align-items: center; justify-content: center; gap: 2px; }
-.order-method img { height: 12cqh; }
+.order-part b { font-size: 8.5cqh; font-weight: 400; white-space: nowrap; }
+.order-plate .order-dish { width: auto; height: 30cqh; aspect-ratio: 251 / 256; }
+.order-part img { width: auto; height: 14cqh; object-fit: contain; }
+.order-method i { display: flex; align-items: center; gap: 1px; }
 
 @media (prefers-reduced-motion: reduce) {
   .order-card, .order-next { animation: none; }
@@ -466,6 +462,104 @@ button:disabled { cursor: var(--cursor-arrow); }
 .station-stock small { font-size: 12px; color: #6c4523; font-variant-numeric: tabular-nums; }
 .station-stock .stat-gauge i[data-on] { background: #8ed07a; border-color: #8ed07a; }
 .station-stock .stat-gauge[data-full] i[data-on] { background: #ffc65c; border-color: #ffc65c; }
+
+/* 인사 대사. 판 위를 덮고 어둡게 깔아 대사에만 눈이 가게 한다.
+   아래에 말상자, 그 위로 초상과 이름표가 걸친다. */
+.dialogue-screen {
+  position: absolute;
+  z-index: 40;
+  inset: 0;
+  display: flex;
+  align-items: end;
+  background: #120a05a8;
+  cursor: var(--cursor-hand);
+}
+
+.dialogue-bar {
+  position: relative;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: end;
+  width: 100%;
+  padding: 0 clamp(14px, 2.5vw, 34px) clamp(12px, 2.2vh, 26px);
+}
+
+/* 말하는 슬라임. 말상자 왼쪽 위로 크게 튀어나온다. */
+.dialogue-face {
+  grid-column: 1;
+  grid-row: 1;
+  width: clamp(118px, 16vw, 210px);
+  height: auto;
+  margin-bottom: -10px;
+  object-fit: contain;
+  filter: drop-shadow(0 6px 10px #0009);
+}
+
+/* 이름표는 그려 온 명패 그림 위에 얹는다. */
+.dialogue-name {
+  grid-column: 2;
+  grid-row: 1;
+  justify-self: start;
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  min-width: clamp(120px, 15vw, 190px);
+  aspect-ratio: 470 / 160;
+  margin-bottom: -8px;
+  padding: 0 18px 4px;
+  background: url("/ui/dialogue-nameplate.png") center / 100% 100% no-repeat;
+  color: #fff6e2;
+  font-size: clamp(13px, 1.5vw, 19px);
+  font-weight: 400;
+  white-space: nowrap;
+  text-shadow: 0 2px 0 #8a4a17;
+}
+
+/* 본문 상자. 그림 안쪽 크림색 면에 글자가 오도록 여백을 넉넉히 준다. */
+.dialogue-text {
+  grid-column: 1 / -1;
+  grid-row: 2;
+  position: relative;
+  min-height: clamp(88px, 15vh, 132px);
+  margin: 0;
+  padding: clamp(16px, 2.4vh, 26px) clamp(26px, 3vw, 44px);
+  background: url("/ui/dialogue-box.png") center / 100% 100% no-repeat;
+  color: #3a2413;
+  font-size: clamp(14px, 1.7vw, 21px);
+  line-height: 1.55;
+  text-align: left;
+}
+
+/* 다 찍히면 "다음" 표시가 깜빡인다. */
+.dialogue-more {
+  position: absolute;
+  right: clamp(22px, 2.6vw, 38px);
+  bottom: clamp(10px, 1.6vh, 18px);
+  color: #b3703a;
+  font-size: 15px;
+  font-style: normal;
+  animation: dialogue-more 900ms ease-in-out infinite;
+}
+@keyframes dialogue-more {
+  0%, 100% { opacity: .25; transform: translateY(0); }
+  50% { opacity: 1; transform: translateY(3px); }
+}
+
+.stage-frame .dialogue-skip {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  border: 3px solid #8d592c;
+  border-radius: 8px;
+  padding: 7px 14px;
+  background: #4b2b17e6;
+  color: var(--ink);
+  font-size: 13px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dialogue-more { animation: none; opacity: 1; }
+}
 
 /* 영업 시작·마감 임박 문구. 잠깐 크게 떴다가 사라진다. */
 .stage-banner {
@@ -665,6 +759,9 @@ button:disabled { cursor: var(--cursor-arrow); }
    칸 전체를 쓰고 contain으로 줄인다. */
 .inspector-station-icon img { display: block; width: 100%; height: 100%; padding: 18%; object-fit: contain; box-sizing: border-box; }
 .inspector-station-icon img[data-wide] { padding: 2%; }
+/* 아무것도 안 고른 동안의 빈 창. 안내 한 줄만 가운데 둔다. */
+.game-inspector-empty { display: grid; place-items: center; }
+.game-inspector-empty .inspector-copy { max-width: 15em; color: #7a5734; }
 .game-inspector .eyebrow { margin: 0; color: #7d421d; font-size: 11px; letter-spacing: .14em; }
 .game-inspector h2 { margin: 5px 0 18px; font-size: clamp(26px, 3vw, 38px); }
 .game-inspector h3 { margin: 28px 0 10px; color: #5c3419; font-size: 15px; }
