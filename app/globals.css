@@ -32,6 +32,7 @@ button, select { font: inherit; }
 :root {
   --cursor-arrow: url("/ui/cursor.png") 2 0, auto;
   --cursor-hand: url("/ui/cursor-click.png") 9 0, pointer;
+  --cursor-deny: url("/ui/cursor.png") 2 0, not-allowed;
 }
 body { cursor: var(--cursor-arrow); }
 button:not(:disabled), a, [role="button"], summary, label, input[type="range"] {
@@ -96,7 +97,7 @@ button:disabled { cursor: var(--cursor-arrow); }
   border: 0;
   background: transparent;
   filter: drop-shadow(0 7px 0 #1b0b16aa);
-  cursor: pointer;
+  cursor: var(--cursor-hand);
   transition: transform 120ms ease, filter 120ms ease;
 }
 
@@ -221,7 +222,7 @@ button:disabled { cursor: var(--cursor-arrow); }
 .settings-overlay[data-open] .settings-drawer { transform: translateY(0); }
 .settings-drawer header { display: flex; align-items: center; justify-content: space-between; }
 .settings-drawer header strong { font-size: 20px; }
-.settings-drawer button, .settings-home-link { border: 2px solid #8d592c; border-radius: 3px; padding: 8px 12px; background: #4b2b17; color: #fff1d0; cursor: pointer; }
+.settings-drawer button, .settings-home-link { border: 2px solid #8d592c; border-radius: 3px; padding: 8px 12px; background: #4b2b17; color: #fff1d0; cursor: var(--cursor-hand); }
 .settings-drawer header button { border: 0; padding: 0 7px; background: transparent; font-size: 28px; }
 .settings-drawer label { display: grid; gap: 8px; }
 .settings-drawer input { width: 100%; accent-color: var(--gold); }
@@ -252,7 +253,7 @@ button:disabled { cursor: var(--cursor-arrow); }
 /* 꺼진 줄은 흐려지므로 아이콘도 같이 죽인다. */
 .sound-row[data-off] .sound-toggle img { opacity: .5; }
 .sound-row[data-off] label { opacity: 0.45; }
-.sound-row input:disabled { cursor: not-allowed; }
+.sound-row input:disabled { cursor: var(--cursor-deny); }
 
 .music-settings-game { position: absolute; z-index: 12; top: 12px; right: 12px; }
 .game-settings-trigger { display: flex; align-items: center; gap: 5px; }
@@ -646,7 +647,7 @@ button:disabled { cursor: var(--cursor-arrow); }
   padding: 10px 12px;
   background: #4b2b17;
   color: #fff1d0;
-  cursor: pointer;
+  cursor: var(--cursor-hand);
   font-weight: 800;
 }
 
@@ -658,7 +659,7 @@ button:disabled { cursor: var(--cursor-arrow); }
 .stage-frame select:focus-visible { outline: 3px solid var(--gold); outline-offset: 2px; }
 
 .select-shell button:disabled,
-.stage-frame button:disabled { cursor: not-allowed; opacity: .45; transform: none; }
+.stage-frame button:disabled { cursor: var(--cursor-deny); opacity: .45; transform: none; }
 
 @keyframes slime-card-stretch {
   0%, 72%, 100% { transform: scale(1); }
@@ -684,6 +685,8 @@ button:disabled { cursor: var(--cursor-arrow); }
   font-size: 12px;
 }
 
+/* 행동력 표시는 그려 온 번개 그림을 쓴다. */
+.energy-icon { width: 1.05em; height: 1.35em; object-fit: contain; vertical-align: -0.22em; }
 .stat-count { color: #6c4523; font-size: 12px; font-variant-numeric: tabular-nums; }
 .stat-gauge { display: inline-flex; gap: 3px; }
 .stat-gauge i {
@@ -722,7 +725,7 @@ button:disabled { cursor: var(--cursor-arrow); }
 
 .result-overlay .eyebrow { color: #9b3f21; }
 .result-overlay h2 { margin: 8px 0 28px; font-size: clamp(1.6rem, 5vw, 2.8rem); }
-.result-overlay button { border: 2px solid #7e4d24; border-radius: 3px; padding: 10px 14px; background: var(--gold); color: #21120a; font-weight: 800; cursor: pointer; }
+.result-overlay button { border: 2px solid #7e4d24; border-radius: 3px; padding: 10px 14px; background: var(--gold); color: #21120a; font-weight: 800; cursor: var(--cursor-hand); }
 
 /* 스테이지 시작 전 정보 화면: 제목 / 맵+TIP / 음식 / 다음 순서를 유지한다. */
 .stage-info-screen {
@@ -1101,7 +1104,7 @@ button:disabled { cursor: var(--cursor-arrow); }
   padding: 5px 9px;
   background: transparent;
   color: #ffabc1;
-  cursor: pointer;
+  cursor: var(--cursor-hand);
 }
 .voice-lab-delete:hover { background: #4a2132; }
 .voice-lab-delete[data-confirm] { background: #7a2943; color: #fff; }
@@ -1110,7 +1113,7 @@ button:disabled { cursor: var(--cursor-arrow); }
   padding: 5px;
   background: transparent;
   color: #d8cde8;
-  cursor: pointer;
+  cursor: var(--cursor-hand);
 }
 .voice-lab-error { color: #ffabc1; }
 
@@ -1271,7 +1274,7 @@ button:disabled { cursor: var(--cursor-arrow); }
   padding: 9px 16px;
   background: #4b2b17e6;
   color: var(--ink);
-  cursor: pointer;
+  cursor: var(--cursor-hand);
 }
 .stage-select-back:hover { border-color: var(--gold); }
 .stage-select-bar .music-settings-game { position: static; }
@@ -1298,7 +1301,7 @@ button:disabled { cursor: var(--cursor-arrow); }
   background: linear-gradient(#efd9aa, #cda56d);
   box-shadow: 0 8px 0 #2b1608, 0 14px 30px #0007;
   color: var(--paper-ink);
-  cursor: pointer;
+  cursor: var(--cursor-hand);
   transition: transform 120ms ease, box-shadow 120ms ease;
 }
 .stage-slot:hover:not(:disabled) { transform: translateY(-4px); box-shadow: 0 12px 0 #2b1608, 0 18px 34px #0008; }
@@ -1308,7 +1311,7 @@ button:disabled { cursor: var(--cursor-arrow); }
 .stage-slot[data-kind="tutorial"] { background: linear-gradient(#cfe6bf, #9dc487); border-color: #5d7f45; }
 .stage-slot[data-kind="endless"] { background: linear-gradient(#d9cdec, #a894c9); border-color: #6b5590; }
 
-.stage-slot[data-locked] { filter: grayscale(.7) brightness(.75); cursor: not-allowed; box-shadow: 0 6px 0 #2b1608; }
+.stage-slot[data-locked] { filter: grayscale(.7) brightness(.75); cursor: var(--cursor-deny); box-shadow: 0 6px 0 #2b1608; }
 .stage-slot[data-locked]:hover { transform: none; }
 
 .stage-slot-label { font-size: clamp(38px, 6vw, 64px); line-height: 1; }

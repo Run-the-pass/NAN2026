@@ -1,4 +1,5 @@
 import kitchenMap from "./map-data.js";
+import balanceData from "./balance.json" with { type: "json" };
 import recipeData from "./recipes.json" with { type: "json" };
 import stageData from "./stages.json" with { type: "json" };
 
@@ -189,6 +190,67 @@ export type Recipe = {
   submissionStation: StationId;
 };
 
+// 밸런스 원본은 game/balance.json이다. 손으로 고치는 파일이라 코어에
+// 들이기 전에 한 번 검증한다. 어긋난 값으로 조용히 도는 것보다 시작할 때
+// 멈추는 편이 낫다.
+function checkBalance() {
+  const whole = (value: unknown, min = 0) =>
+    Number.isSafeInteger(value) && (value as number) >= min;
+  const problems: string[] = [];
+  for (const element of allElements) {
+    if (!whole(balanceData.actionPointsPerTurn[element], 1)) {
+      problems.push(`${element} 행동력은 1 이상 정수여야 합니다.`);
+    }
+  }
+  for (const [name, cost] of Object.entries(balanceData.actionCost)) {
+    if (!whole(cost, 1)) problems.push(`${name} 비용은 1 이상 정수여야 합니다.`);
+  }
+  for (const [job, element] of Object.entries(balanceData.stationElements)) {
+    if (!allElements.includes(element as SlimeElement)) {
+      problems.push(`${job}을(를) 맡을 속성이 올바르지 않습니다: ${element}`);
+    }
+  }
+  if (!whole(balanceData.ingredients.max, 1) || !whole(balanceData.ingredients.perTurn, 1)) {
+    problems.push("재료 상자 수치는 1 이상 정수여야 합니다.");
+  }
+  const dish = balanceData.dish;
+  if (
+    !whole(dish.rackCapacity, 1) ||
+    !whole(dish.initialCount, 0) ||
+    dish.initialCount > dish.rackCapacity ||
+    !whole(dish.washerCapacity, 1) ||
+    !whole(dish.earthDishCarry, 1) ||
+    !whole(dish.tableCapacity, 1)
+  ) {
+    problems.push("그릇 수치가 올바르지 않습니다. 초기 개수는 보관함 용량 이하여야 합니다.");
+  }
+  if (!whole(balanceData.incinerator.capacity, 1)) {
+    problems.push("소각기 용량은 1 이상 정수여야 합니다.");
+  }
+  const orders = balanceData.orders;
+  if (
+    !whole(orders.activeOrderCount, 1) ||
+    !whole(orders.previewCount, 0) ||
+    !["reject", "discard"].includes(orders.invalidSubmission) ||
+    typeof orders.endRoundWhenOrdersDone !== "boolean"
+  ) {
+    problems.push("주문 설정이 올바르지 않습니다.");
+  }
+  const ranks = balanceData.rankThresholds;
+  if (
+    ranks.length !== 3 ||
+    ranks.some((need, index) => !whole(need, 0) || (index > 0 && need <= ranks[index - 1]))
+  ) {
+    problems.push("랭크 기준은 오름차순 정수 3개여야 합니다.");
+  }
+  if (!whole(balanceData.rushTurnsLeft, 0) || !whole(balanceData.goldPerOrder, 0)) {
+    problems.push("마감 임박 턴과 주문당 골드는 0 이상 정수여야 합니다.");
+  }
+  if (problems.length) throw new Error(`balance.json: ${problems.join(" ")}`);
+}
+
+checkBalance();
+
 // 레시피 원본은 game/recipes.json이다. 밸런스는 코드가 아니라 그 파일에서
 // 만진다. 손으로 고치는 파일이라 코어에 들이기 전에 한 번 검증한다.
 function readRecipes(): Partial<Record<ItemId, Recipe>> {
@@ -282,49 +344,37 @@ export const slimeTypes: Record<
 };
 
 // 턴당 행동력. 전기(번개)만 2고 나머지는 1이다.
-export const actionPointsPerTurn: Record<SlimeTypeId, number> = {
-  water: 1,
-  fire: 1,
-  lightning: 2,
-  earth: 1,
-};
+export const actionPointsPerTurn: Record<SlimeTypeId, number> =
+  balanceData.actionPointsPerTurn;
 
 export const maxActionPoints = (typeId: SlimeTypeId) =>
   actionPointsPerTurn[typeId];
 
-// 행동별 행동력. 명세 4절에 없던 버리기·제출·재료 집기는 "물건 집기·
-// 내려놓기"와 같은 1로, 소각은 세척·조리와 같은 2로 둔다.
-export const actionCost = {
-  move: 1,
-  carry: 1,
-  // 모든 상호작용은 한 턴에 끝난다.
-  chop: 1,
-  wash: 1,
-  burn: 1,
-};
+// 행동별 행동력. 값은 balance.json에서 조절한다.
+export const actionCost = balanceData.actionCost;
 
 // 레시피와 무관하게 설비가 고정으로 요구하는 속성. 썰기는 레시피마다
 // 다를 수 있어 `Recipe.worker`가 정한다. 여기 없는 기구는 모든
 // 슬라임이 쓰고, 물건을 집고 놓는 것은 "물건" 분류라 제한을 받지 않는다.
-export const stationElements = {
-  wash: "water" as SlimeElement,
-  burn: "fire" as SlimeElement,
+export const stationElements = balanceData.stationElements as {
+  wash: SlimeElement;
+  burn: SlimeElement;
 };
 
 // 아직 확정되지 않은 주문 규칙은 여기서만 바꾼다.
-export const orderConfig = {
+export const orderConfig = balanceData.orders as {
   // 동시에 노출하는 주문 수.
-  activeOrderCount: 2,
+  activeOrderCount: number;
   // 현재 주문 뒤에 미리 보여 줄 다음 레시피 수.
-  previewCount: 2,
+  previewCount: number;
   // 주문에 없는 음식 처리. reject는 거부하고 음식을 그대로 들려 둔다.
-  invalidSubmission: "reject" as "reject" | "discard",
+  invalidSubmission: "reject" | "discard";
   // 레시피 목록을 다 처리했을 때 스테이지를 바로 끝낼지.
-  endRoundWhenOrdersDone: true,
+  endRoundWhenOrdersDone: boolean;
 };
 
 // 통과 기준 대비 추가 처리 수별 별 개수. 0개 추가면 별 1개다.
-export const rankThresholds = [0, 2, 3];
+export const rankThresholds = balanceData.rankThresholds;
 
 // 화재는 후순위다. 상태와 설정만 남기고 발화·전파는 넣지 않는다.
 // ponytail: 턴 기반 발화 규칙이 정해지면 여기 값을 턴 단위로 바꾸고
@@ -335,17 +385,9 @@ export const fireConfig = {
 };
 
 // 원문에서 수치가 미정인 항목은 플레이 검증값으로 한곳에 둔다.
-export const dishConfig = {
-  initialCount: 3,
-  rackCapacity: 3,
-  washerCapacity: 1,
-  earthDishCarry: 2,
-  tableCapacity: 1,
-};
+export const dishConfig = balanceData.dish;
 
-export const incineratorConfig = {
-  capacity: 5,
-};
+export const incineratorConfig = balanceData.incinerator;
 
 export type Order = {
   id: string;
@@ -435,12 +477,12 @@ export type GameState = {
 export const TILE_SIZE = 60;
 export const MAP_WIDTH = 14;
 export const MAP_HEIGHT = 8;
-export const GOLD_PER_ORDER = 100;
-export const INGREDIENT_MAX = 4;
+export const GOLD_PER_ORDER = balanceData.goldPerOrder;
+export const INGREDIENT_MAX = balanceData.ingredients.max;
 // 남은 턴이 이 이하면 마감이 임박한 것으로 본다. 음악·배너가 함께 쓴다.
-export const RUSH_TURNS_LEFT = 10;
+export const RUSH_TURNS_LEFT = balanceData.rushTurnsLeft;
 // 턴이 끝날 때 재료 상자마다 채우는 개수.
-export const INGREDIENT_PER_TURN = 1;
+export const INGREDIENT_PER_TURN = balanceData.ingredients.perTurn;
 export const STORAGE_MAX = 1;
 
 // I 재료 상자, C 조리 도구, S 제출대, X 쓰레기, D 그릇, W 세척기, T 테이블.

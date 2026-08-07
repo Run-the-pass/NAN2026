@@ -1,0 +1,47 @@
+{
+  "note": "밸런스 수치 원본. `npm run balance:edit`로 고치고, 코드는 이 파일만 읽는다. 값이 규칙에 어긋나면 게임이 시작할 때 오류가 난다.",
+  "actionPointsPerTurn": {
+    "water": 1,
+    "fire": 1,
+    "lightning": 2,
+    "earth": 1
+  },
+  "actionCost": {
+    "move": 1,
+    "carry": 1,
+    "chop": 1,
+    "wash": 1,
+    "burn": 1
+  },
+  "stationElements": {
+    "wash": "water",
+    "burn": "fire"
+  },
+  "ingredients": {
+    "max": 4,
+    "perTurn": 1
+  },
+  "dish": {
+    "initialCount": 3,
+    "rackCapacity": 3,
+    "washerCapacity": 1,
+    "earthDishCarry": 2,
+    "tableCapacity": 1
+  },
+  "incinerator": {
+    "capacity": 5
+  },
+  "orders": {
+    "activeOrderCount": 2,
+    "previewCount": 2,
+    "invalidSubmission": "reject",
+    "endRoundWhenOrdersDone": true
+  },
+  "rankThresholds": [
+    0,
+    2,
+    3
+  ],
+  "rushTurnsLeft": 10,
+  "goldPerOrder": 100
+}

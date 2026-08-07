@@ -20,6 +20,16 @@
       ],
       "port": 4173,
       "url": "http://127.0.0.1:4173"
+    },
+    {
+      "name": "balance-editor",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": [
+        "run",
+        "balance:edit"
+      ],
+      "port": 4174,
+      "url": "http://127.0.0.1:4174"
     }
   ]
 }

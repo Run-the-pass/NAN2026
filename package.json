@@ -14,7 +14,9 @@
     "map:edit": "node tools/map-editor.mjs",
     "map:check": "node tools/map-editor.mjs --check",
     "lint": "eslint . --ignore-pattern dist --ignore-pattern .next",
-    "db:generate": "drizzle-kit generate"
+    "db:generate": "drizzle-kit generate",
+    "balance:edit": "node tools/balance-editor.mjs",
+    "balance:check": "node tools/balance-editor.mjs --check"
   },
   "dependencies": {
     "drizzle-orm": "0.45.2",

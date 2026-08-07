@@ -43,7 +43,6 @@ import {
   carriedLabel,
   isDish,
   blenderStage,
-  type BlenderStage,
   type ActorId,
   type Carried,
   type GameState,
@@ -139,14 +138,12 @@ const stationBadgeArt: Partial<Record<StationId, string>> = {
   "mushroom-box": "/food/mushroom.png",
 };
 
-// 믹서기 단계별 그림. 과일만 넣은 상태는 물이 필요하다는 뜻이라
-// 화면에서 물 아이콘도 함께 띄운다.
-const blenderArt: Record<BlenderStage, string> = {
-  empty: "/stations/blender.png",
-  "needs-water": "/stations/blender-fruit.png",
-  ready: "/stations/blender-ready.png",
-  done: "/stations/blender-full.png",
-};
+// 믹서기는 빈 그림 하나만 쓰고 안에 든 것을 그 위에 겹쳐 그린다. 과일마다
+// 그림을 따로 만들면 레시피가 늘 때마다 에셋이 필요해서, 재료·완성품이
+// 이미 가진 그림을 유리병 자리에 얹는 방식으로 둔다.
+const BLENDER_ART = "/stations/blender.png";
+// blender.png(205×256) 안에서 유리병 안쪽 칸. 그림 가운데를 기준으로 잰다.
+const BLENDER_JAR = { dx: -15, dy: -46.5, width: 85, height: 73 };
 
 // 도마·믹서기는 조리대 위에 놓인 물건이다. 아래에 테이블을 깔고 그림을
 // 위로 올려 얹힌 것처럼 보이게 한다. 칸을 넘어가도 되고, 앞뒤 순서는
@@ -261,7 +258,7 @@ const stationPanelInfo: Record<
       "넣은 과일은 뺄 수 없고, 물을 먼저 채울 수도 없습니다.",
     ],
     required: ["water", "lightning"],
-    steps: ["🍌 과일 넣기", "💧 물 슬라임이 물", "⚡ 번개 슬라임이 가동"],
+    steps: ["🍌 과일 넣기", "💧 물 슬라임이 물", "🔌 번개 슬라임이 가동"],
   },
   stove: {
     description: ["땅 슬라임만 재료를 썰 수 있습니다. (행동력 1)", "감자·당근·양배추를 채썹니다."],
@@ -302,7 +299,7 @@ const roleIcons: Record<string, string> = {
   가열: "🔥",
   소각: "🗑️",
   운반: "📦",
-  발전: "⚡",
+  발전: "🔌",
   손질: "🔪",
   썰기: "🥕",
   "다중 운반": "🍽️",
@@ -319,7 +316,8 @@ function ActionPoints({ actor }: { actor: { typeId: SlimeTypeId; actionPoints: n
   return (
     <ul className="slime-stats">
       <li>
-        <span aria-hidden>⚡</span>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img className="energy-icon" src="/ui/energy.png" alt="" aria-hidden />
         <span>행동력</span>
         <span
           className="stat-gauge"
@@ -385,7 +383,7 @@ function OrderFlow({ foodId }: { foodId: ItemId }) {
       ) : null}
       <i aria-hidden>→</i>
       <FlowIcon
-        art={recipe.station === "blender" ? blenderArt.empty : stationArt[recipe.station]}
+        art={stationArt[recipe.station]}
         fallback={stationIcons[recipe.station]}
       />
     </div>
@@ -743,7 +741,13 @@ export default function Game() {
       >;
       stations!: Record<StationInstanceId, Phaser.GameObjects.Text>;
       // 믹서기만 단계에 따라 그림이 바뀌어 따로 들고 있는다.
-      blenders!: Partial<Record<StationInstanceId, { art: Phaser.GameObjects.Image; fit: () => void }>>;
+      blenders!: Partial<Record<StationInstanceId, {
+        art: Phaser.GameObjects.Image;
+        fit: () => void;
+        water: Phaser.GameObjects.Rectangle;
+        contents: Phaser.GameObjects.Image;
+        showContents: (key: string) => void;
+      }>>;
       blenderHints!: Partial<Record<StationInstanceId, Phaser.GameObjects.Text>>;
       // 재고 게이지와, 골랐을 때만 뜨는 이름표.
       gauges!: Partial<Record<StationInstanceId, Phaser.GameObjects.Graphics>>;
@@ -963,7 +967,7 @@ export default function Game() {
         for (const url of new Set([
           ...Object.values(stationArt),
           ...Object.values(stationBadgeArt),
-          ...Object.values(blenderArt),
+          BLENDER_ART,
           ...Object.values(foodImages),
           DIRTY_PLATE_ART,
         ])) {
@@ -1076,8 +1080,34 @@ export default function Game() {
           const art = this.add.image(x, y - lift, stationArt[type]).setDepth(y + 1);
           fit(art);
           if (type === "blender") {
-            // 단계가 바뀌면 그림만 갈아 끼우고 칸 맞춤은 그대로 다시 잡는다.
-            this.blenders[id] = { art, fit: () => fit(art) };
+            // 유리병 안쪽 자리. 그림을 칸에 맞춘 배율만큼 같이 줄인다.
+            const k = art.scaleX;
+            const jarX = x + BLENDER_JAR.dx * k;
+            const jarY = y - lift + BLENDER_JAR.dy * k;
+            const jarW = BLENDER_JAR.width * k;
+            const jarH = BLENDER_JAR.height * k;
+            // 물은 과일 뒤에, 내용물은 앞에 둔다.
+            const water = this.add
+              .rectangle(jarX, jarY, jarW, jarH, 0x6fc7ff, 0.45)
+              .setDepth(y + 1.2)
+              .setVisible(false);
+            const contents = this.add
+              .image(jarX, jarY, BLENDER_ART)
+              .setDepth(y + 1.4)
+              .setVisible(false);
+            this.blenders[id] = {
+              art,
+              fit: () => fit(art),
+              water,
+              contents,
+              // 내용물 그림마다 크기가 달라 넣을 때마다 유리병에 맞춘다.
+              showContents: (key: string) => {
+                contents.setTexture(key).setVisible(true);
+                contents.setScale(
+                  Math.min(jarW / contents.width, jarH / contents.height) * 0.86,
+                );
+              },
+            };
             // 물이 필요할 때 띄우는 안내 아이콘.
             this.blenderHints[id] = this.add
               .text(x + TILE_SIZE / 2 - 8, y - lift - 12, "", {
@@ -1470,10 +1500,16 @@ export default function Game() {
                 shown?.kind === "station" && shown.id === id,
               );
               const blender = current.blenders[id];
-              if (blender) {
+              const view = this.blenders[id];
+              if (blender && view) {
                 const stage = blenderStage(blender);
-                this.blenders[id]!.art.setTexture(blenderArt[stage]);
-                this.blenders[id]!.fit();
+                // 무엇이 들어 있는지 그대로 보여 준다. 딸기만 넣었으면
+                // 딸기가, 완성했으면 그 스무디가 유리병에 보인다.
+                const inside = blender.food ?? blender.fruit;
+                const art = inside ? foodImages[inside] : undefined;
+                if (art) view.showContents(art);
+                else view.contents.setVisible(false);
+                view.water.setVisible(blender.water);
                 // 과일만 들어간 믹서기는 물이 필요하다는 것을 아이콘으로 알린다.
                 this.blenderHints[id]!.setText(stage === "needs-water" ? "💧" : "");
               }
@@ -1744,7 +1780,9 @@ export default function Game() {
                 >
                   <b>{slimeTypes[actor.typeId].name}</b>
                   <small>
-                    ⚡{actor.actionPoints}/{maxActionPoints(actor.typeId)}
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img className="energy-icon" src="/ui/energy.png" alt="" aria-hidden />
+                    {actor.actionPoints}/{maxActionPoints(actor.typeId)}
                   </small>
                 </button>
               );
