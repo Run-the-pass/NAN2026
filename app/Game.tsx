@@ -39,6 +39,7 @@ import {
   dishConfig,
   incineratorConfig,
   isBoxStation,
+  isCooktop,
   boxItems,
   carriedLabel,
   isDish,
@@ -134,7 +135,7 @@ const stationArt: Record<StationId, string> = {
 // 접시 한 장만 덩그러니 두지 않고 같은 상자에 접시를 얹는다.
 const stationBadgeArt: Partial<Record<StationId, string>> = {
   "dish-rack": "/food/plate.png",
-  "potato-box": "/food/gamja.png",
+  "potato-box": "/food/potato.png",
   "carrot-box": "/food/carrot.png",
   "cabbage-box": "/food/cabbage.png",
   "banana-box": "/food/banana.png",
@@ -153,6 +154,18 @@ const BLENDER_WATER = { dx: -14.5, dy: -38, width: 88, height: 60 };
 // ingredient-box.png(179×185) 가운데 흰 원. 알파값에서 실제 원 범위를 재서
 // 얻은 값이다. 내용물은 이 원 안에 앉는다.
 const BOX_BADGE = { dx: 0, dy: -7, diameter: 59 };
+// 그림마다 알맹이가 한가운데에 있지 않다. 소각기는 왼쪽 아래로, 화로는
+// 아래로, 믹서기는 손잡이 때문에 왼쪽으로 쏠려 있다. 알파의 무게중심을
+// 재서 그만큼 되밀어 칸 한가운데에 오게 한다. 값은 그림 픽셀 단위다.
+const artAnchor: Record<string, { x: number; y: number }> = {
+  "/stations/trash.png": { x: 6.7, y: -11 },
+  "/stations/trash-full.png": { x: 6.7, y: -11 },
+  "/stations/blender.png": { x: 17, y: 1.7 },
+  "/stations/oven.png": { x: 0.4, y: -15.5 },
+  "/stations/submission.png": { x: 0, y: 8.4 },
+  "/stations/table.png": { x: 0.1, y: 4.4 },
+  "/food/doma.png": { x: 8.5, y: 1.1 },
+};
 
 // 도마·믹서기는 조리대 위에 놓인 물건이다. 아래에 테이블을 깔고 그림을
 // 위로 올려 얹힌 것처럼 보이게 한다. 칸을 넘어가도 되고, 앞뒤 순서는
@@ -174,7 +187,7 @@ const bannerImages = {
 const BANNER_MS = 1600;
 // 주문 카드에 빈 접시 위로 얹어 그리는 완성 음식.
 const foodImages: Partial<Record<ItemId, string>> = {
-  potato: "/food/gamja.png",
+  potato: "/food/potato.png",
   "shredded-potato": "/food/shredded-potato.png",
   carrot: "/food/carrot.png",
   "shredded-carrot": "/food/shredded-carrot.png",
@@ -222,7 +235,7 @@ const stationPanelInfo: Record<
   "potato-box": {
     description: ["턴이 끝날 때마다 감자가 한 개 찹니다.", "빈손이나 깨끗한 그릇으로 꺼냅니다. (행동력 1)"],
     required: [],
-    steps: [{ art: "/food/gamja.png", text: "감자 받기" }],
+    steps: [{ art: "/food/potato.png", text: "감자 받기" }],
   },
   "carrot-box": {
     description: ["턴이 끝날 때마다 당근이 한 개 찹니다.", "빈손이나 깨끗한 그릇으로 꺼냅니다. (행동력 1)"],
@@ -262,7 +275,7 @@ const stationPanelInfo: Record<
   fryer: {
     description: ["불 슬라임만 튀길 수 있습니다. (행동력 1)", "감자와 버섯을 튀깁니다."],
     required: ["fire"],
-    steps: [{ art: "/food/gamja.png", text: "감자·버섯" }, { art: "/stations/fryer.png", text: "불 슬라임이 튀기기" }, { art: "/food/plate.png", text: "그릇에 담기" }],
+    steps: [{ art: "/food/potato.png", text: "감자·버섯" }, { art: "/stations/fryer.png", text: "불 슬라임이 튀기기" }, { art: "/food/plate.png", text: "그릇에 담기" }],
   },
   blender: {
     description: [
@@ -270,12 +283,12 @@ const stationPanelInfo: Record<
       "넣은 과일은 뺄 수 없고, 물을 먼저 채울 수도 없습니다.",
     ],
     required: ["water", "lightning"],
-    steps: [{ art: "/food/banana.png", text: "과일 넣기" }, { art: "/stations/washer-water.png", text: "물 슬라임이 물" }, { art: "/ui/energy.png", text: "번개 슬라임이 가동" }],
+    steps: [{ art: "/food/banana.png", text: "과일 넣기" }, { art: "/ui/water.png", text: "물 슬라임이 물" }, { art: "/ui/energy.png", text: "번개 슬라임이 가동" }],
   },
   stove: {
     description: ["땅 슬라임만 재료를 썰 수 있습니다. (행동력 1)", "감자·당근·양배추를 채썹니다."],
     required: ["earth"],
-    steps: [{ art: "/food/gamja.png", text: "감자·당근·양배추" }, { art: "/food/doma.png", text: "땅 슬라임이 썰기" }, { art: "/food/plate.png", text: "그릇에 담기" }],
+    steps: [{ art: "/food/potato.png", text: "감자·당근·양배추" }, { art: "/food/doma.png", text: "땅 슬라임이 썰기" }, { art: "/food/plate.png", text: "그릇에 담기" }],
   },
   submission: {
     description: ["주문 음식이 담긴 그릇을 제출합니다. (행동력 1)", "그릇은 한 턴 뒤 반납대로 갑니다."],
@@ -306,7 +319,7 @@ const stationPanelInfo: Record<
 
 // 슬라임 "특징"에 붙일 그림. 이모지 대신 게임에 쓰는 에셋을 그대로 쓴다.
 const traitArt: Record<string, string> = {
-  "water-supply": "/stations/washer-water.png",
+  "water-supply": "/ui/water.png",
   wash: "/stations/washer.png",
   "cook-heat": "/stations/oven.png",
   burn: "/stations/trash.png",
@@ -331,19 +344,23 @@ function ActionPoints({ actor }: { actor: { typeId: SlimeTypeId; actionPoints: n
     <ul className="slime-stats">
       <li>
         <span>행동력</span>
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img className="energy-icon" src="/ui/energy.png" alt="" aria-hidden />
+        {/* 쓴 만큼 번개가 어두워진다. 칸 개수를 세지 않아도 남은 양이 보인다. */}
         <span
-          className="stat-gauge"
+          className="energy-row"
           role="img"
           aria-label={`남은 행동력 ${actor.actionPoints} / ${max}`}
         >
           {Array.from({ length: max }, (_, cell) => (
-            <i key={cell} data-on={cell < actor.actionPoints ? "" : undefined} />
+            /* eslint-disable-next-line @next/next/no-img-element */
+            <img
+              key={cell}
+              className="energy-icon"
+              src={cell < actor.actionPoints ? "/ui/energy.png" : "/ui/energy-off.png"}
+              alt=""
+              aria-hidden
+            />
           ))}
         </span>
-        {/* 칸만 보면 몇 개인지 세야 한다. 옆에 숫자를 같이 둔다. */}
-        <small className="stat-count">{actor.actionPoints} / {max}</small>
       </li>
     </ul>
   );
@@ -382,10 +399,14 @@ function FlowIcon({ art, fallback }: { art?: string; fallback: string }) {
 
 // 설비를 대표하는 아이콘. 상자류는 담긴 재료 그림을 쓰고, 나머지는 설비
 // 그림을 그대로 쓴다. 인게임과 같은 그림이라 이모지보다 바로 알아본다.
+// 세척대·제출대처럼 가로로 긴 그림은 동그라미 안에서 유난히 작아 보인다.
+// 그런 그림만 여백을 줄여 크게 앉힌다.
+const wideStationArt: StationId[] = ["washer", "submission"];
+
 function StationIcon({ id }: { id: StationId }) {
   const art = stationBadgeArt[id] ?? stationArt[id];
   // eslint-disable-next-line @next/next/no-img-element
-  return <img src={art} alt="" aria-hidden />;
+  return <img src={art} alt="" aria-hidden data-wide={wideStationArt.includes(id) ? "" : undefined} />;
 }
 
 // 재료 → (믹서기라면 물) → 기구 순서. 주문 카드 두 종류가 같이 쓴다.
@@ -402,7 +423,7 @@ function OrderFlow({ foodId }: { foodId: ItemId }) {
         <>
           <i aria-hidden>+</i>
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img className="flow-icon" src="/stations/washer-water.png" alt="" aria-hidden />
+          <img className="flow-icon" src="/ui/water.png" alt="" aria-hidden />
         </>
       ) : null}
       <i aria-hidden>→</i>
@@ -724,7 +745,7 @@ export default function Game() {
             carried: { bg: Phaser.GameObjects.Image; fg: Phaser.GameObjects.Image }[];
             selected: Phaser.GameObjects.Arc;
             // 행동력이 남았을 때 머리 위에 뜨는 물음표와, 골랐을 때의 이름표.
-            idleMark: Phaser.GameObjects.Text;
+            idleMark: Phaser.GameObjects.Image;
             nameTag: Phaser.GameObjects.Text;
             facing: Facing;
             last: { x: number; y: number };
@@ -967,6 +988,8 @@ export default function Game() {
           BLENDER_ART,
           ...Object.values(foodImages),
           DIRTY_PLATE_ART,
+          "/ui/question.png",
+          "/ui/water.png",
         ])) {
           this.load.image(url, url);
         }
@@ -990,19 +1013,6 @@ export default function Game() {
 
       create() {
         // 파티클용 점 텍스처. 파일을 더 두지 않고 그려서 만든다.
-        if (!this.textures.exists("water-drop")) {
-          // 물이 필요하다는 표시. 이모지 대신 그려서 텍스처로 만든다.
-          const drop = this.make.graphics({ x: 0, y: 0 }, false);
-          drop.fillStyle(0x2a1608, 1)
-            .fillCircle(16, 22, 12)
-            .fillTriangle(16, 2, 5, 20, 27, 20);
-          drop.fillStyle(0x6ec8ff, 1)
-            .fillCircle(16, 22, 9)
-            .fillTriangle(16, 7, 8, 20, 24, 20);
-          drop.fillStyle(0xffffff, 0.75).fillCircle(12, 21, 3);
-          drop.generateTexture("water-drop", 32, 36);
-          drop.destroy();
-        }
         if (!this.textures.exists("spark-dot")) {
           const dot = this.make.graphics({ x: 0, y: 0 }, false);
           dot.fillStyle(0xffffff, 1).fillCircle(6, 6, 6);
@@ -1081,27 +1091,39 @@ export default function Game() {
           // 앞뒤 순서는 슬라임과 같은 규칙으로 정렬된다.
           const lift = style.lift ?? 0;
           this.stationLift[id] = lift;
+          // 그림 한가운데가 아니라 알맹이 한가운데를 칸에 맞춘다.
+          const nudge = (image: Phaser.GameObjects.Image, key: string) => {
+            const off = artAnchor[key];
+            if (!off) return image;
+            return image.setPosition(
+              image.x + off.x * image.scaleX,
+              image.y + off.y * image.scaleY,
+            );
+          };
           if (style.onTable) {
-            this.add
+            const under = this.add
               .image(x, y, "/stations/table.png")
               .setScale(Math.min(width / 230, height / 226))
               .setDepth(y);
+            nudge(under, "/stations/table.png");
           }
           const art = this.add.image(x, y - lift, stationArt[type]).setDepth(y + 1);
           fit(art);
+          nudge(art, stationArt[type]);
           if (type === "blender") {
-            // 유리병 안쪽 자리. 그림을 칸에 맞춘 배율만큼 같이 줄인다.
+            // 유리병 안쪽 자리. 그림을 칸에 맞춘 배율만큼 같이 줄이고,
+            // 무게중심 보정으로 옮긴 만큼 함께 옮긴다.
             const k = art.scaleX;
-            const jarX = x + BLENDER_JAR.dx * k;
-            const jarY = y - lift + BLENDER_JAR.dy * k;
+            const jarX = art.x + BLENDER_JAR.dx * k;
+            const jarY = art.y + BLENDER_JAR.dy * k;
             const jarW = BLENDER_JAR.width * k;
             const jarH = BLENDER_JAR.height * k;
             // 물은 유리병 아래쪽만 채운다. 병 전체를 덮으면 물인지
             // 유리인지 알아볼 수 없다. 과일 뒤에 깔아 잠긴 것처럼 보인다.
             const water = this.add
               .rectangle(
-                x + BLENDER_WATER.dx * k,
-                y - lift + BLENDER_WATER.dy * k,
+                art.x + BLENDER_WATER.dx * k,
+                art.y + BLENDER_WATER.dy * k,
                 BLENDER_WATER.width * k,
                 BLENDER_WATER.height * k,
                 0x6ec8ff,
@@ -1128,7 +1150,7 @@ export default function Game() {
             };
             // 물이 필요할 때 띄우는 안내 아이콘.
             this.blenderHints[id] = this.add
-              .image(x + TILE_SIZE / 2 - 6, y - lift - 10, "water-drop")
+              .image(x + TILE_SIZE / 2 - 6, y - lift - 10, "/ui/water.png")
               .setOrigin(0.5)
               .setDisplaySize(16, 18)
               .setDepth(y + 3)
@@ -1140,7 +1162,7 @@ export default function Game() {
             // 그림 배율에 맞춰 재므로 어떤 재료 그림이든 원 안에 들어간다.
             const k = art.scaleX;
             const badge = this.add
-              .image(x + BOX_BADGE.dx * k, y - lift + BOX_BADGE.dy * k, itemArt)
+              .image(art.x + BOX_BADGE.dx * k, art.y + BOX_BADGE.dy * k, itemArt)
               .setDepth(y + 2);
             const room = BOX_BADGE.diameter * k * 0.82;
             badge.setScale(Math.min(room / badge.width, room / badge.height));
@@ -1284,14 +1306,10 @@ export default function Game() {
             .setVisible(false);
           // "아직 시킬 일이 남았다"는 표시. 고른 슬라임에는 띄우지 않는다.
           const idleMark = this.add
-            .text(spot.x + 18, spot.y - 30, "?", {
-              color: "#ffe9b8",
-              fontFamily: "Jua, sans-serif",
-              fontSize: "20px",
-              resolution: RENDER_SCALE,
-            })
+            .image(spot.x + 18, spot.y - 30, "/ui/question.png")
             .setOrigin(0.5)
-            .setAlpha(0.75)
+            .setDisplaySize(13, 20)
+            .setAlpha(0.9)
             .setDepth(spot.y + 3)
             .setVisible(false);
           const nameTag = this.add
@@ -1498,10 +1516,13 @@ export default function Game() {
               // 수량은 게이지가 맡고, 글자는 게이지로 못 나타내는 상태만 쓴다.
               const label = current.fires[id]?.onFire
                 ? "🔥"
-                : type === "stove"
+                : isCooktop(type)
                   ? workstation!.progress > 0
                     ? `${workStatusLabels.WORKING} ${workstation!.progress}/${actionCost.chop}`
-                    : workStatusLabels[workstation!.status]
+                    // 비어 있다는 말은 그림만 봐도 안다. 완성했을 때만 알린다.
+                    : workstation!.status === "COMPLETE"
+                      ? workStatusLabels.COMPLETE
+                      : ""
                   : type === "washer"
                     ? washer!.progress > 0
                       ? `세척 ${washer!.progress}/${actionCost.wash}`
@@ -1805,18 +1826,26 @@ export default function Game() {
                     setSelectedActor((current) => (current === actorId ? null : actorId))
                   }
                 >
-                  {/* 표정 없는 몸만. 얼굴은 캔버스에서만 그린다. */}
+                  {/* 표정 없는 몸이 버튼 배경이다. 위에는 남은 에너지만 얹는다. */}
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
                     className="roster-slime"
                     src={facelessSlime(actor.typeId)}
                     alt={slimeTypes[actor.typeId].name}
+                    aria-hidden
                   />
-                  <small>
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img className="energy-icon" src="/ui/energy.png" alt="" aria-hidden />
-                    {actor.actionPoints}/{maxActionPoints(actor.typeId)}
-                  </small>
+                  <span className="energy-row">
+                    {Array.from({ length: maxActionPoints(actor.typeId) }, (_, cell) => (
+                      /* eslint-disable-next-line @next/next/no-img-element */
+                      <img
+                        key={cell}
+                        className="energy-icon"
+                        src={cell < actor.actionPoints ? "/ui/energy.png" : "/ui/energy-off.png"}
+                        alt=""
+                        aria-hidden
+                      />
+                    ))}
+                  </span>
                 </button>
               );
             })}
