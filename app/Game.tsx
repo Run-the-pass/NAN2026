@@ -436,12 +436,18 @@ const methodArt = (station: StationId): string[] =>
 // 주문 카드 한 장. 큰 칸에 완성 그림, 그 아래 재료, 그 아래 조리 방법이다.
 function OrderCard({ order, next }: { order: Order; next?: boolean }) {
   const recipe = recipes[order.foodId];
-  // 다음 주문은 무엇이 올지만 알리면 된다. 재료와 조리법까지 적으면 지금
-  // 만들 것과 헷갈린다.
+  // 다음 주문은 무엇이 올지만 알리면 된다. 재료와 조리법까지 늘어놓으면 지금
+  // 만들 것과 헷갈리므로, 궁금할 때만 마우스를 올려 주문서를 펼쳐 본다.
   if (next) {
     return (
-      <article className="order-next" aria-label={`다음 주문 ${itemLabel(order.foodId)}`}>
+      <article
+        className="order-next"
+        tabIndex={0}
+        aria-label={`다음 주문 ${itemLabel(order.foodId)}`}
+      >
+        <small aria-hidden>NEXT</small>
         <OrderDish foodId={order.foodId} />
+        <OrderCard order={order} />
       </article>
     );
   }
@@ -588,11 +594,9 @@ function workersFor(type: StationId): SlimeTypeId[] {
 function GameInspector({
   state,
   target,
-  onClose,
 }: {
   state: GameState;
   target: InspectorTarget;
-  onClose: () => void;
 }) {
   if (target.kind === "actor") {
     const actor = state.actors[target.id];
@@ -600,7 +604,6 @@ function GameInspector({
     const type = slimeTypes[actor.typeId];
     return (
       <aside className="game-inspector" data-type={actor.typeId} aria-label={`${actor.name} 정보`}>
-        <button className="inspector-close" type="button" onClick={onClose} aria-label="정보 패널 닫기">×</button>
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img className="inspector-portrait" src={slimePortrait(actor.typeId)} alt="" />
         <h2>{actor.name}</h2>
@@ -626,7 +629,6 @@ function GameInspector({
   const required = workersFor(type);
   return (
     <aside className="game-inspector" data-station aria-label={`${stationLabels[type]} 정보`}>
-      <button className="inspector-close" type="button" onClick={onClose} aria-label="정보 패널 닫기">×</button>
       <span className="inspector-station-icon" aria-hidden>
         <StationIcon id={type} />
       </span>
@@ -2037,11 +2039,7 @@ export default function Game() {
 
         <div className="info-rail" role="complementary" aria-label="선택 정보 영역">
           {inspected && (
-            <GameInspector
-              state={state}
-              target={inspected}
-              onClose={() => setInspected(null)}
-            />
+            <GameInspector state={state} target={inspected} />
           )}
         </div>
 
