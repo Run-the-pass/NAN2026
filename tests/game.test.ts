@@ -109,11 +109,13 @@ test("레시피는 recipes.json을 그대로 읽어 온다", () => {
     submissionStation: "submission",
   });
   assert.equal(allRecipes.length, recipeData.recipes.length);
-  // 같은 재료를 두 기구가 나눠 갖지 않는다. 도마와 믹서기의 판정이 이걸 믿는다.
+  // 한 기구 안에서 같은 재료가 두 결과를 내지 않는다. recipeAt이 이걸 믿는다.
+  // 기구가 다르면 같은 재료를 써도 된다(감자는 도마와 튀김기 둘 다).
   assert.equal(
-    new Set(allRecipes.map((recipe) => recipe.ingredient.itemId)).size,
+    new Set(allRecipes.map((recipe) => `${recipe.station}/${recipe.ingredient.itemId}`)).size,
     allRecipes.length,
   );
+  assert.ok(allRecipes.filter((recipe) => recipe.ingredient.itemId === "potato").length > 1);
 });
 
 test("스테이지는 stages.json의 제한 턴과 메뉴를 그대로 쓴다", () => {
@@ -234,14 +236,57 @@ test("재료 상자마다 다른 재료를 꺼낸다", () => {
   assert.deepEqual(other.actors["water-1"]!.carrying, ["carrot"]);
 });
 
-test("튀김기와 화로는 놓을 수만 있고 쓰면 이유를 알려 준다", () => {
-  for (const type of ["fryer", "oven"] as const) {
-    assert.ok(stationInstancesByType[type].length > 0);
-    const state = initialState(1, ["water"]);
-    const refused = actAt(state, "water-1", type);
-    assert.equal(refused.actors["water-1"]!.actionPoints, 1);
-    assert.ok(refused.refusal?.message.includes("아직 없습니다"));
-  }
+test("튀김기와 화로는 도마와 같은 규칙으로 돈다", () => {
+  const fryerId = stationInstancesByType.fryer[0].id;
+  const ovenId = stationInstancesByType.oven[0].id;
+  const mushroomBoxId = stationInstancesByType["mushroom-box"][0].id;
+
+  // 버섯을 튀김기에 올리고 불 슬라임이 튀긴다.
+  let state = initialState(1, ["fire"], oneStage([
+    { id: "a", foodId: "fried-mushroom", targetCount: 1, submittedCount: 0 },
+  ]));
+  state = actAt(state, "fire-1", mushroomBoxId);
+  state = actAt(state, "fire-1", fryerId);
+  assert.deepEqual(state.stoves[fryerId], ["mushroom"]);
+  state = actAt(state, "fire-1", fryerId);
+  assert.deepEqual(state.stoves[fryerId], ["fried-mushroom"]);
+
+  // 같은 버섯이 화로에서는 구이가 된다.
+  let oven = initialState(1, ["fire"], oneStage([
+    { id: "a", foodId: "grilled-mushroom", targetCount: 1, submittedCount: 0 },
+  ]));
+  oven = actAt(oven, "fire-1", mushroomBoxId);
+  oven = actAt(oven, "fire-1", ovenId);
+  oven = actAt(oven, "fire-1", ovenId);
+  assert.deepEqual(oven.stoves[ovenId], ["grilled-mushroom"]);
+
+  // 불이 아니면 돌릴 수 없다.
+  let wrong = initialState(1, ["fire", "water"], oneStage([
+    { id: "a", foodId: "fried-mushroom", targetCount: 1, submittedCount: 0 },
+  ]));
+  wrong = actAt(wrong, "fire-1", mushroomBoxId);
+  wrong = actAt(wrong, "fire-1", fryerId);
+  wrong = actAt(wrong, "water-1", fryerId);
+  assert.ok(wrong.refusal?.message.includes("불 슬라임만"));
+});
+
+test("쓸 수 없는 재료를 들고 오면 그 사정을 알려 준다", () => {
+  const mushroomBoxId = stationInstancesByType["mushroom-box"][0].id;
+  let state = initialState(1, ["earth"]);
+  state = actAt(state, "earth-1", mushroomBoxId);
+  const refused = actAt(state, "earth-1", stoveId);
+  // "내려놓으면 될 것"처럼 들리지 않게, 왜 안 되는지와 어디서 쓰는지를 말한다.
+  assert.ok(refused.refusal?.message.includes("버섯"));
+  assert.ok(!refused.refusal!.message.includes("내려놓아야"));
+  assert.ok(refused.refusal!.message.includes("튀김기"));
+
+  // 손에 그릇만 든 채 도마를 쓰려는 것은 그대로 "내려놓으라"가 맞다.
+  let dish = initialState(1, ["earth"]);
+  dish = actAt(dish, "earth-1", potatoBoxId);
+  dish = actAt(dish, "earth-1", stoveId);
+  dish = actAt(dish, "earth-1", dishRackId);
+  const busy = actAt(dish, "earth-1", stoveId);
+  assert.ok(busy.refusal?.message.includes("내려놓아야"));
 });
 
 test("믹서기는 과일 → 물 → 가동 순서로만 스무디를 만든다", () => {

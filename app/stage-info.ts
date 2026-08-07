@@ -4,7 +4,7 @@ import { type ItemId, type StationId } from "../game/core.js";
 // 무엇을 가리키는지 알 수 없어 모두 다른 것으로 둔다.
 export const itemIcons: Record<ItemId, string> = {
   potato: "🥔",
-  "shredded-potato": "🍟",
+  "shredded-potato": "🥟",
   carrot: "🥕",
   "shredded-carrot": "🍥",
   cabbage: "🥬",
@@ -14,6 +14,9 @@ export const itemIcons: Record<ItemId, string> = {
   mushroom: "🍄",
   "banana-smoothie": "🥤",
   "strawberry-smoothie": "🍹",
+  "fried-potato": "🍟",
+  "fried-mushroom": "🍤",
+  "grilled-mushroom": "🍢",
 };
 
 export const stationIcons: Record<StationId, string> = {

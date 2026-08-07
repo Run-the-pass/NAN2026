@@ -9,6 +9,7 @@ import {
   KITCHEN_ROWS,
   initialState,
   interactActor,
+  isBesideStation,
   moveActor,
   moveTargets,
   nextReadyActor,
@@ -96,6 +97,11 @@ const AUTHORED_SLIME_SCALE = SLIME_SCALE * 1.12;
 type Motion = "idle" | "walk" | "stir" | "pick";
 // 행동 한 번은 즉시 끝나므로 모션도 잠깐만 재생하고 숨쉬기로 돌아간다.
 const MOTION_MS = 320;
+// 커서 그림과 핫스팟. 화살표는 뾰족한 끝, 손은 손가락 끝이 기준점이다.
+// globals.css의 --cursor-arrow / --cursor-hand와 같은 값이어야 한다.
+const CURSOR_ARROW = 'url("/ui/cursor.png") 2 0, auto';
+const CURSOR_HAND = 'url("/ui/cursor-click.png") 9 0, pointer';
+const CURSOR_DENY = 'url("/ui/cursor.png") 2 0, not-allowed';
 const workStatusLabels = {
   IDLE: "대기",
   MISSING_MATERIAL: "식재료 부족",
@@ -170,6 +176,9 @@ const foodImages: Partial<Record<ItemId, string>> = {
   mushroom: "/food/mushroom.png",
   "banana-smoothie": "/food/banana-smoothie.png",
   "strawberry-smoothie": "/food/strawberry-smoothie.png",
+  "fried-potato": "/food/fried-potato.png",
+  "fried-mushroom": "/food/fried-mushroom.png",
+  "grilled-mushroom": "/food/grilled-mushroom.png",
 };
 
 // 손에 든 것은 실제 게임 그림으로 "?" 왼쪽에 보여 준다. 그릇은 접시 그림
@@ -232,9 +241,9 @@ const stationPanelInfo: Record<
     steps: ["🍄 버섯 받기"],
   },
   oven: {
-    description: ["아직 화로 레시피가 없습니다.", "맵에 놓을 수만 있습니다."],
-    required: [],
-    steps: ["🔥 준비 중"],
+    description: ["불 슬라임만 구울 수 있습니다. (행동력 1)", "재료를 올리고 꺼내는 것은 누구나 합니다."],
+    required: ["fire"],
+    steps: ["🍄 버섯", "🔥 불 슬라임이 굽기", "🍽️ 그릇"],
   },
   "dish-return": {
     description: ["제출한 그릇이 한 턴 뒤 더러운 채로 나옵니다.", "집어서 세척대로 옮깁니다. (행동력 1)"],
@@ -242,9 +251,9 @@ const stationPanelInfo: Record<
     steps: ["🍴 그릇 회수", "🫧 세척대로"],
   },
   fryer: {
-    description: ["아직 튀김 레시피가 없습니다.", "맵에 놓을 수만 있습니다."],
-    required: [],
-    steps: ["🍟 준비 중"],
+    description: ["불 슬라임만 튀길 수 있습니다. (행동력 1)", "감자와 버섯을 튀깁니다."],
+    required: ["fire"],
+    steps: ["🥔 감자·버섯", "🍤 불 슬라임이 튀기기", "🍽️ 그릇"],
   },
   blender: {
     description: [
@@ -255,7 +264,7 @@ const stationPanelInfo: Record<
     steps: ["🍌 과일 넣기", "💧 물 슬라임이 물", "⚡ 번개 슬라임이 가동"],
   },
   stove: {
-    description: ["땅 슬라임만 재료를 썰 수 있습니다. (행동력 1)", "재료를 올리고 꺼내는 것은 누구나 합니다."],
+    description: ["땅 슬라임만 재료를 썰 수 있습니다. (행동력 1)", "감자·당근·양배추를 채썹니다."],
     required: ["earth"],
     steps: ["🥔 감자", "🔪 땅 슬라임이 썰기", "🍽️ 그릇"],
   },
@@ -321,6 +330,8 @@ function ActionPoints({ actor }: { actor: { typeId: SlimeTypeId; actionPoints: n
             <i key={cell} data-on={cell < actor.actionPoints ? "" : undefined} />
           ))}
         </span>
+        {/* 칸만 보면 몇 개인지 세야 한다. 옆에 숫자를 같이 둔다. */}
+        <small className="stat-count">{actor.actionPoints} / {max}</small>
       </li>
     </ul>
   );
@@ -579,6 +590,8 @@ export default function Game() {
   const selectedActorRef = useRef(selectedActor);
   // 캔버스가 이름표를 띄울지 판단하는 데 쓴다.
   const inspectedRef = useRef(inspected);
+  // 행동력이 떨어져 자동으로 넘긴 슬라임. 같은 마리를 되풀이해 뺏지 않는다.
+  const handedOff = useRef<ActorId | null>(null);
   const view = useRef<View | null>(null);
   const metrics = useRef<Metrics>(emptyMetrics());
   const savedRef = useRef(false);
@@ -739,6 +752,8 @@ export default function Game() {
       stationMarks!: Partial<Record<StationInstanceId, string>>;
       // 이펙트를 그림 높이에 맞춰 띄우려고 만들 때 계산한 값을 들고 있는다.
       stationLift!: Partial<Record<StationInstanceId, number>>;
+      // 지금 고른 슬라임이 각 설비를 쓸 수 있는지. 커서 모양이 이걸 본다.
+      usable!: Partial<Record<StationInstanceId, boolean>>;
       sparks!: Phaser.GameObjects.Particles.ParticleEmitter;
 
       // 게이지 한 줄. 남은 양을 칸으로 나눠 그린다. 이어 붙은 막대는 눈대중
@@ -980,6 +995,7 @@ export default function Game() {
           dot.generateTexture("spark-dot", 12, 12);
           dot.destroy();
         }
+        this.input.setDefaultCursor(CURSOR_ARROW);
         this.cameras.main
           .setBackgroundColor("#21130b")
           .setZoom(RENDER_SCALE)
@@ -1030,6 +1046,7 @@ export default function Game() {
         this.stationNames = {};
         this.stationMarks = {};
         this.stationLift = {};
+        this.usable = {};
         for (const station of stationInstances) {
           const { id, type, tiles } = station;
           const first = tileCenter(tiles[0]);
@@ -1111,6 +1128,15 @@ export default function Game() {
             .zone(x, y, width, height)
             .setDepth(4)
             .setInteractive()
+            // 쓸 수 있으면 손, 옆에 서 있는데 안 되면 금지 표시, 그 밖에는
+            // 기본 화살표. 상호작용 테두리 색과 같은 판정을 쓴다.
+            .on("pointerover", () => {
+              const ok = this.usable[id];
+              this.input.setDefaultCursor(
+                ok === undefined ? CURSOR_ARROW : ok ? CURSOR_HAND : CURSOR_DENY,
+              );
+            })
+            .on("pointerout", () => this.input.setDefaultCursor(CURSOR_ARROW))
             .on(
               "pointerdown",
               (
@@ -1165,6 +1191,8 @@ export default function Game() {
               new Phaser.Geom.Rectangle(-29, -23, 58, 45),
               Phaser.Geom.Rectangle.Contains,
             )
+            .on("pointerover", () => this.input.setDefaultCursor(CURSOR_HAND))
+            .on("pointerout", () => this.input.setDefaultCursor(CURSOR_ARROW))
             .on(
               "pointerdown",
               (
@@ -1285,6 +1313,7 @@ export default function Game() {
 
         view.current = {
           sync: (current) => {
+            const shown = inspectedRef.current;
             for (const actorId of roster) {
               const actor = current.actors[actorId];
               const sprite = this.slimes[actorId];
@@ -1352,7 +1381,11 @@ export default function Game() {
                 if (art?.fg) slot.fg.setTexture(art.fg);
               });
               sprite.selected.setVisible(selectedActorRef.current === actorId);
-              sprite.nameTag.setVisible(selectedActorRef.current === actorId);
+              // 이름표는 정보 패널이 보고 있는 대상에만 붙인다. 슬라임을 고른
+              // 채로 설비를 누르면 이름표가 둘 다 뜨던 문제를 여기서 막는다.
+              sprite.nameTag.setVisible(
+                shown?.kind === "actor" && shown.id === actorId,
+              );
               // 아직 행동력이 남은 슬라임에게만 물음표를 띄운다. 지금 고른
               // 슬라임은 이미 보고 있으니 뺀다.
               sprite.idleMark.setVisible(
@@ -1363,6 +1396,9 @@ export default function Game() {
             }
             moveMarks.clear();
             const selected = selectedActorRef.current;
+            // 지금 고른 슬라임이 쓸 수 있는 설비. 코어를 한 번 돌려 보고
+            // 거절당하는지로 판단해서, 화면이 규칙을 따로 흉내내지 않는다.
+            this.usable = {};
             if (selected) {
               for (const tile of moveTargets(current, selected)) {
                 const { x, y } = tileCenter(tile);
@@ -1372,8 +1408,25 @@ export default function Game() {
                   .lineStyle(2, 0xffe9b8, 0.85)
                   .strokeRect(x - 24, y - 24, 48, 48);
               }
+              const actor = current.actors[selected];
+              for (const station of stationInstances) {
+                if (!actor || !isBesideStation(actor, station)) continue;
+                const after = interactActor(current, selected, station.id);
+                const ok = (after.refusal?.seq ?? -1) === (current.refusal?.seq ?? -1);
+                this.usable[station.id] = ok;
+                const first = tileCenter(station.tiles[0]);
+                const last = tileCenter(station.tiles[station.tiles.length - 1]);
+                const x = (first.x + last.x) / 2;
+                const y = (first.y + last.y) / 2;
+                const width = Math.abs(last.x - first.x) + TILE_SIZE - 12;
+                const height = Math.abs(last.y - first.y) + TILE_SIZE - 12;
+                moveMarks
+                  .fillStyle(ok ? 0x8ed07a : 0xd75f4c, ok ? 0.2 : 0.16)
+                  .fillRect(x - width / 2, y - height / 2, width, height)
+                  .lineStyle(2, ok ? 0x8ed07a : 0xd75f4c, 0.9)
+                  .strokeRect(x - width / 2, y - height / 2, width, height);
+              }
             }
-            const shown = inspectedRef.current;
             for (const station of stationInstances) {
               const { id, type, tiles } = station;
               const washer = current.washers[id];
@@ -1497,11 +1550,19 @@ export default function Game() {
     setProgress(readProgress());
   }, []);
 
-  // 한 마리가 행동력을 다 쓰면 아직 남은 다음 슬라임으로 넘어간다.
+  // 한 마리가 행동력을 다 쓰면 아직 남은 다음 슬라임으로 넘어간다. 단
+  // 한 번 넘긴 뒤에는 다시 뺏지 않는다. 행동력이 없어도 눌러서 정보를
+  // 볼 수 있어야 한다.
   useEffect(() => {
     if (!state || !squad || !selectedActor) return;
-    if ((state.actors[selectedActor]?.actionPoints ?? 0) > 0) return;
-    setSelectedActor(nextReadyActor(state, squadActorIds(squad), selectedActor));
+    if ((state.actors[selectedActor]?.actionPoints ?? 0) > 0) {
+      handedOff.current = null;
+      return;
+    }
+    if (handedOff.current === selectedActor) return;
+    handedOff.current = selectedActor;
+    const next = nextReadyActor(state, squadActorIds(squad), selectedActor);
+    if (next) setSelectedActor(next);
   }, [state, selectedActor, squad]);
 
   function startRound(list: SlimeTypeId[], id: string = stageId ?? "0") {
@@ -1522,8 +1583,17 @@ export default function Game() {
   }
 
   const finishTurn = useCallback(() => {
-    setSelectedActor(null);
-    setState((value) => (value ? endTurn(value) : value));
+    setState((value) => {
+      if (!value) return value;
+      const next = endTurn(value);
+      // 턴을 넘긴 뒤 아무도 골라져 있지 않으면 손이 멈춘다. 첫 마리를
+      // 자동으로 골라 바로 이어서 시킬 수 있게 한다.
+      const first = squadActorIds(next.squad).find(
+        (id) => (next.actors[id]?.actionPoints ?? 0) > 0,
+      );
+      setSelectedActor(first ?? null);
+      return next;
+    });
   }, []);
 
   useEffect(() => {
@@ -1554,6 +1624,12 @@ export default function Game() {
         const current = stateRef.current;
         if (!current || current.phase !== "playing") return;
         event.preventDefault();
+        // 버튼에 포커스가 남아 있으면 스페이스가 그 버튼까지 눌러
+        // "턴 종료"가 같이 실행된다. 포커스를 먼저 놓는다.
+        const active = document.activeElement;
+        if (active instanceof HTMLElement && active.tagName === "BUTTON") {
+          active.blur();
+        }
         const roster = squadActorIds(squad);
         const ready = roster.filter((id) => (current.actors[id]?.actionPoints ?? 0) > 0);
         if (ready.length === 0) {

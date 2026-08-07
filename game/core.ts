@@ -19,7 +19,10 @@ export type ItemId =
   | "strawberry"
   | "mushroom"
   | "banana-smoothie"
-  | "strawberry-smoothie";
+  | "strawberry-smoothie"
+  | "fried-potato"
+  | "fried-mushroom"
+  | "grilled-mushroom";
 export type DishStatus = "clean" | "filled" | "dirty";
 export type Dish = { id: string; status: DishStatus; content: ItemId | null };
 export type Carried = ItemId | Dish;
@@ -69,6 +72,9 @@ export const itemLabels: Record<ItemId, string> = {
   mushroom: "버섯",
   "banana-smoothie": "바나나 스무디",
   "strawberry-smoothie": "딸기 스무디",
+  "fried-potato": "감자 튀김",
+  "fried-mushroom": "버섯 튀김",
+  "grilled-mushroom": "버섯 구이",
 };
 
 export const itemLabel = (item: ItemId) => itemLabels[item];
@@ -121,6 +127,9 @@ export const allItems: ItemId[] = [
   "mushroom",
   "banana-smoothie",
   "strawberry-smoothie",
+  "fried-potato",
+  "fried-mushroom",
+  "grilled-mushroom",
 ];
 export const allElements: SlimeElement[] = ["water", "fire", "lightning", "earth"];
 export const allStations: StationId[] = [
@@ -163,8 +172,11 @@ export const stationTileCount: Partial<Record<StationId, number>> = {
 
 export const tilesFor = (type: StationId) => stationTileCount[type] ?? 1;
 
-// 아직 레시피가 없어 놓기만 하는 기구. 사용하면 이유를 알려 준다.
-export const placeholderStations: StationId[] = ["fryer", "oven"];
+// 재료를 하나 올려 두고 조리하는 기구. 도마·화로·튀김기가 같은 규칙으로
+// 돈다. 레시피가 무엇을 어디서 만드는지 정한다.
+export const cooktopStations: StationId[] = ["stove", "oven", "fryer"];
+
+export const isCooktop = (type: StationId) => cooktopStations.includes(type);
 
 export type Recipe = {
   foodId: ItemId;
@@ -181,7 +193,8 @@ export type Recipe = {
 // 만진다. 손으로 고치는 파일이라 코어에 들이기 전에 한 번 검증한다.
 function readRecipes(): Partial<Record<ItemId, Recipe>> {
   const table: Partial<Record<ItemId, Recipe>> = {};
-  const ingredients = new Set<ItemId>();
+  // 한 기구 안에서 같은 재료가 두 결과를 내면 어느 쪽인지 정할 수 없다.
+  const perStation = new Set<string>();
   for (const row of recipeData.recipes) {
     const { foodId, ingredient, station, worker } = row as {
       foodId: ItemId;
@@ -195,11 +208,11 @@ function readRecipes(): Partial<Record<ItemId, Recipe>> {
       !allStations.includes(station) ||
       !allElements.includes(worker) ||
       table[foodId] ||
-      ingredients.has(ingredient)
+      perStation.has(`${station}/${ingredient}`)
     ) {
       throw new Error(`recipes.json의 레시피가 올바르지 않습니다: ${row.foodId}`);
     }
-    ingredients.add(ingredient);
+    perStation.add(`${station}/${ingredient}`);
     table[foodId] = {
       foodId,
       ingredient: { itemId: ingredient, count: 1 },
@@ -748,6 +761,11 @@ const newFires = (): Partial<Record<StationInstanceId, FireState>> =>
       .map(({ id }) => [id, { onFire: false }]),
   );
 
+// 맵에 놓인 모든 조리 기구. 도마·화로·튀김기가 같은 상태를 쓴다.
+export const cooktopInstances = stationInstances.filter((station) =>
+  isCooktop(station.type),
+);
+
 // 맵에 놓인 모든 재료 상자. 감자·당근·양배추 상자를 한데 본다.
 export const boxInstances = stationInstances.filter((station) =>
   isBoxStation(station.type),
@@ -757,7 +775,7 @@ const initialStationState = () => ({
   ingredients: Object.fromEntries(
     boxInstances.map(({ id }) => [id, { stock: 1 }]),
   ),
-  stoves: Object.fromEntries(stationInstancesByType.stove.map(({ id }) => [id, [] as ItemId[]])),
+  stoves: Object.fromEntries(cooktopInstances.map(({ id }) => [id, [] as ItemId[]])),
   blenders: Object.fromEntries(
     stationInstancesByType.blender.map(({ id }) => [
       id,
@@ -789,7 +807,7 @@ const initialStationState = () => ({
     stationInstancesByType.washer.map(({ id }) => [id, { dish: null, progress: 0 }]),
   ),
   workstations: Object.fromEntries(
-    stationInstancesByType.stove.map(({ id }) => [
+    cooktopInstances.map(({ id }) => [
       id,
       { status: "MISSING_MATERIAL" as WorkstationStatus, progress: 0 },
     ]),
@@ -1122,21 +1140,14 @@ export function interactActor(
   if (actor.actionPoints < 1) {
     return refuse(state, actor, "남은 행동력이 없습니다.");
   }
-  if (placeholderStations.includes(station.type)) {
-    // ponytail: 레시피가 정해지면 여기에 각 기구의 동작을 붙인다.
-    return refuse(
-      state,
-      actor,
-      `${stationLabels[station.type]}로 만드는 음식이 아직 없습니다.`,
-    );
-  }
   const id = station.id;
   if (isBoxStation(station.type)) {
     return atIngredientBox(state, actorId, actor, id, boxItems[station.type]);
   }
+  if (isCooktop(station.type)) {
+    return atCooktop(state, actorId, actor, id, station.type);
+  }
   switch (station.type) {
-    case "stove":
-      return atStove(state, actorId, actor, id);
     case "blender":
       return atBlender(state, actorId, actor, id);
     case "washer":
@@ -1195,28 +1206,46 @@ function atIngredientBox(
   );
 }
 
-function atStove(
+// 도마·화로·튀김기가 함께 쓴다. 무엇을 넣어 무엇이 나오는지는 레시피가
+// 정하고, 여기서는 올리기 → 조리 → 회수 순서만 다룬다.
+// 손이 차 있다는 말만 하면 "내려놓으면 되겠구나"로 읽힌다. 대개는 이
+// 기구에서 쓸 수 없는 재료를 들고 온 것이라, 그 사정을 먼저 알려 준다.
+function cannotUseHere(actor: ActorState, type: StationId, label: string) {
+  const held = actor.carrying[0]!;
+  const item = isDish(held) ? held.content : held;
+  if (item && !recipeAt(type, item)) {
+    const elsewhere = allRecipes.find((one) => one.ingredient.itemId === item);
+    return elsewhere
+      ? `${itemLabel(item)}(으)로 ${withParticle(label)} 쓰는 요리는 없습니다. ${stationLabels[elsewhere.station]}에서 씁니다.`
+      : `${itemLabel(item)}(으)로 만들 수 있는 요리가 아직 없습니다.`;
+  }
+  return `${withParticle(carriedLabel(held))} 먼저 내려놓아야 합니다.`;
+}
+
+function atCooktop(
   state: GameState,
   actorId: ActorId,
   actor: ActorState,
   station: StationInstanceId,
+  type: StationId,
 ): GameState {
+  const label = stationLabels[type];
   const stove = state.stoves[station]!;
   const workstation = state.workstations[station]!;
   const onBoard = stove[0] ?? null;
 
-  // 재료 올리기. 물건 분류라 속성 제한이 없다. 손에 든 것 중 도마에서
+  // 재료 올리기. 물건 분류라 속성 제한이 없다. 손에 든 것 중 이 기구에서
   // 쓸 수 있는 재료를 찾는다.
   const looseIndex = actor.carrying.findIndex(
-    (carried) => !isDish(carried) && recipeAt("stove", carried),
+    (carried) => !isDish(carried) && recipeAt(type, carried),
   );
   const dishIdx = dishIndex(
     actor,
-    (dish) => dish.content !== null && Boolean(recipeAt("stove", dish.content)),
+    (dish) => dish.content !== null && Boolean(recipeAt(type, dish.content)),
   );
   if (looseIndex >= 0 || dishIdx >= 0) {
     if (stove.length >= STORAGE_MAX) {
-      return refuse(state, actor, "도마가 사용 중입니다.");
+      return refuse(state, actor, `${label}가 사용 중입니다.`);
     }
     const held = actor.carrying[looseIndex >= 0 ? looseIndex : dishIdx];
     const ingredient = (looseIndex >= 0 ? held : (held as Dish).content) as ItemId;
@@ -1230,7 +1259,7 @@ function atStove(
           );
     return event(
       state,
-      `${actor.name}이(가) 도마에 ${withParticle(itemLabel(ingredient))} 올렸습니다.`,
+      `${actor.name}이(가) ${label}에 ${withParticle(itemLabel(ingredient))} 올렸습니다.`,
       {
         actors: patchActor(state, actorId, {
           ...spend(actor, actionCost.carry, "CARRYING"),
@@ -1263,7 +1292,7 @@ function atStove(
       state,
       clean >= 0
         ? `${actor.name}이(가) 그릇에 ${withParticle(itemLabel(onBoard))} 담았습니다.`
-        : `${actor.name}이(가) 도마에서 ${withParticle(itemLabel(onBoard))} 들었습니다.`,
+        : `${actor.name}이(가) ${label}에서 ${withParticle(itemLabel(onBoard))} 들었습니다.`,
       {
         actors: patchActor(state, actorId, {
           ...spend(actor, actionCost.carry, "CARRYING"),
@@ -1278,23 +1307,19 @@ function atStove(
     );
   }
 
-  // 여기부터는 도마 사용. 레시피가 정한 속성만 썰 수 있다.
+  // 여기부터는 조리. 레시피가 정한 속성만 돌릴 수 있다.
   if (actor.carrying.length > 0) {
-    return refuse(
-      state,
-      actor,
-      `${withParticle(carriedLabel(actor.carrying[0]!))} 먼저 내려놓아야 합니다.`,
-    );
+    return refuse(state, actor, cannotUseHere(actor, type, label));
   }
-  const recipe = onBoard ? recipeAt("stove", onBoard) : null;
+  const recipe = onBoard ? recipeAt(type, onBoard) : null;
   if (!recipe) {
-    return refuse(state, actor, "도마에 썰 재료가 없습니다.");
+    return refuse(state, actor, `${label}에 조리할 재료가 없습니다.`);
   }
   if (actor.typeId !== recipe.worker) {
     return refuse(
       state,
       actor,
-      `${slimeTypes[recipe.worker].name} 슬라임만 도마를 쓸 수 있습니다.`,
+      `${slimeTypes[recipe.worker].name} 슬라임만 ${withParticle(label)} 쓸 수 있습니다.`,
     );
   }
   const step = progressStep(actor, actionCost.chop, workstation.progress);
@@ -1302,7 +1327,7 @@ function atStove(
   if (!step.done) {
     return event(
       state,
-      `${actor.name}이(가) ${withParticle(itemLabel(onBoard!))} 썰고 있습니다. (${step.progress}/${actionCost.chop})`,
+      `${actor.name}이(가) ${withParticle(itemLabel(onBoard!))} 손질하고 있습니다. (${step.progress}/${actionCost.chop})`,
       {
         actors: patchActor(state, actorId, next),
         workstations: {
@@ -1431,11 +1456,7 @@ function atBlender(
     );
   }
   if (actor.carrying.length > 0) {
-    return refuse(
-      state,
-      actor,
-      `${withParticle(carriedLabel(actor.carrying[0]!))} 먼저 내려놓아야 합니다.`,
-    );
+    return refuse(state, actor, cannotUseHere(actor, "blender", stationLabels.blender));
   }
   return event(
     state,

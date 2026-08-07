@@ -7,7 +7,9 @@
       "turnLimit": 40,
       "requiredOrders": 1,
       "orderCount": 3,
-      "menu": ["shredded-potato"]
+      "menu": [
+        "shredded-potato"
+      ]
     },
     {
       "id": "1",
@@ -15,7 +17,10 @@
       "turnLimit": 60,
       "requiredOrders": 3,
       "orderCount": 6,
-      "menu": ["shredded-potato", "shredded-carrot"]
+      "menu": [
+        "shredded-potato",
+        "shredded-carrot"
+      ]
     },
     {
       "id": "2",
@@ -23,7 +28,12 @@
       "turnLimit": 70,
       "requiredOrders": 5,
       "orderCount": 9,
-      "menu": ["shredded-potato", "shredded-carrot", "shredded-cabbage", "banana-smoothie"]
+      "menu": [
+        "shredded-potato",
+        "shredded-carrot",
+        "banana-smoothie",
+        "fried-potato"
+      ]
     },
     {
       "id": "3",
@@ -33,10 +43,11 @@
       "orderCount": 11,
       "menu": [
         "shredded-potato",
-        "shredded-carrot",
         "shredded-cabbage",
-        "banana-smoothie",
-        "strawberry-smoothie"
+        "strawberry-smoothie",
+        "fried-mushroom",
+        "grilled-mushroom",
+        "fried-potato"
       ]
     }
   ]
