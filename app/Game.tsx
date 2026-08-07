@@ -104,7 +104,7 @@ const MOTION_MS = 320;
 // 커서 그림과 핫스팟. 화살표는 뾰족한 끝, 손은 손가락 끝이 기준점이다.
 // globals.css의 --cursor-arrow / --cursor-hand와 같은 값이어야 한다.
 const CURSOR_ARROW = 'url("/ui/cursor.png") 2 0, auto';
-const CURSOR_HAND = 'url("/ui/cursor-click.png") 9 0, pointer';
+const CURSOR_HAND = 'url("/ui/cursor-click.png") 6 0, pointer';
 // 지금은 쓸 수 없는 설비. 금지 표시 대신 "?"를 붙인 화살표로 알린다.
 const CURSOR_ASK = 'url("/ui/cursor-help.png") 2 0, help';
 const workStatusLabels = {
@@ -677,7 +677,9 @@ export default function Game() {
   // 아르바이트를 시작할 때 한 번 나오는 인사. 이게 떠 있는 동안은 조작을 막는다.
   const [intro, setIntro] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
-  const paused = settingsOpen || resumeCount !== null || intro;
+  // 대사 중에는 장면을 멈추지 않는다. 멈추면 뒤에 보여야 할 주방이 검게
+  // 남는다. 조작은 대사 화면이 덮고 있어 어차피 닿지 않는다.
+  const paused = settingsOpen || resumeCount !== null;
 
   const [saved, setSaved] = useState("");
   const stateRef = useRef(state);
@@ -2034,18 +2036,12 @@ export default function Game() {
         </div>
 
         <div className="info-rail" role="complementary" aria-label="선택 정보 영역">
-          {inspected ? (
+          {inspected && (
             <GameInspector
               state={state}
               target={inspected}
               onClose={() => setInspected(null)}
             />
-          ) : (
-            // 아무것도 안 고른 동안에도 창틀은 그대로 둔다. 빈 나무판만
-            // 남으면 화면 오른쪽이 뚫린 것처럼 보인다.
-            <aside className="game-inspector game-inspector-empty">
-              <p className="inspector-copy">슬라임이나 설비를 누르면 여기에 설명이 나옵니다.</p>
-            </aside>
           )}
         </div>
 

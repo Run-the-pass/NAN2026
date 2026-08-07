@@ -3,8 +3,22 @@
      width="954"
      height="800"
      viewBox="88 178 1080 906">
+<style>
+/* 숨쉬기. img로 띄우는 자리(대사·정보 패널·버튼)에서만 살아 움직인다.
+   Phaser는 SVG를 정지 화면으로 굽기 때문에 인게임에는 영향이 없다. */
+.idle { transform-box: fill-box; transform-origin: 50% 94%;
+        animation: idle-breathe 3.2s cubic-bezier(.45,0,.28,1) infinite; }
+@keyframes idle-breathe {
+  0%, 32%, 100% { transform: translateY(0) scale(1); }
+  46% { transform: translateY(-16px) scale(.985, 1.035); }
+  58% { transform: translateY(10px) scale(1.035, .965); }
+  69% { transform: translateY(-4px) scale(.995, 1.012); }
+}
+@media (prefers-reduced-motion: reduce) { .idle { animation: none; } }
+</style>
   <title>Clean water slime icon</title>
   <desc>Animated water slime with a gently sloshing water surface and natural blinking eyes.</desc>
+<g class="idle">
   <defs>
     <clipPath id="slime-clip">
       <path d="M627 315
@@ -165,4 +179,5 @@
            C672 757 652 777 627 777
            C602 777 582 757 580 726Z"
         fill="#050707"/>
+</g>
 </svg>

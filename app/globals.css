@@ -31,7 +31,7 @@ button, select { font: inherit; }
 /* 커서는 그려 온 그림을 쓴다. 핫스팟은 화살표 끝과 손가락 끝 좌표다. */
 :root {
   --cursor-arrow: url("/ui/cursor.png") 2 0, auto;
-  --cursor-hand: url("/ui/cursor-click.png") 9 0, pointer;
+  --cursor-hand: url("/ui/cursor-click.png") 6 0, pointer;
   --cursor-deny: url("/ui/cursor.png") 2 0, not-allowed;
   /* 지금은 쓸 수 없는 것. 금지 표시 대신 "?"를 붙인 화살표를 쓴다. */
   --cursor-ask: url("/ui/cursor-help.png") 2 0, help;
@@ -262,7 +262,8 @@ button:disabled { cursor: var(--cursor-arrow); }
 .sound-row[data-off] label { opacity: 0.45; }
 .sound-row input:disabled { cursor: var(--cursor-deny); }
 
-.music-settings-game { position: absolute; z-index: 12; top: 12px; right: 12px; }
+/* 대사가 화면을 덮고 있어도 설정은 눌러야 한다. 대사(40)보다 위에 둔다. */
+.music-settings-game { position: absolute; z-index: 60; top: 12px; right: 12px; }
 .game-settings-trigger { display: flex; align-items: center; gap: 5px; }
 
 .resume-countdown {
@@ -342,7 +343,7 @@ button:disabled { cursor: var(--cursor-arrow); }
   width: 150px;
   aspect-ratio: 516 / 192;
   /* 나무판 그림에 시계가 그려져 있다. 글자는 판의 왼쪽 나무 부분에만 온다. */
-  padding-right: 33%;
+  padding: 0 33% 10px 0;
   background: url("/ui/turn-plate.png") center / 100% 100% no-repeat;
   color: #fff3d8;
   font-size: 13px;
@@ -418,17 +419,24 @@ button:disabled { cursor: var(--cursor-arrow); }
 /* 재료와 도구는 그림 옆에 이름을 붙인다. 그림만으로는 감자인지 고구마인지
    가른다고 장담할 수 없다. */
 .order-part {
-  grid-auto-flow: column;
-  grid-template-columns: auto auto;
-  gap: 4cqw;
-  padding: 0 6cqw;
-  color: #3a2413;
+  position: relative;
+  color: #fff4dc;
 }
 .order-part-item { grid-row: 3; }
 .order-method { grid-row: 4; }
-.order-part b { font-size: 8.5cqh; font-weight: 400; white-space: nowrap; }
+.order-part b {
+  position: absolute;
+  bottom: 8%;
+  border-radius: 2px;
+  padding: 0 3px 1px;
+  background: #1c0f07d9;
+  font-size: 8.5cqh;
+  font-weight: 400;
+  line-height: 1.3;
+  white-space: nowrap;
+}
 .order-plate .order-dish { width: auto; height: 30cqh; aspect-ratio: 251 / 256; }
-.order-part img { width: auto; height: 14cqh; object-fit: contain; }
+.order-part img { width: auto; height: 17cqh; object-fit: contain; }
 .order-method i { display: flex; align-items: center; gap: 1px; }
 
 @media (prefers-reduced-motion: reduce) {
@@ -484,18 +492,21 @@ button:disabled { cursor: var(--cursor-arrow); }
   padding: 0 clamp(14px, 2.5vw, 34px) clamp(12px, 2.2vh, 26px);
 }
 
-/* 말하는 슬라임. 말상자 왼쪽 위로 크게 튀어나온다. */
+/* 말하는 슬라임. 말상자와 이름표보다 앞에 서서 왼쪽 위로 튀어나온다. */
 .dialogue-face {
   grid-column: 1;
-  grid-row: 1;
+  grid-row: 1 / span 2;
+  align-self: end;
+  z-index: 2;
   width: clamp(118px, 16vw, 210px);
   height: auto;
-  margin-bottom: -10px;
+  margin-bottom: clamp(28px, 6vh, 64px);
   object-fit: contain;
   filter: drop-shadow(0 6px 10px #0009);
 }
 
-/* 이름표는 그려 온 명패 그림 위에 얹는다. */
+/* 이름표는 그려 온 명패 그림을 9분할로 늘린다. 모서리는 그대로 두고 가운데만
+   늘어나므로 이름이 길어져도 테두리가 뭉개지지 않는다. */
 .dialogue-name {
   grid-column: 2;
   grid-row: 1;
@@ -503,32 +514,35 @@ button:disabled { cursor: var(--cursor-arrow); }
   z-index: 1;
   display: grid;
   place-items: center;
-  min-width: clamp(120px, 15vw, 190px);
-  aspect-ratio: 470 / 160;
-  margin-bottom: -8px;
-  padding: 0 18px 4px;
-  background: url("/ui/dialogue-nameplate.png") center / 100% 100% no-repeat;
-  color: #fff6e2;
+  min-width: clamp(104px, 13vw, 160px);
+  margin: 0 0 -10px -14px;
+  border: 15px solid transparent;
+  border-image: url("/ui/dialogue-nameplate.png") 38 fill / 15px / 0 stretch;
+  padding: 1px 10px 3px;
+  color: #3b2210;
   font-size: clamp(13px, 1.5vw, 19px);
   font-weight: 400;
+  line-height: 1;
   white-space: nowrap;
-  text-shadow: 0 2px 0 #8a4a17;
 }
 
-/* 본문 상자. 그림 안쪽 크림색 면에 글자가 오도록 여백을 넉넉히 준다. */
+/* 본문 상자도 같은 방식으로 늘린다. 모서리 그림은 원래 크기 그대로 남는다. */
 .dialogue-text {
   grid-column: 1 / -1;
   grid-row: 2;
   position: relative;
   min-height: clamp(88px, 15vh, 132px);
   margin: 0;
-  padding: clamp(16px, 2.4vh, 26px) clamp(26px, 3vw, 44px);
-  background: url("/ui/dialogue-box.png") center / 100% 100% no-repeat;
+  border: 20px solid transparent;
+  border-image: url("/ui/dialogue-box.png") 44 fill / 20px / 0 stretch;
+  padding: clamp(4px, 1vh, 10px) clamp(10px, 1.4vw, 22px);
   color: #3a2413;
   font-size: clamp(14px, 1.7vw, 21px);
   line-height: 1.55;
   text-align: left;
 }
+/* 초상이 상자 왼쪽을 가리므로 글은 그만큼 안쪽에서 시작한다. */
+.dialogue-text { padding-left: clamp(96px, 15vw, 200px); }
 
 /* 다 찍히면 "다음" 표시가 깜빡인다. */
 .dialogue-more {
@@ -547,7 +561,8 @@ button:disabled { cursor: var(--cursor-arrow); }
 
 .stage-frame .dialogue-skip {
   position: absolute;
-  top: 14px;
+  z-index: 60;
+  top: 58px;
   right: 14px;
   border: 3px solid #8d592c;
   border-radius: 8px;
@@ -724,9 +739,9 @@ button:disabled { cursor: var(--cursor-arrow); }
   width: 100%;
   height: 100%;
   overflow-y: auto;
-  border: 0;
-  padding: clamp(26px, 4vh, 42px) clamp(22px, 3vh, 34px);
-  background: url("/ui/info-panel.png") center / 100% 100% no-repeat;
+  border: 18px solid transparent;
+  border-image: url("/ui/info-panel.png") 24 fill / 18px / 0 stretch;
+  padding: clamp(10px, 2vh, 22px) clamp(6px, 1.4vh, 16px);
   color: var(--paper-ink);
   text-align: center;
 }
@@ -759,9 +774,6 @@ button:disabled { cursor: var(--cursor-arrow); }
    칸 전체를 쓰고 contain으로 줄인다. */
 .inspector-station-icon img { display: block; width: 100%; height: 100%; padding: 18%; object-fit: contain; box-sizing: border-box; }
 .inspector-station-icon img[data-wide] { padding: 2%; }
-/* 아무것도 안 고른 동안의 빈 창. 안내 한 줄만 가운데 둔다. */
-.game-inspector-empty { display: grid; place-items: center; }
-.game-inspector-empty .inspector-copy { max-width: 15em; color: #7a5734; }
 .game-inspector .eyebrow { margin: 0; color: #7d421d; font-size: 11px; letter-spacing: .14em; }
 .game-inspector h2 { margin: 5px 0 18px; font-size: clamp(26px, 3vw, 38px); }
 .game-inspector h3 { margin: 28px 0 10px; color: #5c3419; font-size: 15px; }
@@ -906,7 +918,7 @@ button:disabled { cursor: var(--cursor-arrow); }
 /* 행동력은 밝은 번개와 어두운 번개로 보여 준다. 칸 게이지는 쓰지 않는다. */
 .energy-row { display: inline-flex; align-items: center; gap: 3px; }
 .energy-icon { width: 1.05em; height: 1.4em; object-fit: contain; }
-.turn-bar .energy-icon { width: 15px; height: 20px; filter: drop-shadow(0 1px 2px #000a); }
+.turn-bar .energy-icon { width: 13.5px; height: 18px; filter: drop-shadow(0 1px 2px #000a); }
 .game-inspector .energy-icon { width: 22px; height: 29px; }
 .stat-count { color: #6c4523; font-size: 12px; font-variant-numeric: tabular-nums; }
 .stat-gauge { display: inline-flex; gap: 3px; }
