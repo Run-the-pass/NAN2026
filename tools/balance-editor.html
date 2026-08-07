@@ -161,10 +161,7 @@ function drawBalance() {
       checkField("주문 소진 시 바로 종료", () => b.orders.endRoundWhenOrdersDone,
         (v) => { b.orders.endRoundWhenOrdersDone = v; }),
     ]),
-    group("판정", [
-      numberField("별 1개: 추가 처리", () => b.rankThresholds[0], (v) => { b.rankThresholds[0] = v; }),
-      numberField("별 2개: 추가 처리", () => b.rankThresholds[1], (v) => { b.rankThresholds[1] = v; }),
-      numberField("별 3개: 추가 처리", () => b.rankThresholds[2], (v) => { b.rankThresholds[2] = v; }),
+    group("그 밖에", [
       numberField("마감 임박 턴", () => b.rushTurnsLeft, (v) => { b.rushTurnsLeft = v; }),
       numberField("주문당 골드", () => b.goldPerOrder, (v) => { b.goldPerOrder = v; }),
     ]),
@@ -215,18 +212,43 @@ function drawStages() {
       input.addEventListener("input", () => { stage[key] = input.value; });
       return el("label", {}, [el("span", { textContent: label }), input]);
     };
-    const picks = data.recipes.map((recipe) => {
-      const box = el("input", { type: "checkbox", checked: stage.menu.includes(recipe.foodId) });
-      box.addEventListener("change", () => {
-        stage.menu = box.checked
-          ? [...stage.menu, recipe.foodId]
-          : stage.menu.filter((one) => one !== recipe.foodId);
-      });
-      return el("label", {}, [box, el("span", { textContent: itemName(recipe.foodId) })]);
+    // 주문은 적은 순서 그대로 나온다. 같은 레시피를 여러 번 넣어도 된다.
+    const rows = stage.orders.map((foodId, at) => {
+      const select = el("select");
+      for (const recipe of data.recipes) {
+        select.append(el("option", {
+          value: recipe.foodId,
+          textContent: itemName(recipe.foodId),
+          selected: recipe.foodId === foodId,
+        }));
+      }
+      select.addEventListener("change", () => { stage.orders[at] = select.value; });
+      const move = (to) => {
+        if (to < 0 || to >= stage.orders.length) return;
+        stage.orders.splice(to, 0, stage.orders.splice(at, 1)[0]);
+        drawStages();
+      };
+      const up = el("button", { className: "small", type: "button", textContent: "↑" });
+      up.addEventListener("click", () => move(at - 1));
+      const down = el("button", { className: "small", type: "button", textContent: "↓" });
+      down.addEventListener("click", () => move(at + 1));
+      const drop = el("button", { className: "small", type: "button", textContent: "삭제" });
+      drop.addEventListener("click", () => { stage.orders.splice(at, 1); drawStages(); });
+      return el("tr", {}, [
+        el("td", { textContent: String(at + 1) }),
+        el("td", {}, [select]),
+        el("td", { className: "row-tools" }, [up, down, drop]),
+      ]);
+    });
+    const add = el("button", { className: "small", type: "button", textContent: "＋ 주문 추가" });
+    add.addEventListener("click", () => {
+      if (!data.recipes.length) return;
+      stage.orders.push(stage.orders.at(-1) ?? data.recipes[0].foodId);
+      drawStages();
     });
     const remove = el("button", { className: "small", type: "button", textContent: "스테이지 삭제" });
     remove.addEventListener("click", () => { data.stages.splice(index, 1); drawStages(); });
-    const up = el("button", { className: "small", type: "button", textContent: "↑" });
+    const up = el("button", { className: "small", type: "button", textContent: "↑ 앞으로" });
     up.addEventListener("click", () => {
       if (index === 0) return;
       data.stages.splice(index - 1, 0, data.stages.splice(index, 1)[0]);
@@ -238,11 +260,18 @@ function drawStages() {
         textField("번호", "id", 12),
         textField("이름", "name", 30),
         numberField("제한 턴", () => stage.turnLimit, (v) => { stage.turnLimit = v; }, 1),
-        numberField("나오는 주문 수", () => stage.orderCount, (v) => { stage.orderCount = v; }, 1),
-        numberField("통과 기준", () => stage.requiredOrders, (v) => { stage.requiredOrders = v; }, 1),
+        numberField("★ 통과", () => stage.stars[0], (v) => { stage.stars[0] = v; }, 1),
+        numberField("★★ 기준", () => stage.stars[1], (v) => { stage.stars[1] = v; }, 1),
+        numberField("★★★ 기준", () => stage.stars[2], (v) => { stage.stars[2] = v; }, 1),
       ]),
-      el("p", { textContent: "이 스테이지에 나오는 레시피" }),
-      el("div", { className: "menu-picks" }, picks),
+      el("p", { textContent: `주문 ${stage.orders.length}개 — 적은 순서대로 나옵니다` }),
+      el("table", {}, [
+        el("thead", {}, [el("tr", {}, [
+          el("th", { textContent: "#" }), el("th", { textContent: "레시피" }), el("th", {}),
+        ])]),
+        el("tbody", {}, rows),
+      ]),
+      el("p", { className: "row-tools" }, [add]),
       el("p", { className: "row-tools" }, [up, remove]),
     ]);
   });
@@ -275,10 +304,11 @@ $("add-recipe").addEventListener("click", () => {
 });
 
 $("add-stage").addEventListener("click", () => {
+  const first = data.recipes.length ? data.recipes[0].foodId : null;
   data.stages.push({
     id: String(data.stages.length), name: "새 스테이지",
-    turnLimit: 60, requiredOrders: 1, orderCount: 3,
-    menu: data.recipes.length ? [data.recipes[0].foodId] : [],
+    turnLimit: 60, stars: [1, 2, 3],
+    orders: first ? [first, first, first] : [],
   });
   drawStages();
 });

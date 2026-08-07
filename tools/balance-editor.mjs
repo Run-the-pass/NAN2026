@@ -85,12 +85,6 @@ function validate({ balance, recipes, stages }, list) {
   say(whole(orders.previewCount, 0), "미리 보기 주문 수는 0 이상이어야 합니다.");
   say(["reject", "discard"].includes(orders.invalidSubmission), "잘못된 제출 처리 값이 올바르지 않습니다.");
   say(typeof orders.endRoundWhenOrdersDone === "boolean", "주문 소진 시 종료 값이 올바르지 않습니다.");
-  const ranks = balance.rankThresholds;
-  say(
-    Array.isArray(ranks) && ranks.length === 3 &&
-      ranks.every((need, index) => whole(need, 0) && (index === 0 || need > ranks[index - 1])),
-    "랭크 기준은 오름차순 정수 3개여야 합니다.",
-  );
   say(whole(balance.rushTurnsLeft, 0), "마감 임박 턴은 0 이상이어야 합니다.");
   say(whole(balance.goldPerOrder, 0), "주문당 골드는 0 이상이어야 합니다.");
 
@@ -123,15 +117,20 @@ function validate({ balance, recipes, stages }, list) {
     say(!ids.has(stage?.id), `${where}: 번호가 겹칩니다.`);
     ids.add(stage?.id);
     say(whole(stage?.turnLimit, 1), `${where}: 제한 턴은 1 이상이어야 합니다.`);
-    say(whole(stage?.orderCount, 1), `${where}: 주문 수는 1 이상이어야 합니다.`);
-    say(
-      whole(stage?.requiredOrders, 1) && stage.requiredOrders <= stage.orderCount,
-      `${where}: 통과 기준은 1 이상이고 주문 수 이하여야 합니다.`,
-    );
-    say(Array.isArray(stage?.menu) && stage.menu.length > 0, `${where}: 메뉴가 비었습니다.`);
-    for (const foodId of stage?.menu ?? []) {
-      say(foods.has(foodId), `${where}: 메뉴 ${foodId}에 맞는 레시피가 없습니다.`);
+    say(Array.isArray(stage?.orders) && stage.orders.length > 0, `${where}: 주문 목록이 비었습니다.`);
+    for (const foodId of stage?.orders ?? []) {
+      say(foods.has(foodId), `${where}: 주문 ${foodId}에 맞는 레시피가 없습니다.`);
     }
+    const stars = stage?.stars;
+    say(
+      Array.isArray(stars) && stars.length === 3 &&
+        stars.every((need, index) => whole(need, 1) && (index === 0 || need > stars[index - 1])),
+      `${where}: 별 기준은 통과·별2·별3 순으로 커지는 정수 3개여야 합니다.`,
+    );
+    say(
+      Array.isArray(stars) && Array.isArray(stage?.orders) && stars[2] <= stage.orders.length,
+      `${where}: 별 3개 기준이 주문 수보다 많아 받을 수 없습니다.`,
+    );
   }
   return errors;
 }

@@ -44,6 +44,7 @@ import {
   validateKitchenMap,
   roundResult,
   currentStage,
+  passMark,
   defaultStages,
   isLastStage,
   nextStage,
@@ -71,8 +72,11 @@ const incineratorId = stationInstancesByType.trash[0].id;
 const oneStage = (
   orders: Order[],
   turnLimit = 400,
-  requiredOrders = orders.length,
-): Stage[] => [{ id: "1-1", name: "테스트", orders, turnLimit, requiredOrders }];
+  pass = orders.length,
+): Stage[] => [
+  // 별 기준은 오름차순 셋이어야 하므로 통과 기준 뒤로 한 칸씩 벌려 둔다.
+  { id: "1-1", name: "테스트", orders, turnLimit, stars: [pass, pass + 1, pass + 2] },
+];
 
 // 한 마리가 감자 하나를 굽고 제출하는 한 바퀴. 손에 그릇이 남아 있으면
 // 빈 테이블에 먼저 내려놓는다.
@@ -119,24 +123,21 @@ test("레시피는 recipes.json을 그대로 읽어 온다", () => {
   assert.ok(allRecipes.filter((recipe) => recipe.ingredient.itemId === "potato").length > 1);
 });
 
-test("스테이지는 stages.json의 제한 턴과 메뉴를 그대로 쓴다", () => {
+test("스테이지는 stages.json에 적힌 순서 그대로 주문을 낸다", () => {
   const stages = defaultStages();
   assert.equal(stages.length, stageData.stages.length);
   stages.forEach((stage, index) => {
     const source = stageData.stages[index];
     assert.equal(stage.id, source.id);
     assert.equal(stage.turnLimit, source.turnLimit);
-    assert.equal(stage.requiredOrders, source.requiredOrders);
-    assert.equal(stage.orders.length, source.orderCount);
-    // 메뉴를 순서대로 돌린다.
-    assert.deepEqual(
-      stage.orders.map((order) => order.foodId),
-      Array.from(
-        { length: source.orderCount },
-        (_, i) => source.menu[i % source.menu.length],
-      ),
-    );
-    assert.ok(stage.requiredOrders <= stage.orders.length);
+    // 적힌 목록이 그대로 주문 순서가 된다. 같은 것을 여러 번 적어도 된다.
+    assert.deepEqual(stage.orders.map((order) => order.foodId), source.orders);
+    assert.deepEqual(stage.stars, source.stars);
+    // 통과·별2·별3은 오름차순이고 마지막은 주문 수를 넘지 않는다.
+    assert.deepEqual(stage.stars, [...stage.stars].sort((a, b) => a - b));
+    assert.equal(new Set(stage.stars).size, 3);
+    assert.ok(stage.stars[2] <= stage.orders.length);
+    assert.equal(passMark(stage), stage.stars[0]);
   });
 });
 
@@ -989,31 +990,40 @@ test("주문에 없는 음식은 설정대로 처리하고 진행도를 올리�
   }
 });
 
-test("최소 주문 수를 채우면 통과하고 초과분이 랭크가 된다", () => {
+test("스테이지가 정한 세 지점에서 별이 하나씩 오른다", () => {
   const orders: Order[] = ["a", "b", "c", "d", "e", "f"].map((id) => ({
     id,
     foodId: "shredded-potato" as const,
     targetCount: 1,
     submittedCount: 0,
   }));
-  const base = initialState(1, ["earth"], oneStage(orders, 400, 2));
+  // 통과 2건, 별 2개는 4건, 별 3개는 5건인 스테이지.
+  const stage: Stage[] = [
+    { id: "s", name: "별", orders, turnLimit: 400, stars: [2, 4, 5] },
+  ];
+  const base = initialState(1, ["earth"], stage);
   assert.equal(base.goal, 2);
   const at = (filled: number): GameState => ({ ...base, filled });
 
   assert.equal(roundResult(at(1)), "lost");
   assert.equal(stageRank(at(1)), 0);
-  // 기준만 달성하면 별 1개.
+  // 통과 지점이 곧 별 1개다.
   assert.equal(roundResult(at(2)), "won");
   assert.equal(stageRank(at(2)), 1);
   assert.equal(stageRank(at(3)), 1);
-  // 기준보다 2건 더 처리하면 별 2개, 3건이면 별 3개.
   assert.equal(stageRank(at(4)), 2);
   assert.equal(stageRank(at(5)), 3);
   assert.equal(stageRank(at(6)), 3);
 
-  // 통과 기준은 레시피 목록보다 많을 수 없다.
+  // 통과 기준은 주문 수보다 많을 수 없고, 별 기준은 오름차순이어야 한다.
   assert.throws(() => initialState(1, ["water"], oneStage(orders, 400, 7)));
   assert.throws(() => initialState(1, ["water"], oneStage(orders, 0, 2)));
+  assert.throws(() =>
+    initialState(1, ["water"], [{ ...stage[0]!, stars: [3, 3, 4] }]),
+  );
+  assert.throws(() =>
+    initialState(1, ["water"], [{ ...stage[0]!, stars: [2, 4] }]),
+  );
 });
 
 test("턴을 다 쓰면 스테이지가 판정으로 끝난다", () => {
@@ -1041,14 +1051,14 @@ test("스테이지를 깨면 골드와 스쿼드를 이어 다음 스테이지�
       name: "첫 판",
       orders: [{ id: "a", foodId: "shredded-potato", targetCount: 1, submittedCount: 0 }],
       turnLimit: 400,
-      requiredOrders: 1,
+      stars: [1, 2, 3],
     },
     {
       id: "1-2",
       name: "둘째 판",
       orders: [{ id: "b", foodId: "shredded-potato", targetCount: 1, submittedCount: 0 }],
       turnLimit: 120,
-      requiredOrders: 1,
+      stars: [1, 2, 3],
     },
   ];
   let state = initialState(1, ["earth"], stages);

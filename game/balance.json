@@ -41,11 +41,6 @@
     "invalidSubmission": "reject",
     "endRoundWhenOrdersDone": true
   },
-  "rankThresholds": [
-    0,
-    2,
-    3
-  ],
   "rushTurnsLeft": 10,
   "goldPerOrder": 100
 }

@@ -240,13 +240,6 @@ function checkBalance() {
   ) {
     problems.push("주문 설정이 올바르지 않습니다.");
   }
-  const ranks = balanceData.rankThresholds;
-  if (
-    ranks.length !== 3 ||
-    ranks.some((need, index) => !whole(need, 0) || (index > 0 && need <= ranks[index - 1]))
-  ) {
-    problems.push("랭크 기준은 오름차순 정수 3개여야 합니다.");
-  }
   if (!whole(balanceData.rushTurnsLeft, 0) || !whole(balanceData.goldPerOrder, 0)) {
     problems.push("마감 임박 턴과 주문당 골드는 0 이상 정수여야 합니다.");
   }
@@ -384,7 +377,6 @@ export const orderConfig = balanceData.orders as {
 };
 
 // 통과 기준 대비 추가 처리 수별 별 개수. 0개 추가면 별 1개다.
-export const rankThresholds = balanceData.rankThresholds;
 
 // 화재는 후순위다. 상태와 설정만 남기고 발화·전파는 넣지 않는다.
 // ponytail: 턴 기반 발화 규칙이 정해지면 여기 값을 턴 단위로 바꾸고
@@ -406,16 +398,19 @@ export type Order = {
   submittedCount: number;
 };
 
-// 스테이지 한 판. 스테이지를 늘릴 때 코드가 아니라 이 목록만 바꾼다.
-// orders는 순서대로 나오는 레시피 목록이고, requiredOrders를 채우면
-// 통과한다. 더 처리하면 랭크가 오른다.
+// 스테이지 한 판. 스테이지를 늘릴 때 코드가 아니라 stages.json만 바꾼다.
+// orders는 적힌 순서대로 나오는 주문이고, stars는 [통과·별2·별3] 기준으로
+// 처리한 주문 수다. 오름차순이며 첫 값이 통과 기준이다.
 export type Stage = {
   id: string;
   name: string;
   orders: Order[];
   turnLimit: number;
-  requiredOrders: number;
+  stars: number[];
 };
+
+// 통과에 필요한 주문 수. 별 하나를 받는 지점과 같다.
+export const passMark = (stage: Stage) => stage.stars[0];
 
 export type FireState = { onFire: boolean };
 
@@ -796,14 +791,11 @@ export const upcomingOrders = (state: GameState) =>
 
 // 스테이지 통과 판정. 최소 주문 수를 채웠는지만 본다.
 export const roundResult = (state: GameState): "won" | "lost" =>
-  state.filled >= currentStage(state).requiredOrders ? "won" : "lost";
+  state.filled >= passMark(currentStage(state)) ? "won" : "lost";
 
-// 통과 기준을 얼마나 넘겼는지로 별 1~3개. 못 넘겼으면 0이다.
+// 처리한 주문 수가 스테이지의 별 기준을 몇 개나 넘겼는지. 못 넘겼으면 0이다.
 export function stageRank(state: GameState) {
-  const stage = currentStage(state);
-  if (state.filled < stage.requiredOrders) return 0;
-  const extra = state.filled - stage.requiredOrders;
-  return rankThresholds.filter((need) => extra >= need).length;
+  return currentStage(state).stars.filter((need) => state.filled >= need).length;
 }
 
 const newFires = (): Partial<Record<StationInstanceId, FireState>> =>
@@ -870,12 +862,21 @@ const initialStationState = () => ({
 // 나오는 레시피는 코드가 아니라 그 파일에서 조절한다.
 export const defaultStages = (): Stage[] =>
   stageData.stages.map((stage) => {
-    const menu = stage.menu as ItemId[];
+    const list = stage.orders as ItemId[];
+    const stars = stage.stars as number[];
     if (
-      !Number.isSafeInteger(stage.orderCount) ||
-      stage.orderCount < 1 ||
-      menu.length < 1 ||
-      menu.some((foodId) => !recipes[foodId])
+      !Array.isArray(list) ||
+      list.length < 1 ||
+      list.some((foodId) => !recipes[foodId]) ||
+      !Array.isArray(stars) ||
+      stars.length !== 3 ||
+      stars.some(
+        (need, index) =>
+          !Number.isSafeInteger(need) ||
+          need < 1 ||
+          (index > 0 && need <= stars[index - 1]),
+      ) ||
+      stars[2] > list.length
     ) {
       throw new Error(`stages.json의 ${stage.id} 스테이지가 올바르지 않습니다.`);
     }
@@ -883,11 +884,11 @@ export const defaultStages = (): Stage[] =>
       id: stage.id,
       name: stage.name,
       turnLimit: stage.turnLimit,
-      requiredOrders: stage.requiredOrders,
-      // 메뉴를 순서대로 돌려 그 판의 주문 목록을 만든다.
-      orders: Array.from({ length: stage.orderCount }, (_, index) => ({
+      stars: [...stars],
+      // 적힌 순서 그대로 주문이 된다.
+      orders: list.map((foodId, index) => ({
         id: `order-${index + 1}`,
-        foodId: menu[index % menu.length],
+        foodId,
         targetCount: 1,
         submittedCount: 0,
       })),
@@ -929,9 +930,17 @@ function checkStages(stages: Stage[], stageIndex: number): Stage[] {
         stage.name.length > 30 ||
         !Number.isSafeInteger(stage.turnLimit) ||
         stage.turnLimit < 1 ||
-        !Number.isSafeInteger(stage.requiredOrders) ||
-        stage.requiredOrders < 1 ||
-        stage.requiredOrders > stage.orders.length,
+        !Array.isArray(stage.stars) ||
+        stage.stars.length !== 3 ||
+        stage.stars.some(
+          (need, index) =>
+            !Number.isSafeInteger(need) ||
+            need < 1 ||
+            (index > 0 && need <= stage.stars[index - 1]),
+        ) ||
+        // 통과 자체는 할 수 있어야 한다. 별 2·3이 주문 수를 넘는 것은
+        // 기획 실수지만 판을 못 돌 정도는 아니라 stages.json 쪽에서만 막는다.
+        stage.stars[0] > stage.orders.length,
     ) ||
     !Number.isSafeInteger(stageIndex) ||
     stageIndex < 0 ||
@@ -941,6 +950,7 @@ function checkStages(stages: Stage[], stageIndex: number): Stage[] {
   }
   return stages.map((stage) => ({
     ...stage,
+    stars: [...stage.stars],
     orders: checkOrders(stage.orders),
   }));
 }
@@ -991,7 +1001,7 @@ export function initialState(
     turn: 1,
     turnsLeft: stage.turnLimit,
     filled: 0,
-    goal: stage.requiredOrders,
+    goal: passMark(stage),
     gold: 0,
     actors,
     ...stationState,
@@ -1002,7 +1012,7 @@ export function initialState(
     squad: [...squad],
     misses: 0,
     refusal: null,
-    lastEvent: `${stage.id} ${stage.name} — ${stage.turnLimit}턴 안에 음식 주문 ${stage.requiredOrders}건을 완료하세요.`,
+    lastEvent: `${stage.id} ${stage.name} — ${stage.turnLimit}턴 안에 음식 주문 ${passMark(stage)}건을 완료하세요.`,
     history: [`${stage.id} 영업 시작`],
   };
 }
@@ -1858,7 +1868,7 @@ function submitFood(
   return event(
     state,
     cleared
-      ? `음식 주문 완료 — ${filled}/${currentStage(state).requiredOrders} (+${GOLD_PER_ORDER}G)`
+      ? `음식 주문 완료 — ${filled}/${passMark(currentStage(state))} (+${GOLD_PER_ORDER}G)`
       : `${label} 제출 — ${submitted.submittedCount}/${submitted.targetCount}`,
     {
       actors: patchActor(
@@ -1873,7 +1883,7 @@ function submitFood(
       // 레시피 목록을 다 처리하면 남은 턴과 무관하게 끝난다.
       phase:
         allDone && orderConfig.endRoundWhenOrdersDone
-          ? filled >= currentStage(state).requiredOrders
+          ? filled >= passMark(currentStage(state))
             ? "won"
             : "lost"
           : "playing",
@@ -1924,7 +1934,7 @@ export function endTurn(state: GameState): GameState {
   const stage = currentStage(played);
   return event(
     played,
-    `${stage.id} 영업 종료 — 주문 ${played.filled}/${stage.requiredOrders}건 완료`,
+    `${stage.id} 영업 종료 — 주문 ${played.filled}/${passMark(stage)}건 완료`,
     { phase: roundResult(played), turnsLeft: 0 },
   );
 }
