@@ -11,6 +11,7 @@ import {
   interactActor,
   moveActor,
   moveTargets,
+  nextReadyActor,
   endTurn,
   pixelToTile,
   slimeTypes,
@@ -31,12 +32,17 @@ import {
   currentStage,
   isLastStage,
   nextStage,
+  defaultStages,
+  stageIndexOf,
   GOLD_PER_ORDER,
   dishConfig,
   incineratorConfig,
   isBoxStation,
+  boxItems,
   carriedLabel,
   isDish,
+  blenderStage,
+  type BlenderStage,
   type ActorId,
   type Carried,
   type GameState,
@@ -55,8 +61,9 @@ import {
 import Music, { MusicSettings } from "./Music";
 import { gameMusicSource } from "./music-source";
 import { GameSoundEffects } from "./SoundEffects";
-import StageInfoScreen from "./StageInfoScreen";
 import { itemIcons, stationIcons } from "./stage-info";
+import StageSelect from "./StageSelect";
+import { readProgress, withResult, writeProgress, type StageProgress } from "./progress";
 
 type View = {
   sync: (state: GameState) => void;
@@ -100,20 +107,49 @@ const stationArt: Record<StationId, string> = {
   "potato-box": "/stations/ingredient-box.png",
   "carrot-box": "/stations/ingredient-box.png",
   "cabbage-box": "/stations/ingredient-box.png",
+  "banana-box": "/stations/ingredient-box.png",
+  "strawberry-box": "/stations/ingredient-box.png",
+  "mushroom-box": "/stations/ingredient-box.png",
   stove: "/food/doma.png",
+  oven: "/stations/oven.png",
   fryer: "/stations/fryer.png",
   blender: "/stations/blender.png",
   submission: "/stations/submission.png",
   trash: "/stations/trash.png",
-  "dish-rack": "/stations/dish-rack.png",
+  "dish-rack": "/stations/ingredient-box.png",
+  "dish-return": "/stations/dish-return.png",
   washer: "/stations/washer.png",
   table: "/stations/table.png",
 };
-// 재료 상자는 같은 상자 그림을 쓰고 안에 든 재료만 얹어 구분한다.
-const boxItemArt: Partial<Record<StationId, string>> = {
+// 상자류는 같은 상자 그림을 쓰고 안에 든 것만 얹어 구분한다. 그릇 상자도
+// 접시 한 장만 덩그러니 두지 않고 같은 상자에 접시를 얹는다.
+const stationBadgeArt: Partial<Record<StationId, string>> = {
+  "dish-rack": "/food/plate.png",
   "potato-box": "/food/gamja.png",
   "carrot-box": "/food/carrot.png",
   "cabbage-box": "/food/cabbage.png",
+  "banana-box": "/food/banana.png",
+  "strawberry-box": "/food/strawberry.png",
+  "mushroom-box": "/food/mushroom.png",
+};
+
+// 믹서기 단계별 그림. 과일만 넣은 상태는 물이 필요하다는 뜻이라
+// 화면에서 물 아이콘도 함께 띄운다.
+const blenderArt: Record<BlenderStage, string> = {
+  empty: "/stations/blender.png",
+  "needs-water": "/stations/blender-fruit.png",
+  ready: "/stations/blender-ready.png",
+  done: "/stations/blender-full.png",
+};
+
+// 도마·믹서기는 조리대 위에 놓인 물건이다. 아래에 테이블을 깔고 그림을
+// 위로 올려 얹힌 것처럼 보이게 한다. 칸을 넘어가도 되고, 앞뒤 순서는
+// 슬라임과 같은 y 정렬 규칙을 따른다.
+const stationArtStyle: Partial<
+  Record<StationId, { onTable?: boolean; lift?: number; grow?: number }>
+> = {
+  stove: { onTable: true, lift: 16, grow: 0.92 },
+  blender: { onTable: true, lift: 26, grow: 1.35 },
 };
 // 판이 시작할 때와 마감이 다가올 때 잠깐 띄우는 큰 문구.
 const bannerImages = {
@@ -123,9 +159,17 @@ const bannerImages = {
 const BANNER_MS = 1600;
 // 주문 카드에 빈 접시 위로 얹어 그리는 완성 음식.
 const foodImages: Partial<Record<ItemId, string>> = {
-  "roasted-potato": "/food/roasted-potato.png",
-  "chopped-carrot": "/food/carrot.png",
-  "chopped-cabbage": "/food/cabbage.png",
+  potato: "/food/gamja.png",
+  "shredded-potato": "/food/shredded-potato.png",
+  carrot: "/food/carrot.png",
+  "shredded-carrot": "/food/shredded-carrot.png",
+  cabbage: "/food/cabbage.png",
+  "shredded-cabbage": "/food/shredded-cabbage.png",
+  banana: "/food/banana.png",
+  strawberry: "/food/strawberry.png",
+  mushroom: "/food/mushroom.png",
+  "banana-smoothie": "/food/banana-smoothie.png",
+  "strawberry-smoothie": "/food/strawberry-smoothie.png",
 };
 
 // 소지품은 머리 위가 아니라 슬라임이 앞으로 든 것처럼 놓는다. 등을 돌리면
@@ -177,38 +221,66 @@ const stationPanelInfo: Record<
     required: [],
     steps: ["🥬 양배추 받기"],
   },
+  "banana-box": {
+    description: ["바나나를 꺼냅니다. (행동력 1)", "빈손이나 깨끗한 그릇으로 꺼냅니다."],
+    required: [],
+    steps: ["🍌 바나나 받기"],
+  },
+  "strawberry-box": {
+    description: ["딸기를 꺼냅니다. (행동력 1)", "빈손이나 깨끗한 그릇으로 꺼냅니다."],
+    required: [],
+    steps: ["🍓 딸기 받기"],
+  },
+  "mushroom-box": {
+    description: ["버섯을 꺼냅니다. (행동력 1)", "빈손이나 깨끗한 그릇으로 꺼냅니다."],
+    required: [],
+    steps: ["🍄 버섯 받기"],
+  },
+  oven: {
+    description: ["아직 화로 레시피가 없습니다.", "맵에 놓을 수만 있습니다."],
+    required: [],
+    steps: ["🔥 준비 중"],
+  },
+  "dish-return": {
+    description: ["제출한 그릇이 한 턴 뒤 더러운 채로 나옵니다.", "집어서 세척대로 옮깁니다. (행동력 1)"],
+    required: [],
+    steps: ["🍴 그릇 회수", "🫧 세척대로"],
+  },
   fryer: {
     description: ["아직 튀김 레시피가 없습니다.", "맵에 놓을 수만 있습니다."],
     required: [],
     steps: ["🍟 준비 중"],
   },
   blender: {
-    description: ["아직 믹서기 레시피가 없습니다.", "맵에 놓을 수만 있습니다."],
-    required: [],
-    steps: ["🥤 준비 중"],
+    description: [
+      "과일 → 물 → 가동 순서로 스무디를 만듭니다.",
+      "넣은 과일은 뺄 수 없고, 물을 먼저 채울 수도 없습니다.",
+    ],
+    required: ["water", "lightning"],
+    steps: ["🍌 과일 넣기", "💧 물 슬라임이 물", "⚡ 번개 슬라임이 가동"],
   },
   stove: {
-    description: ["땅 슬라임만 감자를 썰 수 있습니다. (행동력 2)", "재료를 올리고 꺼내는 것은 누구나 합니다."],
+    description: ["땅 슬라임만 재료를 썰 수 있습니다. (행동력 1)", "재료를 올리고 꺼내는 것은 누구나 합니다."],
     required: ["earth"],
     steps: ["🥔 감자", "🔪 땅 슬라임이 썰기", "🍽️ 그릇"],
   },
   submission: {
-    description: ["주문 음식이 담긴 그릇을 제출합니다. (행동력 1)", "제출한 그릇은 더러워집니다."],
+    description: ["주문 음식이 담긴 그릇을 제출합니다. (행동력 1)", "그릇은 한 턴 뒤 반납대로 갑니다."],
     required: [],
     steps: ["🍲 음식", "📬 제출"],
   },
   trash: {
-    description: ["쓰레기를 최대 5개까지 보관합니다. (버리기 행동력 1)", "불 슬라임이 소각해 비웁니다. (행동력 2)"],
+    description: ["쓰레기를 최대 5개까지 보관합니다. (버리기 행동력 1)", "불 슬라임이 소각해 비웁니다. (행동력 1)"],
     required: ["fire"],
     steps: ["🗑️ 쓰레기 투입", "🔥 소각"],
   },
   "dish-rack": {
-    description: ["깨끗한 그릇을 꺼내는 곳입니다. (행동력 1)", "생성대에는 그릇이 최대 3개 있습니다."],
+    description: ["깨끗한 그릇을 꺼냅니다. (행동력 1)", "상자에는 그릇이 최대 3개고 새로 생기지 않습니다."],
     required: [],
     steps: ["🍽️ 그릇 받기"],
   },
   washer: {
-    description: ["더러운 그릇을 맡깁니다. (행동력 1)", "물 슬라임만 세척할 수 있습니다. (행동력 2)"],
+    description: ["더러운 그릇을 맡깁니다. (행동력 1)", "물 슬라임만 세척할 수 있습니다. (행동력 1)"],
     required: ["water"],
     steps: ["🍽️ 더러운 그릇", "💧 세척"],
   },
@@ -217,6 +289,19 @@ const stationPanelInfo: Record<
     required: [],
     steps: ["🪵 보관", "🤝 인계"],
   },
+};
+
+// 슬라임 정보 패널의 "가능한 일"에 붙일 아이콘.
+const roleIcons: Record<string, string> = {
+  "물 공급": "💧",
+  설거지: "🫧",
+  가열: "🔥",
+  소각: "🗑️",
+  운반: "📦",
+  발전: "⚡",
+  손질: "🔪",
+  썰기: "🥕",
+  "다중 운반": "🍽️",
 };
 
 const slimePortrait = (typeId: SlimeTypeId) =>
@@ -260,6 +345,39 @@ function OrderDish({ foodId }: { foodId: ItemId }) {
   );
 }
 
+// 조리 흐름 한 칸. 게임에 쓰는 그림을 그대로 쓰고, 그림이 없을 때만
+// 이모지로 대신한다.
+function FlowIcon({ art, fallback }: { art?: string; fallback: string }) {
+  if (!art) return <span aria-hidden>{fallback}</span>;
+  // eslint-disable-next-line @next/next/no-img-element
+  return <img className="flow-icon" src={art} alt="" aria-hidden />;
+}
+
+// 재료 → (믹서기라면 물) → 기구 순서. 주문 카드 두 종류가 같이 쓴다.
+function OrderFlow({ foodId }: { foodId: ItemId }) {
+  const recipe = recipes[foodId];
+  if (!recipe) return null;
+  return (
+    <div className="order-process" aria-label="조리 흐름">
+      <FlowIcon
+        art={foodImages[recipe.ingredient.itemId]}
+        fallback={itemIcons[recipe.ingredient.itemId]}
+      />
+      {recipe.station === "blender" ? (
+        <>
+          <i aria-hidden>+</i>
+          <span aria-hidden>💧</span>
+        </>
+      ) : null}
+      <i aria-hidden>→</i>
+      <FlowIcon
+        art={recipe.station === "blender" ? blenderArt.empty : stationArt[recipe.station]}
+        fallback={stationIcons[recipe.station]}
+      />
+    </div>
+  );
+}
+
 function OrderCards({ state }: { state: GameState }) {
   const orders = activeOrders(state);
   const upcoming = upcomingOrders(state);
@@ -268,7 +386,6 @@ function OrderCards({ state }: { state: GameState }) {
       {[0, 1].map((index) => {
         const order = orders[index];
         if (!order) return <span className="order-card order-card-empty" aria-hidden key={index} />;
-        const recipe = recipes[order.foodId as keyof typeof recipes];
         return (
           <article className="order-card" key={order.id}>
             <header>
@@ -279,31 +396,65 @@ function OrderCards({ state }: { state: GameState }) {
               {itemLabel(order.foodId)}
               <small>{order.submittedCount}/{order.targetCount}</small>
             </strong>
-            <div className="order-process" aria-label="조리 흐름">
-              <span>{recipe ? itemIcons[recipe.ingredient.itemId] : "?"}</span>
-              <i aria-hidden>→</i>
-              <span>{recipe ? stationIcons[recipe.station] : "?"}</span>
-            </div>
+            <OrderFlow foodId={order.foodId} />
             <footer>
-              {recipe ? stationLabels[recipe.station] : "조리 정보 없음"}
+              {recipes[order.foodId]
+                ? stationLabels[recipes[order.foodId]!.station]
+                : "조리 정보 없음"}
             </footer>
           </article>
         );
       })}
-      {/* 다음에 들어올 레시피는 현재 주문 오른쪽 위에 작게 붙인다. */}
-      <aside className="order-next" aria-label="다음 레시피">
-        <b>다음</b>
-        {upcoming.length ? (
-          upcoming.map((order) => (
-            <span key={order.id} title={itemLabel(order.foodId)}>
-              {itemIcons[order.foodId]}
-            </span>
-          ))
-        ) : (
-          <span className="order-next-empty">—</span>
-        )}
-      </aside>
+      {upcoming.map((order) => (
+        <article className="order-card order-card-next" key={order.id}>
+          <header>
+            <b>다음</b>
+          </header>
+          <strong className="order-food">
+            <OrderDish foodId={order.foodId} />
+            {itemLabel(order.foodId)}
+          </strong>
+          <OrderFlow foodId={order.foodId} />
+          <footer>
+            {recipes[order.foodId]
+              ? stationLabels[recipes[order.foodId]!.station]
+              : "조리 정보 없음"}
+          </footer>
+        </article>
+      ))}
     </section>
+  );
+}
+
+// 설비가 지금 무엇을 얼마나 들고 있는지. 캔버스 게이지와 같은 값을 쓴다.
+function stationStock(state: GameState, id: StationInstanceId) {
+  const type = stationType(id);
+  if (isBoxStation(type)) {
+    return { label: itemLabel(boxItems[type]), have: state.ingredients[id]!.stock, max: INGREDIENT_MAX };
+  }
+  if (type === "dish-rack") {
+    return { label: "깨끗한 그릇", have: state.dishRacks[id]!.length, max: dishConfig.rackCapacity };
+  }
+  if (type === "trash") {
+    return { label: "쌓인 쓰레기", have: state.incinerators[id]!.count, max: incineratorConfig.capacity };
+  }
+  if (type === "dish-return") {
+    return { label: "반납된 그릇", have: state.dishReturns[id]!.length, max: dishConfig.rackCapacity };
+  }
+  return null;
+}
+
+function StationStock({ state, id }: { state: GameState; id: StationInstanceId }) {
+  const stock = stationStock(state, id);
+  if (!stock) return null;
+  return (
+    <div className="station-stock">
+      <b>{stock.label}</b>
+      <span className="stock-gauge" data-full={stock.have >= stock.max ? "" : undefined}>
+        <i style={{ width: `${Math.min(100, (stock.have / stock.max) * 100)}%` }} />
+      </span>
+      <small>{stock.have} / {stock.max}</small>
+    </div>
   );
 }
 
@@ -333,7 +484,12 @@ function GameInspector({
         <ActionPoints actor={actor} />
         <h3>가능한 일</h3>
         <div className="inspector-badges">
-          {type.role.split(" · ").map((role) => <span key={role}>{role}</span>)}
+          {type.role.split(" · ").map((role) => (
+            <span key={role}>
+              <i aria-hidden>{roleIcons[role] ?? "•"}</i>
+              {role}
+            </span>
+          ))}
         </div>
       </aside>
     );
@@ -351,6 +507,7 @@ function GameInspector({
       <div className="inspector-copy">
         {info.description.map((line) => <p key={line}>{line}</p>)}
       </div>
+      <StationStock state={state} id={target.id} />
       <h3>필요 슬라임</h3>
       <div className="required-slimes">
         {info.required.length ? info.required.map((typeId) => (
@@ -392,21 +549,24 @@ function StationHelp({ id, onClose }: { id: StationId; onClose: () => void }) {
 
 export default function Game() {
   const [squad, setSquad] = useState<SlimeTypeId[] | null>(null);
+  const [progress, setProgress] = useState<StageProgress>({});
+  const [stageId, setStageId] = useState<string | null>(null);
   const [state, setState] = useState<GameState | null>(null);
   // 턴제는 한 마리씩 조작한다. 선택은 늘 0마리 아니면 1마리다.
   const [selectedActor, setSelectedActor] = useState<ActorId | null>(null);
   const [inspected, setInspected] = useState<InspectorTarget | null>(null);
   const [helpStation, setHelpStation] = useState<StationId | null>(null);
-  const [stageInfoOpen, setStageInfoOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [resumeCount, setResumeCount] = useState<number | null>(null);
   const [banner, setBanner] = useState<keyof typeof bannerImages | null>(null);
   const [toast, setToast] = useState<string | null>(null);
-  const paused = stageInfoOpen || settingsOpen || helpStation !== null || resumeCount !== null;
+  const paused = settingsOpen || helpStation !== null || resumeCount !== null;
 
   const [saved, setSaved] = useState("");
   const stateRef = useRef(state);
   const selectedActorRef = useRef(selectedActor);
+  // 캔버스가 이름표를 띄울지 판단하는 데 쓴다.
+  const inspectedRef = useRef(inspected);
   const view = useRef<View | null>(null);
   const metrics = useRef<Metrics>(emptyMetrics());
   const savedRef = useRef(false);
@@ -421,6 +581,11 @@ export default function Game() {
   }, [selectedActor]);
 
   useEffect(() => {
+    inspectedRef.current = inspected;
+    view.current?.sync(stateRef.current!);
+  }, [inspected]);
+
+  useEffect(() => {
     setInspected((current) => selectedActor
       ? { kind: "actor", id: selectedActor }
       : current?.kind === "actor" ? null : current);
@@ -428,7 +593,7 @@ export default function Game() {
 
   // 판이 시작되면 "영업 시작", 남은 턴이 얼마 없으면 "마감 임박"을 한 번씩 띄운다.
   const startedStageId =
-    state?.phase === "playing" && !stageInfoOpen ? currentStage(state).id : null;
+    state?.phase === "playing" ? currentStage(state).id : null;
   const closingSoon = state?.phase === "playing" && state.turnsLeft <= RUSH_TURNS_LEFT;
   useEffect(() => {
     if (startedStageId) setBanner("start");
@@ -479,6 +644,16 @@ export default function Game() {
   useEffect(() => {
     if (!state || state.phase === "playing" || savedRef.current) return;
     savedRef.current = true;
+    // 최고 별만 남긴다. 못 깬 판도 0으로 적어야 다음 칸이 열리지 않는다.
+    setProgress((current) => {
+      const kept = withResult(
+        current,
+        currentStage(state).id,
+        state.phase === "won" ? stageRank(state) : 0,
+      );
+      writeProgress(kept);
+      return kept;
+    });
     const counts = metrics.current;
     setSaved("기록 저장 중…");
     fetch("/api/sessions", {
@@ -528,16 +703,65 @@ export default function Game() {
             faceLayer?: Phaser.GameObjects.Graphics;
             carried: Phaser.GameObjects.Text;
             selected: Phaser.GameObjects.Arc;
+            // 행동력이 남았을 때 머리 위에 뜨는 물음표와, 골랐을 때의 이름표.
+            idleMark: Phaser.GameObjects.Text;
+            nameTag: Phaser.GameObjects.Text;
             facing: Facing;
             last: { x: number; y: number };
             acts: number;
             blinking: boolean;
             scale: number;
             motion: Phaser.Tweens.Tween;
+            walking?: Phaser.Tweens.Tween;
           }
         >
       >;
       stations!: Record<StationInstanceId, Phaser.GameObjects.Text>;
+      // 믹서기만 단계에 따라 그림이 바뀌어 따로 들고 있는다.
+      blenders!: Partial<Record<StationInstanceId, { art: Phaser.GameObjects.Image; fit: () => void }>>;
+      blenderHints!: Partial<Record<StationInstanceId, Phaser.GameObjects.Text>>;
+      // 재고 게이지와, 골랐을 때만 뜨는 이름표.
+      gauges!: Partial<Record<StationInstanceId, Phaser.GameObjects.Graphics>>;
+      stationNames!: Partial<Record<StationInstanceId, Phaser.GameObjects.Text>>;
+      // 직전에 본 설비 상태. 바뀐 순간에만 이펙트를 터뜨리려고 들고 있는다.
+      stationMarks!: Partial<Record<StationInstanceId, string>>;
+      // 이펙트를 그림 높이에 맞춰 띄우려고 만들 때 계산한 값을 들고 있는다.
+      stationLift!: Partial<Record<StationInstanceId, number>>;
+      sparks!: Phaser.GameObjects.Particles.ParticleEmitter;
+
+      // 게이지 한 줄. 남은 양을 설비 위에 가로 막대로 그린다.
+      drawGauge(
+        id: StationInstanceId,
+        x: number,
+        y: number,
+        filled: number,
+        total: number,
+      ) {
+        const gauge = this.gauges[id];
+        if (!gauge) return;
+        const width = 34;
+        const height = 5;
+        const left = x - width / 2;
+        gauge
+          .setVisible(true)
+          .clear()
+          .fillStyle(0x1c0f07, 0.85)
+          .fillRoundedRect(left - 1, y - 1, width + 2, height + 2, 3);
+        if (filled > 0) {
+          // 가득 차면 색이 바뀌어, 소각기가 찼는지 상자가 찼는지 바로 보인다.
+          gauge
+            .fillStyle(filled >= total ? 0xffc65c : 0x8ed07a, 1)
+            .fillRoundedRect(left, y, (width * filled) / total, height, 2);
+        }
+      }
+
+      // 이펙트는 점 하나짜리 텍스처를 색만 바꿔 재사용한다. 라이브러리를
+      // 더 들이지 않고 Phaser의 파티클만 쓴다.
+      burst(x: number, y: number, tint: number, count = 10, speed = 90) {
+        this.sparks.setParticleTint(tint);
+        this.sparks.emitParticleAt(x, y, count);
+        this.sparks.speed = { min: speed * 0.4, max: speed };
+      }
 
       // 가만히 있을 때: 원본 SVG의 숨쉬기를 tween으로 옮긴 것.
       breathe(visual: Phaser.GameObjects.Container, scale = SLIME_SCALE) {
@@ -684,10 +908,33 @@ export default function Game() {
         sprite.art.setTexture(`slime-${sprite.typeId}-${sprite.facing}${blink}`);
       }
 
+      // 몸은 tween이 옮기고, 딸린 표시들은 매 프레임 그 위치에 붙인다.
+      // 표시마다 tween을 걸면 어긋나서 한곳에서 따라가게 한다.
+      update() {
+        for (const actorId of Object.keys(this.slimes) as ActorId[]) {
+          const sprite = this.slimes[actorId];
+          if (!sprite) continue;
+          const { x, y } = sprite.body;
+          sprite.body.setDepth(y);
+          sprite.selected.setPosition(x, y + 14).setDepth(y - 1);
+          sprite.nameTag.setPosition(x, y + 26).setDepth(y + 6);
+          // 위아래로 살랑이게 한다. 몸을 따라다녀야 해서 tween 대신 계산한다.
+          sprite.idleMark
+            .setPosition(x + 18, y - 30 + Math.sin(this.time.now / 320) * 3)
+            .setDepth(y + 3);
+          const hold = carryOffsets[sprite.facing];
+          sprite.carried
+            .setPosition(x + hold.x, y + hold.y)
+            // 등을 돌렸을 때만 몸보다 뒤에 그린다. 선택 링(-1)보다는 앞이다.
+            .setDepth(y + (hold.behind ? -0.5 : 2));
+        }
+      }
+
       preload() {
         for (const url of new Set([
           ...Object.values(stationArt),
-          ...Object.values(boxItemArt),
+          ...Object.values(stationBadgeArt),
+          ...Object.values(blenderArt),
         ])) {
           this.load.image(url, url);
         }
@@ -710,6 +957,13 @@ export default function Game() {
       }
 
       create() {
+        // 파티클용 점 텍스처. 파일을 더 두지 않고 그려서 만든다.
+        if (!this.textures.exists("spark-dot")) {
+          const dot = this.make.graphics({ x: 0, y: 0 }, false);
+          dot.fillStyle(0xffffff, 1).fillCircle(6, 6, 6);
+          dot.generateTexture("spark-dot", 12, 12);
+          dot.destroy();
+        }
         this.cameras.main
           .setBackgroundColor("#21130b")
           .setZoom(RENDER_SCALE)
@@ -718,42 +972,23 @@ export default function Game() {
         // 실제 캔버스에서 시작한 포인터만 게임 명령으로 처리한다.
         const fromCanvas = (pointer: Phaser.Input.Pointer) =>
           pointer.event?.target === this.game.canvas;
-        // 나무와 금속 중심의 판타지 식당 바닥과 벽.
+        // 바닥과 벽은 단색이다. 그림이 많아 결까지 그리면 산만해진다.
         const planks = this.add.graphics().setDepth(0);
         KITCHEN_ROWS.forEach((row, rowIndex) => {
           [...row].forEach((tile, colIndex) => {
             const { x, y } = tileCenter({ col: colIndex, row: rowIndex });
-            const left = x - TILE_SIZE / 2;
-            const top = y - TILE_SIZE / 2;
-            const wall = tile === "#";
-            // 판자마다 결이 조금씩 다르게 보이도록 행마다 색을 흔든다.
-            const shade = (rowIndex * 7 + colIndex * 13) % 3;
-            planks.fillStyle(
-              wall
-                ? [0xa9713a, 0xb0773e, 0xa26c36][shade]
-                : [0x402514, 0x452917, 0x3b2112][shade],
-              1,
-            );
-            planks.fillRect(left, top, TILE_SIZE, TILE_SIZE);
-            if (wall) {
-              // 벽은 세로 널, 바닥은 가로 판자로 결을 반대로 준다.
-              planks.fillStyle(0x7d4f26, 0.85);
-              planks.fillRect(left + TILE_SIZE - 4, top, 4, TILE_SIZE);
-              planks.fillStyle(0xffffff, 0.07);
-              planks.fillRect(left + 3, top, 3, TILE_SIZE);
-            } else {
-              planks.fillStyle(0x2c180d, 0.9);
-              planks.fillRect(left, top + TILE_SIZE - 3, TILE_SIZE, 3);
-              if ((colIndex + rowIndex) % 2 === 0) {
-                planks.fillRect(left, top, 2, TILE_SIZE);
-              }
-              planks.fillStyle(0xffffff, 0.03);
-              planks.fillRect(left, top + 3, TILE_SIZE, 2);
-            }
+            planks.fillStyle(tile === "#" ? 0xa9713a : 0x3d2314, 1);
+            planks.fillRect(x - TILE_SIZE / 2, y - TILE_SIZE / 2, TILE_SIZE, TILE_SIZE);
           });
         });
-        // 기구는 차지한 칸 범위에 나무 상판을 깔고 그림을 얹는다.
+        // 기구는 차지한 칸 범위에 그림만 얹는다. 배경 네모는 두지 않는다.
         this.stations = {} as Record<StationInstanceId, Phaser.GameObjects.Text>;
+        this.blenders = {};
+        this.blenderHints = {};
+        this.gauges = {};
+        this.stationNames = {};
+        this.stationMarks = {};
+        this.stationLift = {};
         for (const station of stationInstances) {
           const { id, type, tiles } = station;
           const first = tileCenter(tiles[0]);
@@ -762,38 +997,77 @@ export default function Game() {
           const y = (first.y + last.y) / 2;
           const width = Math.abs(last.x - first.x) + TILE_SIZE;
           const height = Math.abs(last.y - first.y) + TILE_SIZE;
-          this.add
-            .graphics()
-            .setDepth(y - 1)
-            .fillStyle(0x6d4526, 1)
-            .fillRoundedRect(x - width / 2 + 3, y - height / 2 + 3, width - 6, height - 6, 7)
-            .lineStyle(3, 0xc89258, 0.9)
-            .strokeRoundedRect(x - width / 2 + 3, y - height / 2 + 3, width - 6, height - 6, 7);
-          const art = this.add.image(x, y, stationArt[type]).setDepth(y + 1);
-          art.setScale(
-            Math.min((width - 12) / art.width, (height - 12) / art.height),
-          );
-          const itemArt = boxItemArt[type];
-          if (itemArt) {
-            // 상자 그림 가운데 흰 원 자리에 재료를 얹는다.
-            const badge = this.add.image(x, y + 2, itemArt).setDepth(y + 2);
-            badge.setScale(26 / Math.max(badge.width, badge.height));
+          const style = stationArtStyle[type] ?? {};
+          // 칸을 꽉 채우도록 긴 쪽에 맞춘다. 조리대 위에 놓는 기구는 칸보다
+          // 크게 그리고 위로 올려, 테이블에 얹힌 것처럼 보이게 한다.
+          const grow = style.grow ?? 1;
+          const fit = (image: Phaser.GameObjects.Image) =>
+            image.setScale(
+              Math.min(width / image.width, height / image.height) * grow,
+            );
+          // 깊이는 언제나 서 있는 칸의 y로 잡는다. 그림을 위로 올려도
+          // 앞뒤 순서는 슬라임과 같은 규칙으로 정렬된다.
+          const lift = style.lift ?? 0;
+          this.stationLift[id] = lift;
+          if (style.onTable) {
+            this.add
+              .image(x, y, "/stations/table.png")
+              .setScale(Math.min(width / 230, height / 226))
+              .setDepth(y);
           }
-          // 설비 이름은 상시 표시하지 않는다. 그림으로 알아보고, 자세한
-          // 내용은 클릭했을 때 정보 패널에서 본다.
-          // 재료 수와 조리 상태 표시.
+          const art = this.add.image(x, y - lift, stationArt[type]).setDepth(y + 1);
+          fit(art);
+          if (type === "blender") {
+            // 단계가 바뀌면 그림만 갈아 끼우고 칸 맞춤은 그대로 다시 잡는다.
+            this.blenders[id] = { art, fit: () => fit(art) };
+            // 물이 필요할 때 띄우는 안내 아이콘.
+            this.blenderHints[id] = this.add
+              .text(x + TILE_SIZE / 2 - 8, y - lift - 12, "", {
+                fontFamily: "Jua, sans-serif",
+                fontSize: "20px",
+                resolution: RENDER_SCALE,
+              })
+              .setOrigin(0.5)
+              .setDepth(y + 3);
+          }
+          const itemArt = stationBadgeArt[type];
+          if (itemArt) {
+            // 상자 그림 가운데 흰 원 자리에 내용물을 얹는다.
+            const badge = this.add.image(x, y + 2 - lift, itemArt).setDepth(y + 2);
+            badge.setScale(24 / Math.max(badge.width, badge.height));
+          }
+          // 재료·그릇·쓰레기 수는 숫자 대신 게이지로 보여 준다. 정확한 수는
+          // 설비를 클릭했을 때 정보 패널에서 본다.
+          this.gauges[id] = this.add
+            .graphics()
+            .setDepth(y + 3)
+            .setVisible(false);
+          // 상태 문구. 게이지로 대신할 수 없는 것만 짧게 남긴다.
           this.stations[id] = this.add
-            .text(x, y - 30, "", {
+            .text(x, y - lift - height / 2 - 4, "", {
               color: "#ffe9b8",
               fontFamily: "Jua, sans-serif",
               fontSize: "12px",
               align: "center",
               resolution: RENDER_SCALE,
             })
-            .setOrigin(0.5)
+            .setOrigin(0.5, 1)
             .setDepth(y + 2);
+          // 이름은 골랐을 때만 설비 아래에 뜬다.
+          this.stationNames[id] = this.add
+            .text(x, y + height / 2 - 2, stationLabels[type], {
+              color: "#fff4dc",
+              backgroundColor: "#00000099",
+              padding: { x: 5, y: 2 },
+              fontFamily: "Jua, sans-serif",
+              fontSize: "12px",
+              resolution: RENDER_SCALE,
+            })
+            .setOrigin(0.5, 0)
+            .setDepth(y + 6)
+            .setVisible(false);
           this.add
-            .zone(x, y, TILE_SIZE, TILE_SIZE)
+            .zone(x, y, width, height)
             .setDepth(4)
             .setInteractive()
             .on(
@@ -818,6 +1092,17 @@ export default function Game() {
               },
             );
         }
+
+        this.sparks = this.add
+          .particles(0, 0, "spark-dot", {
+            lifespan: 520,
+            speed: { min: 40, max: 90 },
+            scale: { start: 0.55, end: 0 },
+            alpha: { start: 0.95, end: 0 },
+            gravityY: 120,
+            emitting: false,
+          })
+          .setDepth(900);
 
         this.slimes = {};
         const current = stateRef.current;
@@ -865,6 +1150,30 @@ export default function Game() {
             .setFillStyle(typeColors[actor.typeId], 0.12)
             .setDepth(spot.y - 1)
             .setVisible(false);
+          // "아직 시킬 일이 남았다"는 표시. 고른 슬라임에는 띄우지 않는다.
+          const idleMark = this.add
+            .text(spot.x + 18, spot.y - 30, "?", {
+              color: "#ffe9b8",
+              fontFamily: "Jua, sans-serif",
+              fontSize: "20px",
+              resolution: RENDER_SCALE,
+            })
+            .setOrigin(0.5)
+            .setAlpha(0.75)
+            .setDepth(spot.y + 3)
+            .setVisible(false);
+          const nameTag = this.add
+            .text(spot.x, spot.y + 26, actor.name, {
+              color: "#fff4dc",
+              backgroundColor: "#00000099",
+              padding: { x: 5, y: 2 },
+              fontFamily: "Jua, sans-serif",
+              fontSize: "12px",
+              resolution: RENDER_SCALE,
+            })
+            .setOrigin(0.5, 0)
+            .setDepth(spot.y + 6)
+            .setVisible(false);
           this.slimes[actorId] = {
             typeId: actor.typeId,
             body: container,
@@ -873,6 +1182,8 @@ export default function Game() {
             faceLayer,
             carried,
             selected,
+            idleMark,
+            nameTag,
             facing: "down",
             last: { x: spot.x, y: spot.y },
             acts: actor.acts,
@@ -958,6 +1269,16 @@ export default function Game() {
                 sprite.motion.stop();
                 sprite.visual.setAngle(0).setY(0);
                 sprite.motion = this.startMotion(sprite.visual, mode, sprite.scale);
+                // 발밑에서 작게 튀는 먼지. 걸을 때와 일할 때 색을 다르게 준다.
+                if (mode !== "walk") {
+                  this.burst(
+                    spot.x,
+                    spot.y + 14,
+                    mode === "stir" ? 0xffe08a : 0xd8c7a8,
+                    mode === "stir" ? 10 : 6,
+                    mode === "stir" ? 110 : 60,
+                  );
+                }
                 this.time.delayedCall(MOTION_MS, () => {
                   const back = this.slimes[actorId];
                   if (!back || back.acts !== actor.acts) return;
@@ -966,18 +1287,29 @@ export default function Game() {
                   back.motion = this.breathe(back.visual, back.scale);
                 });
               }
+              // 칸을 뛰어넘지 않고 미끄러지듯 옮긴다. 딸린 표시들은 update가
+              // 몸 위치를 따라 붙이므로 여기서는 몸만 움직인다.
+              if (sprite.last.x !== spot.x || sprite.last.y !== spot.y) {
+                sprite.walking?.stop();
+                sprite.walking = this.tweens.add({
+                  targets: sprite.body,
+                  x: spot.x,
+                  y: spot.y,
+                  duration: MOTION_MS,
+                  ease: "Sine.easeInOut",
+                });
+              }
               sprite.last = { x: spot.x, y: spot.y };
-              sprite.body.setPosition(spot.x, spot.y).setDepth(spot.y);
-              sprite.selected
-                .setPosition(spot.x, spot.y + 14)
-                .setDepth(spot.y - 1)
-                .setVisible(selectedActorRef.current === actorId);
-              const hold = carryOffsets[sprite.facing];
-              sprite.carried
-                .setText(actor.carrying.map(carriedIcon).join(" ") ?? "")
-                .setPosition(spot.x + hold.x, spot.y + hold.y)
-                // 등을 돌렸을 때만 몸보다 뒤에 그린다. 선택 링(-1)보다는 앞이다.
-                .setDepth(spot.y + (hold.behind ? -0.5 : 2));
+              sprite.carried.setText(actor.carrying.map(carriedIcon).join(" ") ?? "");
+              sprite.selected.setVisible(selectedActorRef.current === actorId);
+              sprite.nameTag.setVisible(selectedActorRef.current === actorId);
+              // 아직 행동력이 남은 슬라임에게만 물음표를 띄운다. 지금 고른
+              // 슬라임은 이미 보고 있으니 뺀다.
+              sprite.idleMark.setVisible(
+                current.phase === "playing" &&
+                  actor.actionPoints > 0 &&
+                  selectedActorRef.current !== actorId,
+              );
             }
             moveMarks.clear();
             const selected = selectedActorRef.current;
@@ -991,34 +1323,92 @@ export default function Game() {
                   .strokeRect(x - 24, y - 24, 48, 48);
               }
             }
-            for (const { id, type } of stationInstances) {
+            const shown = inspectedRef.current;
+            for (const station of stationInstances) {
+              const { id, type, tiles } = station;
               const washer = current.washers[id];
               const incinerator = current.incinerators[id];
               const workstation = current.workstations[id];
+              // 수량은 게이지가 맡고, 글자는 게이지로 못 나타내는 상태만 쓴다.
               const label = current.fires[id]?.onFire
                 ? "🔥"
-                : isBoxStation(type)
-                  ? `${current.ingredients[id]!.stock}/${INGREDIENT_MAX}`
-                  : type === "stove"
-                    ? workstation!.progress > 0
-                      ? `${workStatusLabels.WORKING} ${workstation!.progress}/${actionCost.chop}`
-                      : workStatusLabels[workstation!.status]
-                    : type === "dish-rack"
-                      ? `${current.dishRacks[id]!.length}/${dishConfig.rackCapacity}`
-                      : type === "washer"
-                        ? washer!.progress > 0
-                          ? `세척 ${washer!.progress}/${actionCost.wash}`
-                          : washer!.dish
-                            ? washer!.dish!.status === "clean" ? "세척 완료" : "세척 대기"
-                            : "비어 있음"
-                        : type === "table"
-                          ? current.tables[id]![0] ? carriedLabel(current.tables[id]![0]) : ""
-                          : type === "trash"
-                            ? incinerator!.progress > 0
-                              ? `소각 ${incinerator!.progress}/${actionCost.burn}`
-                              : `${incinerator!.count}/${incineratorConfig.capacity}`
-                          : "";
+                : type === "stove"
+                  ? workstation!.progress > 0
+                    ? `${workStatusLabels.WORKING} ${workstation!.progress}/${actionCost.chop}`
+                    : workStatusLabels[workstation!.status]
+                  : type === "washer"
+                    ? washer!.progress > 0
+                      ? `세척 ${washer!.progress}/${actionCost.wash}`
+                      : washer!.dish
+                        ? washer!.dish.status === "clean" ? "세척 완료" : "세척 대기"
+                        : ""
+                    : type === "table"
+                      ? current.tables[id]![0] ? carriedLabel(current.tables[id]![0]) : ""
+                      : type === "dish-return"
+                        ? current.dishReturns[id]!.length
+                          ? `${current.dishReturns[id]!.length}개`
+                          : ""
+                        : "";
               this.stations[id].setText(label);
+              // 재고가 있는 설비만 게이지를 띄운다.
+              const stock = isBoxStation(type)
+                ? ([current.ingredients[id]!.stock, INGREDIENT_MAX] as const)
+                : type === "dish-rack"
+                  ? ([current.dishRacks[id]!.length, dishConfig.rackCapacity] as const)
+                  : type === "trash"
+                    ? ([incinerator!.count, incineratorConfig.capacity] as const)
+                    : null;
+              const spot = tileCenter(tiles[0]);
+              if (stock) {
+                this.drawGauge(id, spot.x, spot.y - TILE_SIZE / 2 - 6, stock[0], stock[1]);
+              }
+              // 이름표는 그 설비를 골랐을 때만.
+              this.stationNames[id]!.setVisible(
+                shown?.kind === "station" && shown.id === id,
+              );
+              const blender = current.blenders[id];
+              if (blender) {
+                const stage = blenderStage(blender);
+                this.blenders[id]!.art.setTexture(blenderArt[stage]);
+                this.blenders[id]!.fit();
+                // 과일만 들어간 믹서기는 물이 필요하다는 것을 아이콘으로 알린다.
+                this.blenderHints[id]!.setText(stage === "needs-water" ? "💧" : "");
+              }
+            }
+            // 설비에서 무슨 일이 일어났는지 파티클로 한 번 보여 준다.
+            // 상태를 저장하지 않고 바뀐 것만 골라 터뜨린다.
+            for (const station of stationInstances) {
+              const { id, type, tiles } = station;
+              const seen = this.stationMarks[id];
+              const now =
+                type === "stove"
+                  ? `${current.stoves[id]!.join()}/${current.workstations[id]!.status}`
+                  : type === "blender"
+                    ? blenderStage(current.blenders[id]!)
+                    : type === "washer"
+                      ? `${current.washers[id]!.dish?.status ?? "-"}`
+                      : type === "trash"
+                        ? `${current.incinerators[id]!.count}`
+                        : type === "submission"
+                          ? `${current.filled}`
+                          : "";
+              this.stationMarks[id] = now;
+              if (seen === undefined || seen === now || !now) continue;
+              const spot = tileCenter(tiles[0]);
+              const y = spot.y - (this.stationLift[id] ?? 0);
+              if (type === "stove" && current.workstations[id]!.status === "COMPLETE") {
+                this.burst(spot.x, y, 0xfff0b8, 12);
+              } else if (type === "blender") {
+                const stage = blenderStage(current.blenders[id]!);
+                if (stage === "ready") this.burst(spot.x, y, 0x7fd4ff, 10);
+                if (stage === "done") this.burst(spot.x, y, 0xff8fc4, 16, 130);
+              } else if (type === "washer" && current.washers[id]!.dish?.status === "clean") {
+                this.burst(spot.x, y, 0x9fe8ff, 14);
+              } else if (type === "trash" && current.incinerators[id]!.count === 0) {
+                this.burst(spot.x, y, 0xffa23c, 16, 140);
+              } else if (type === "submission") {
+                this.burst(spot.x, y, 0xffd45c, 18, 150);
+              }
             }
           },
           pause: () => this.scene.pause(),
@@ -1037,6 +1427,11 @@ export default function Game() {
       width: MAP_WIDTH * TILE_SIZE * RENDER_SCALE,
       height: MAP_HEIGHT * TILE_SIZE * RENDER_SCALE,
       backgroundColor: "#21130b",
+      // 음악·효과음은 React <audio>가 낸다. Phaser 사운드는 쓰지 않는다.
+      // ponytail: 화면을 떠날 때 콘솔에 남는 "closed AudioContext" 오류는
+      // 이걸로 사라지지 않았다. scene.pause/resume 경로에서 나는 것으로
+      // 보이며 동작에는 영향이 없다.
+      audio: { noAudio: true },
       scene: Restaurant,
       render: { antialias: true },
       scale: { mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.CENTER_HORIZONTALLY },
@@ -1047,13 +1442,22 @@ export default function Game() {
     };
   }, [squad]);
 
-  // 선택 화면이 없으므로 들어오자마자 네 마리로 판을 연다.
+  // 저장된 별은 브라우저에만 있어 첫 렌더 뒤에 읽는다.
   useEffect(() => {
-    startRound(allTypeIds);
+    setProgress(readProgress());
   }, []);
 
-  function startRound(list: SlimeTypeId[]) {
-    const next = initialState(2026, list);
+  // 한 마리가 행동력을 다 쓰면 아직 남은 다음 슬라임으로 넘어간다.
+  useEffect(() => {
+    if (!state || !squad || !selectedActor) return;
+    if ((state.actors[selectedActor]?.actionPoints ?? 0) > 0) return;
+    setSelectedActor(nextReadyActor(state, squadActorIds(squad), selectedActor));
+  }, [state, selectedActor, squad]);
+
+  function startRound(list: SlimeTypeId[], id: string = stageId ?? "0") {
+    const index = Math.max(0, stageIndexOf(id));
+    const next = initialState(2026, list, defaultStages(), index);
+    setStageId(id);
     metrics.current = emptyMetrics();
     savedRef.current = false;
     roundSeed.current = next.seed;
@@ -1061,7 +1465,6 @@ export default function Game() {
     setSelectedActor(null);
     setInspected(null);
     setHelpStation(null);
-    setStageInfoOpen(true);
     setSettingsOpen(false);
     setResumeCount(null);
     setState(next);
@@ -1089,7 +1492,7 @@ export default function Game() {
         event.preventDefault();
         setSettingsOpen((open) => {
           const next = !open;
-          setResumeCount(next || stageInfoOpen || helpStation !== null ? null : 3);
+          setResumeCount(next || helpStation !== null ? null : 3);
           return next;
         });
       }
@@ -1098,15 +1501,19 @@ export default function Game() {
     return () => {
       window.removeEventListener("keydown", down);
     };
-  }, [helpStation, settingsOpen, squad, stageInfoOpen]);
+  }, [helpStation, settingsOpen, squad]);
 
-  // 첫 판은 네 속성을 모두 데리고 시작한다. 고르는 화면은 두지 않는다.
+  // 판을 고르기 전에는 선택 화면을 보여 준다.
   if (!squad || !state) {
     return (
-      <main className="select-shell">
-        <Music src="/music/main.mp3" />
-        <p className="loading">영업 준비 중…</p>
-      </main>
+      <>
+        <Music src="/music/home.mp3" />
+        <StageSelect
+          progress={progress}
+          onPick={(id) => startRound(allTypeIds, id)}
+          onBack={() => window.location.assign("/")}
+        />
+      </>
     );
   }
 
@@ -1126,12 +1533,10 @@ export default function Game() {
   return (
     <main className="stage">
       <Music src={gameMusicSource(state.turnsLeft, state.phase)} />
-      {!stageInfoOpen && (
-        <GameSoundEffects
-          state={state}
-          selectedActors={selectedActor ? [selectedActor] : []}
-        />
-      )}
+      <GameSoundEffects
+        state={state}
+        selectedActors={selectedActor ? [selectedActor] : []}
+      />
       <div className="stage-frame" data-inspector={inspected ? "" : undefined}>
         <div id="game-canvas" aria-label="탑다운 판타지 식당 게임 맵" />
         <MusicSettings
@@ -1139,7 +1544,7 @@ export default function Game() {
           open={settingsOpen}
           onOpenChange={(open) => {
             setSettingsOpen(open);
-            setResumeCount(open || stageInfoOpen || helpStation !== null ? null : 3);
+            setResumeCount(open || helpStation !== null ? null : 3);
           }}
         />
         {resumeCount !== null && (
@@ -1161,19 +1566,12 @@ export default function Game() {
         <OrderCards state={state} />
 
         <div className="hud-top" aria-label="라운드 정보">
-          <span className="hud-chip">
-            🍽 {currentStage(state).id} {currentStage(state).name}
-          </span>
           <span
             className="hud-chip"
             data-warn={state.turnsLeft <= RUSH_TURNS_LEFT ? "" : undefined}
           >
             🔄 {state.turnsLeft}턴
           </span>
-          <span className="hud-chip hud-goal">
-            📦 {state.filled} / {state.goal}
-          </span>
-          <span className="hud-chip">💰 {state.gold}G</span>
         </div>
 
         {toast && (
@@ -1217,11 +1615,6 @@ export default function Game() {
             </button>
           </div>
 
-          <div className="hud-right">
-            <div className="feed">
-              <span className="feed-event">{state.lastEvent}</span>
-            </div>
-          </div>
         </div>
 
         <div className="info-rail" role="complementary" aria-label="선택 정보 영역">
@@ -1239,13 +1632,6 @@ export default function Game() {
           <StationHelp id={helpStation} onClose={() => setHelpStation(null)} />
         )}
 
-        {stageInfoOpen && (
-          <StageInfoScreen
-            key={currentStage(state).id}
-            stage={currentStage(state)}
-            onNext={() => setStageInfoOpen(false)}
-          />
-        )}
 
       </div>
 
@@ -1300,17 +1686,24 @@ export default function Game() {
                     setSaved("");
                     setSelectedActor(null);
                     setState(nextStage(state));
-                    setStageInfoOpen(true);
-                  }}
+                                  }}
                 >
                   다음 스테이지
                 </button>
               ) : (
-                <button autoFocus onClick={() => startRound(squad)}>
-                  1-1부터
+                <button autoFocus onClick={() => startRound(squad, currentStage(state).id)}>
+                  다시 도전
                 </button>
               )}
-              <button onClick={() => window.location.assign("/")}>타이틀로</button>
+              <button
+                onClick={() => {
+                  setSquad(null);
+                  setState(null);
+                  setStageId(null);
+                }}
+              >
+                스테이지 선택
+              </button>
             </div>
           </div>
         </section>

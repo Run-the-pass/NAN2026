@@ -2,30 +2,30 @@
 export default {
   "rows": [
     "##############",
-    "###CC#TT#TTT##",
-    "##P..T..T...R#",
-    "##T..T..T...T#",
-    "##A.........F#",
-    "##M.........T#",
-    "###TXDSSWWTT##",
+    "#PRABYUCOFMTT#",
+    "#............#",
+    "#............#",
+    "#T..........T#",
+    "#............#",
+    "#DNSSWWXTTTTT#",
     "##############"
   ],
   "spawnTiles": {
     "water": {
-      "col": 3,
-      "row": 4
+      "col": 2,
+      "row": 3
     },
     "fire": {
-      "col": 6,
-      "row": 4
+      "col": 5,
+      "row": 3
     },
     "lightning": {
-      "col": 9,
-      "row": 4
+      "col": 8,
+      "row": 3
     },
     "earth": {
       "col": 11,
-      "row": 4
+      "row": 3
     }
   }
 } as const;

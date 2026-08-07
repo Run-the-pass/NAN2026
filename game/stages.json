@@ -1,0 +1,43 @@
+{
+  "note": "스테이지 원본. turnLimit은 제한 턴, requiredOrders는 통과에 필요한 주문 수, orderCount는 그 판에 나오는 주문 수, menu는 나오는 레시피 목록(순서대로 돌아간다). menu의 foodId는 game/recipes.json에 있어야 한다.",
+  "stages": [
+    {
+      "id": "0",
+      "name": "튜토리얼",
+      "turnLimit": 40,
+      "requiredOrders": 1,
+      "orderCount": 3,
+      "menu": ["shredded-potato"]
+    },
+    {
+      "id": "1",
+      "name": "첫 영업",
+      "turnLimit": 60,
+      "requiredOrders": 3,
+      "orderCount": 6,
+      "menu": ["shredded-potato", "shredded-carrot"]
+    },
+    {
+      "id": "2",
+      "name": "점심 러시",
+      "turnLimit": 70,
+      "requiredOrders": 5,
+      "orderCount": 9,
+      "menu": ["shredded-potato", "shredded-carrot", "shredded-cabbage", "banana-smoothie"]
+    },
+    {
+      "id": "3",
+      "name": "저녁 마감",
+      "turnLimit": 80,
+      "requiredOrders": 7,
+      "orderCount": 11,
+      "menu": [
+        "shredded-potato",
+        "shredded-carrot",
+        "shredded-cabbage",
+        "banana-smoothie",
+        "strawberry-smoothie"
+      ]
+    }
+  ]
+}

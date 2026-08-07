@@ -1,0 +1,35 @@
+{
+  "note": "레시피 원본. 밸런스는 코드가 아니라 이 파일에서 조절한다. station/worker/ingredient는 game/core.ts의 StationId·SlimeElement·ItemId여야 하고, 어긋나면 시작할 때 오류가 난다.",
+  "recipes": [
+    {
+      "foodId": "shredded-potato",
+      "ingredient": "potato",
+      "station": "stove",
+      "worker": "earth"
+    },
+    {
+      "foodId": "shredded-carrot",
+      "ingredient": "carrot",
+      "station": "stove",
+      "worker": "earth"
+    },
+    {
+      "foodId": "shredded-cabbage",
+      "ingredient": "cabbage",
+      "station": "stove",
+      "worker": "earth"
+    },
+    {
+      "foodId": "banana-smoothie",
+      "ingredient": "banana",
+      "station": "blender",
+      "worker": "lightning"
+    },
+    {
+      "foodId": "strawberry-smoothie",
+      "ingredient": "strawberry",
+      "station": "blender",
+      "worker": "lightning"
+    }
+  ]
+}

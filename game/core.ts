@@ -1,4 +1,6 @@
 import kitchenMap from "./map-data.js";
+import recipeData from "./recipes.json" with { type: "json" };
+import stageData from "./stages.json" with { type: "json" };
 
 export type SlimeElement = "water" | "fire" | "lightning" | "earth";
 export type SlimeTypeId = SlimeElement;
@@ -8,11 +10,16 @@ export type SlimeTypeId = SlimeElement;
 export type ActorId = string;
 export type ItemId =
   | "potato"
-  | "roasted-potato"
+  | "shredded-potato"
   | "carrot"
-  | "chopped-carrot"
+  | "shredded-carrot"
   | "cabbage"
-  | "chopped-cabbage";
+  | "shredded-cabbage"
+  | "banana"
+  | "strawberry"
+  | "mushroom"
+  | "banana-smoothie"
+  | "strawberry-smoothie";
 export type DishStatus = "clean" | "filled" | "dirty";
 export type Dish = { id: string; status: DishStatus; content: ItemId | null };
 export type Carried = ItemId | Dish;
@@ -20,12 +27,17 @@ export type StationId =
   | "potato-box"
   | "carrot-box"
   | "cabbage-box"
+  | "banana-box"
+  | "strawberry-box"
+  | "mushroom-box"
   | "stove"
+  | "oven"
   | "fryer"
   | "blender"
   | "submission"
   | "trash"
   | "dish-rack"
+  | "dish-return"
   | "washer"
   | "table";
 export type StationInstanceId = `${StationId}@${number},${number}`;
@@ -47,11 +59,16 @@ export type Position = { x: number; y: number };
 
 export const itemLabels: Record<ItemId, string> = {
   potato: "감자",
-  "roasted-potato": "구운 감자",
+  "shredded-potato": "채썬 감자",
   carrot: "당근",
-  "chopped-carrot": "썬 당근",
+  "shredded-carrot": "채썬 당근",
   cabbage: "양배추",
-  "chopped-cabbage": "썬 양배추",
+  "shredded-cabbage": "채썬 양배추",
+  banana: "바나나",
+  strawberry: "딸기",
+  mushroom: "버섯",
+  "banana-smoothie": "바나나 스무디",
+  "strawberry-smoothie": "딸기 스무디",
 };
 
 export const itemLabel = (item: ItemId) => itemLabels[item];
@@ -77,34 +94,50 @@ export const stationLabels: Record<StationId, string> = {
   "potato-box": "감자 상자",
   "carrot-box": "당근 상자",
   "cabbage-box": "양배추 상자",
+  "banana-box": "바나나 상자",
+  "strawberry-box": "딸기 상자",
+  "mushroom-box": "버섯 상자",
   stove: "도마",
+  oven: "화로",
   fryer: "튀김기",
   blender: "믹서기",
   submission: "음식 제출대",
   trash: "소각기",
-  "dish-rack": "그릇 생성대",
+  "dish-rack": "그릇 상자",
+  "dish-return": "그릇 반납대",
   washer: "세척대",
   table: "테이블",
 };
 
 export const allItems: ItemId[] = [
   "potato",
-  "roasted-potato",
+  "shredded-potato",
   "carrot",
-  "chopped-carrot",
+  "shredded-carrot",
   "cabbage",
-  "chopped-cabbage",
+  "shredded-cabbage",
+  "banana",
+  "strawberry",
+  "mushroom",
+  "banana-smoothie",
+  "strawberry-smoothie",
 ];
+export const allElements: SlimeElement[] = ["water", "fire", "lightning", "earth"];
 export const allStations: StationId[] = [
   "potato-box",
   "carrot-box",
   "cabbage-box",
+  "banana-box",
+  "strawberry-box",
+  "mushroom-box",
   "stove",
+  "oven",
   "fryer",
   "blender",
   "submission",
   "trash",
   "dish-rack",
+  "dish-return",
   "washer",
   "table",
 ];
@@ -114,6 +147,9 @@ export const boxItems = {
   "potato-box": "potato",
   "carrot-box": "carrot",
   "cabbage-box": "cabbage",
+  "banana-box": "banana",
+  "strawberry-box": "strawberry",
+  "mushroom-box": "mushroom",
 } as const satisfies Partial<Record<StationId, ItemId>>;
 
 export const isBoxStation = (type: StationId): type is keyof typeof boxItems =>
@@ -128,52 +164,65 @@ export const stationTileCount: Partial<Record<StationId, number>> = {
 export const tilesFor = (type: StationId) => stationTileCount[type] ?? 1;
 
 // 아직 레시피가 없어 놓기만 하는 기구. 사용하면 이유를 알려 준다.
-export const placeholderStations: StationId[] = ["fryer", "blender"];
+export const placeholderStations: StationId[] = ["fryer", "oven"];
 
 export type Recipe = {
   foodId: ItemId;
   ingredient: { itemId: ItemId; count: number };
   station: StationId;
-  // 도마에서 실제로 썰 수 있는 속성. 재료를 올리고 완성품을 가져가는 것은
-  // 누구나 할 수 있고, 이 속성만 썰기 작업을 시작한다.
-  choppedBy: SlimeElement;
+  // 조리를 시작할 수 있는 속성. 재료를 올리고 완성품을 가져가는 것은
+  // 누구나 할 수 있고, 이 속성만 조리 작업을 돌린다.
+  worker: SlimeElement;
   requiresCleanDish: boolean;
   submissionStation: StationId;
 };
 
-// 실제 조리 규칙과 스테이지 정보 화면이 함께 읽는 레시피 원본.
-export const recipes = {
-  "roasted-potato": {
-    foodId: "roasted-potato",
-    ingredient: { itemId: "potato", count: 1 },
-    station: "stove",
-    choppedBy: "earth",
-    requiresCleanDish: true,
-    submissionStation: "submission",
-  },
-  "chopped-carrot": {
-    foodId: "chopped-carrot",
-    ingredient: { itemId: "carrot", count: 1 },
-    station: "stove",
-    choppedBy: "earth",
-    requiresCleanDish: true,
-    submissionStation: "submission",
-  },
-  "chopped-cabbage": {
-    foodId: "chopped-cabbage",
-    ingredient: { itemId: "cabbage", count: 1 },
-    station: "stove",
-    choppedBy: "earth",
-    requiresCleanDish: true,
-    submissionStation: "submission",
-  },
-} satisfies Partial<Record<ItemId, Recipe>>;
+// 레시피 원본은 game/recipes.json이다. 밸런스는 코드가 아니라 그 파일에서
+// 만진다. 손으로 고치는 파일이라 코어에 들이기 전에 한 번 검증한다.
+function readRecipes(): Partial<Record<ItemId, Recipe>> {
+  const table: Partial<Record<ItemId, Recipe>> = {};
+  const ingredients = new Set<ItemId>();
+  for (const row of recipeData.recipes) {
+    const { foodId, ingredient, station, worker } = row as {
+      foodId: ItemId;
+      ingredient: ItemId;
+      station: StationId;
+      worker: SlimeElement;
+    };
+    if (
+      !allItems.includes(foodId) ||
+      !allItems.includes(ingredient) ||
+      !allStations.includes(station) ||
+      !allElements.includes(worker) ||
+      table[foodId] ||
+      ingredients.has(ingredient)
+    ) {
+      throw new Error(`recipes.json의 레시피가 올바르지 않습니다: ${row.foodId}`);
+    }
+    ingredients.add(ingredient);
+    table[foodId] = {
+      foodId,
+      ingredient: { itemId: ingredient, count: 1 },
+      station,
+      worker,
+      requiresCleanDish: true,
+      submissionStation: "submission",
+    };
+  }
+  if (Object.keys(table).length < 1) throw new Error("recipes.json에 레시피가 없습니다.");
+  return table;
+}
+
+export const recipes = readRecipes();
 
 export const allRecipes = Object.values(recipes) as Recipe[];
 
-// 이 재료로 만들 수 있는 레시피. 도마 위에 무엇이 있느냐로 결과가 갈린다.
-export const recipeForIngredient = (item: ItemId) =>
-  allRecipes.find((recipe) => recipe.ingredient.itemId === item) ?? null;
+// 이 재료로 이 기구에서 만들 수 있는 레시피. 도마에 과일을 올릴 수 없고
+// 믹서기에 감자를 넣을 수 없는 것이 여기서 갈린다.
+export const recipeAt = (station: StationId, item: ItemId) =>
+  allRecipes.find(
+    (recipe) => recipe.station === station && recipe.ingredient.itemId === item,
+  ) ?? null;
 
 // 완성 음식인지. 도마에서 회수할 수 있는 것은 이것뿐이다.
 export const isCookedFood = (item: ItemId) =>
@@ -220,8 +269,6 @@ export const slimeTypes: Record<
 };
 
 // 턴당 행동력. 전기(번개)만 2고 나머지는 1이다.
-export const allElements: SlimeElement[] = ["water", "fire", "lightning", "earth"];
-
 export const actionPointsPerTurn: Record<SlimeTypeId, number> = {
   water: 1,
   fire: 1,
@@ -237,13 +284,14 @@ export const maxActionPoints = (typeId: SlimeTypeId) =>
 export const actionCost = {
   move: 1,
   carry: 1,
-  chop: 2,
-  wash: 2,
-  burn: 2,
+  // 모든 상호작용은 한 턴에 끝난다.
+  chop: 1,
+  wash: 1,
+  burn: 1,
 };
 
 // 레시피와 무관하게 설비가 고정으로 요구하는 속성. 썰기는 레시피마다
-// 다를 수 있어 `Recipe.choppedBy`가 정한다. 여기 없는 기구는 모든
+// 다를 수 있어 `Recipe.worker`가 정한다. 여기 없는 기구는 모든
 // 슬라임이 쓰고, 물건을 집고 놓는 것은 "물건" 분류라 제한을 받지 않는다.
 export const stationElements = {
   wash: "water" as SlimeElement,
@@ -306,6 +354,19 @@ export type Stage = {
 
 export type FireState = { onFire: boolean };
 
+// 믹서기 한 대. fruit → water → food 순서로만 진행하고 되돌릴 수 없다.
+export type BlenderState = {
+  fruit: ItemId | null;
+  water: boolean;
+  food: ItemId | null;
+};
+
+// 화면이 믹서기 그림과 안내 아이콘을 고르는 데 쓴다.
+export type BlenderStage = "empty" | "needs-water" | "ready" | "done";
+
+export const blenderStage = (blender: BlenderState): BlenderStage =>
+  blender.food ? "done" : !blender.fruit ? "empty" : blender.water ? "ready" : "needs-water";
+
 export type ActorState = {
   typeId: SlimeTypeId;
   name: string;
@@ -332,7 +393,12 @@ export type GameState = {
   actors: Partial<Record<ActorId, ActorState>>;
   ingredients: Partial<Record<StationInstanceId, { stock: number }>>;
   stoves: Partial<Record<StationInstanceId, ItemId[]>>;
+  // 믹서기. 과일을 넣고(뺄 수 없다) 물을 채운 뒤 번개가 돌린다.
+  blenders: Partial<Record<StationInstanceId, BlenderState>>;
   dishRacks: Partial<Record<StationInstanceId, Dish[]>>;
+  // 반납대에 놓인 더러운 그릇과, 이번 턴에 제출돼 다음 턴에 나올 그릇.
+  dishReturns: Partial<Record<StationInstanceId, Dish[]>>;
+  pendingReturns: Dish[];
   tables: Partial<Record<StationInstanceId, Carried[]>>;
   incinerators: Partial<Record<StationInstanceId, { count: number; progress: number }>>;
   washers: Partial<Record<StationInstanceId, { dish: Dish | null; progress: number }>>;
@@ -369,12 +435,17 @@ export const stationTileCodes: Record<StationId, string> = {
   "potato-box": "P",
   "carrot-box": "R",
   "cabbage-box": "A",
+  "banana-box": "B",
+  "strawberry-box": "Y",
+  "mushroom-box": "U",
   stove: "C",
+  oven: "O",
   fryer: "F",
   blender: "M",
   submission: "S",
   trash: "X",
   "dish-rack": "D",
+  "dish-return": "N",
   washer: "W",
   table: "T",
 };
@@ -687,6 +758,12 @@ const initialStationState = () => ({
     boxInstances.map(({ id }) => [id, { stock: 1 }]),
   ),
   stoves: Object.fromEntries(stationInstancesByType.stove.map(({ id }) => [id, [] as ItemId[]])),
+  blenders: Object.fromEntries(
+    stationInstancesByType.blender.map(({ id }) => [
+      id,
+      { fruit: null, water: false, food: null } as BlenderState,
+    ]),
+  ),
   dishRacks: Object.fromEntries(
     stationInstancesByType["dish-rack"].map(({ id }) => [
       id,
@@ -700,6 +777,10 @@ const initialStationState = () => ({
       ),
     ]),
   ),
+  dishReturns: Object.fromEntries(
+    stationInstancesByType["dish-return"].map(({ id }) => [id, [] as Dish[]]),
+  ),
+  pendingReturns: [] as Dish[],
   tables: Object.fromEntries(stationInstancesByType.table.map(({ id }) => [id, [] as Carried[]])),
   incinerators: Object.fromEntries(
     stationInstancesByType.trash.map(({ id }) => [id, { count: 0, progress: 0 }]),
@@ -715,23 +796,56 @@ const initialStationState = () => ({
   ),
 });
 
-// 기본 스테이지 목록. 턴 수와 통과 기준은 임시 검증값이며 기획이 정해지면
-// 이 배열만 바꾸면 된다. 레시피 목록은 통과 기준보다 길어야 랭크가 오른다.
-export const defaultStages = (): Stage[] => [
-  { id: "1-1", name: "첫 영업", orders: rotatingOrders(6), turnLimit: 60, requiredOrders: 3 },
-  { id: "1-2", name: "점심 러시", orders: rotatingOrders(9), turnLimit: 70, requiredOrders: 5 },
-  { id: "1-3", name: "저녁 마감", orders: rotatingOrders(11), turnLimit: 80, requiredOrders: 7 },
+// 기본 스테이지 목록의 원본은 game/stages.json이다. 제한 턴·통과 기준·
+// 나오는 레시피는 코드가 아니라 그 파일에서 조절한다.
+export const defaultStages = (): Stage[] =>
+  stageData.stages.map((stage) => {
+    const menu = stage.menu as ItemId[];
+    if (
+      !Number.isSafeInteger(stage.orderCount) ||
+      stage.orderCount < 1 ||
+      menu.length < 1 ||
+      menu.some((foodId) => !recipes[foodId])
+    ) {
+      throw new Error(`stages.json의 ${stage.id} 스테이지가 올바르지 않습니다.`);
+    }
+    return {
+      id: stage.id,
+      name: stage.name,
+      turnLimit: stage.turnLimit,
+      requiredOrders: stage.requiredOrders,
+      // 메뉴를 순서대로 돌려 그 판의 주문 목록을 만든다.
+      orders: Array.from({ length: stage.orderCount }, (_, index) => ({
+        id: `order-${index + 1}`,
+        foodId: menu[index % menu.length],
+        targetCount: 1,
+        submittedCount: 0,
+      })),
+    };
+  });
+
+// 선택 화면에 놓이는 칸. 튜토리얼은 0, 무한은 ∞로 적어 번호와 한 줄에 선다.
+export type StageSlot = {
+  id: string;
+  label: string;
+  kind: "tutorial" | "normal" | "endless";
+  // 별을 매기는 칸만 true. 튜토리얼과 무한은 등수가 없다.
+  ranked: boolean;
+  // 규칙이 아직 없어 열 수 없는 칸.
+  ready: boolean;
+};
+
+export const stageSlots: StageSlot[] = [
+  { id: "0", label: "0", kind: "tutorial", ranked: false, ready: true },
+  { id: "1", label: "1", kind: "normal", ranked: true, ready: true },
+  { id: "2", label: "2", kind: "normal", ranked: true, ready: true },
+  { id: "3", label: "3", kind: "normal", ranked: true, ready: true },
+  // ponytail: 무한 모드 규칙(턴 제한·주문 유입·종료 조건)이 정해지면 ready를 켠다.
+  { id: "endless", label: "∞", kind: "endless", ranked: false, ready: false },
 ];
 
-// 레시피 목록을 순서대로 돌려 주문을 만든다.
-function rotatingOrders(count: number): Order[] {
-  return Array.from({ length: count }, (_, index) => ({
-    id: `order-${index + 1}`,
-    foodId: allRecipes[index % allRecipes.length].foodId,
-    targetCount: 1,
-    submittedCount: 0,
-  }));
-}
+export const stageIndexOf = (id: string) =>
+  defaultStages().findIndex((stage) => stage.id === id);
 
 // 스테이지 목록도 외부에서 들어올 수 있으므로 코어에 들이기 전에 검증한다.
 function checkStages(stages: Stage[], stageIndex: number): Stage[] {
@@ -923,6 +1037,19 @@ export function moveTargets(state: GameState, actorId: ActorId): TilePosition[] 
   );
 }
 
+// 한 마리가 행동력을 다 쓰면 다음으로 넘길 슬라임. 지금 마리 다음부터
+// 한 바퀴 돌아 행동력이 남은 첫 마리를 고른다. 아무도 없으면 null이다.
+export function nextReadyActor(
+  state: GameState,
+  roster: ActorId[],
+  from: ActorId,
+): ActorId | null {
+  const at = roster.indexOf(from);
+  if (at < 0) return null;
+  const order = [...roster.slice(at + 1), ...roster.slice(0, at)];
+  return order.find((id) => (state.actors[id]?.actionPoints ?? 0) > 0) ?? null;
+}
+
 export function moveActor(
   state: GameState,
   actorId: ActorId,
@@ -1010,12 +1137,16 @@ export function interactActor(
   switch (station.type) {
     case "stove":
       return atStove(state, actorId, actor, id);
+    case "blender":
+      return atBlender(state, actorId, actor, id);
     case "washer":
       return atWasher(state, actorId, actor, id);
     case "trash":
       return atIncinerator(state, actorId, actor, id);
     case "dish-rack":
       return atDishRack(state, actorId, actor, id);
+    case "dish-return":
+      return atDishReturn(state, actorId, actor, id);
     case "table":
       return atTable(state, actorId, actor, id);
     case "submission":
@@ -1077,11 +1208,11 @@ function atStove(
   // 재료 올리기. 물건 분류라 속성 제한이 없다. 손에 든 것 중 도마에서
   // 쓸 수 있는 재료를 찾는다.
   const looseIndex = actor.carrying.findIndex(
-    (carried) => !isDish(carried) && recipeForIngredient(carried),
+    (carried) => !isDish(carried) && recipeAt("stove", carried),
   );
   const dishIdx = dishIndex(
     actor,
-    (dish) => dish.content !== null && Boolean(recipeForIngredient(dish.content)),
+    (dish) => dish.content !== null && Boolean(recipeAt("stove", dish.content)),
   );
   if (looseIndex >= 0 || dishIdx >= 0) {
     if (stove.length >= STORAGE_MAX) {
@@ -1151,15 +1282,15 @@ function atStove(
   if (actor.carrying.length > 0) {
     return refuse(state, actor, "들고 있는 물건을 먼저 내려놓아야 합니다.");
   }
-  const recipe = onBoard ? recipeForIngredient(onBoard) : null;
+  const recipe = onBoard ? recipeAt("stove", onBoard) : null;
   if (!recipe) {
     return refuse(state, actor, "도마에 썰 재료가 없습니다.");
   }
-  if (actor.typeId !== recipe.choppedBy) {
+  if (actor.typeId !== recipe.worker) {
     return refuse(
       state,
       actor,
-      `${slimeTypes[recipe.choppedBy].name} 슬라임만 도마를 쓸 수 있습니다.`,
+      `${slimeTypes[recipe.worker].name} 슬라임만 도마를 쓸 수 있습니다.`,
     );
   }
   const step = progressStep(actor, actionCost.chop, workstation.progress);
@@ -1187,6 +1318,123 @@ function atStove(
         ...state.workstations,
         [station]: { status: "COMPLETE", progress: 0 },
       },
+    },
+  );
+}
+
+// 믹서기. 과일 → 물 → 가동 순서로만 진행하고 넣은 과일은 뺄 수 없다.
+// 각 단계는 상호작용 한 번씩이다.
+function atBlender(
+  state: GameState,
+  actorId: ActorId,
+  actor: ActorState,
+  station: StationInstanceId,
+): GameState {
+  const blender = state.blenders[station]!;
+  const patch = (next: Partial<BlenderState>) => ({
+    ...state.blenders,
+    [station]: { ...blender, ...next },
+  });
+
+  // 완성한 스무디 회수. 물건 분류라 누구나 할 수 있다.
+  if (blender.food) {
+    const clean = dishIndex(actor, (dish) => dish.status === "clean");
+    if (clean < 0 && !canCarry(actor, blender.food)) {
+      return refuse(state, actor, "완성 음식을 들 자리가 없습니다.");
+    }
+    const food = blender.food;
+    const carrying =
+      clean >= 0
+        ? actor.carrying.map((carried, index) =>
+            index === clean && isDish(carried)
+              ? { ...carried, status: "filled" as const, content: food }
+              : carried,
+          )
+        : [...actor.carrying, food];
+    return event(
+      state,
+      `${actor.name}이(가) ${withParticle(itemLabel(food))} 들었습니다.`,
+      {
+        actors: patchActor(state, actorId, {
+          ...spend(actor, actionCost.carry, "CARRYING"),
+          carrying,
+        }),
+        blenders: patch({ fruit: null, water: false, food: null }),
+      },
+    );
+  }
+
+  // 과일 넣기. 물보다 먼저여야 하고, 넣은 뒤에는 되돌릴 수 없다.
+  const looseIndex = actor.carrying.findIndex(
+    (carried) => !isDish(carried) && recipeAt("blender", carried),
+  );
+  const dishIdx = dishIndex(
+    actor,
+    (dish) => dish.content !== null && Boolean(recipeAt("blender", dish.content)),
+  );
+  if (!blender.fruit && (looseIndex >= 0 || dishIdx >= 0)) {
+    const held = actor.carrying[looseIndex >= 0 ? looseIndex : dishIdx];
+    const fruit = (looseIndex >= 0 ? held : (held as Dish).content) as ItemId;
+    const carrying =
+      looseIndex >= 0
+        ? actor.carrying.filter((_, index) => index !== looseIndex)
+        : actor.carrying.map((carried, index) =>
+            index === dishIdx && isDish(carried)
+              ? { ...carried, status: "clean" as const, content: null }
+              : carried,
+          );
+    return event(
+      state,
+      `${actor.name}이(가) 믹서기에 ${withParticle(itemLabel(fruit))} 넣었습니다.`,
+      {
+        actors: patchActor(state, actorId, {
+          ...spend(actor, actionCost.carry, "CARRYING"),
+          carrying,
+        }),
+        blenders: patch({ fruit }),
+      },
+    );
+  }
+  if (!blender.fruit) {
+    return refuse(state, actor, "믹서기에 넣을 과일이 없습니다.");
+  }
+  if (looseIndex >= 0 || dishIdx >= 0) {
+    return refuse(state, actor, "믹서기에 이미 과일이 들어 있습니다.");
+  }
+
+  // 물 채우기. 물 슬라임만 한다.
+  if (!blender.water) {
+    if (actor.typeId !== stationElements.wash) {
+      return refuse(
+        state,
+        actor,
+        `${slimeTypes[stationElements.wash].name} 슬라임이 믹서기에 물을 채워야 합니다.`,
+      );
+    }
+    return event(state, `${actor.name}이(가) 믹서기에 물을 채웠습니다.`, {
+      actors: patchActor(state, actorId, spend(actor, actionCost.carry, "WORKING")),
+      blenders: patch({ water: true }),
+    });
+  }
+
+  // 가동. 레시피가 정한 속성만 돌릴 수 있다.
+  const recipe = recipeAt("blender", blender.fruit)!;
+  if (actor.typeId !== recipe.worker) {
+    return refuse(
+      state,
+      actor,
+      `${slimeTypes[recipe.worker].name} 슬라임만 믹서기를 돌릴 수 있습니다.`,
+    );
+  }
+  if (actor.carrying.length > 0) {
+    return refuse(state, actor, "들고 있는 물건을 먼저 내려놓아야 합니다.");
+  }
+  return event(
+    state,
+    `${actor.name}이(가) ${itemLabel(recipe.foodId)}를 완성했습니다.`,
+    {
+      actors: patchActor(state, actorId, spend(actor, actionCost.chop, "WORKING")),
+      blenders: patch({ food: recipe.foodId }),
     },
   );
 }
@@ -1314,6 +1562,28 @@ function atIncinerator(
   return event(state, `${actor.name}이(가) 소각기를 비웠습니다.`, {
     actors: patchActor(state, actorId, next),
     incinerators: { ...state.incinerators, [station]: { count: 0, progress: 0 } },
+  });
+}
+
+// 제출한 그릇이 쌓이는 곳. 집어서 세척대로 옮기면 된다.
+function atDishReturn(
+  state: GameState,
+  actorId: ActorId,
+  actor: ActorState,
+  station: StationInstanceId,
+): GameState {
+  const waiting = state.dishReturns[station]!;
+  const dish = waiting[0];
+  if (!dish) return refuse(state, actor, "반납대가 비어 있습니다.");
+  if (!canCarry(actor, dish)) {
+    return refuse(state, actor, "더러운 그릇을 들 자리가 없습니다.");
+  }
+  return event(state, `${actor.name}이(가) 반납대에서 더러운 그릇을 들었습니다.`, {
+    actors: patchActor(state, actorId, {
+      ...spend(actor, actionCost.carry, "CARRYING"),
+      carrying: [...actor.carrying, dish],
+    }),
+    dishReturns: { ...state.dishReturns, [station]: waiting.slice(1) },
   });
 }
 
@@ -1466,14 +1736,14 @@ function submitFood(
   // 음식 이름이 아니라 ID로 현재 주문과 대조한다.
   const target = activeOrders(state).find((order) => order.foodId === food);
   const label = itemLabel(food);
-  // 제출한 접시는 더러워진다.
+  // 제출한 접시는 손을 떠난다. 한 턴 뒤 반납대에 더러운 그릇으로 나온다.
+  const handed = actor.carrying[carriedIndex];
+  const returned: Dish[] = isDish(handed)
+    ? [{ ...handed, status: "dirty", content: null }]
+    : [];
   const emptied = (base: ActorState) => ({
     ...base,
-    carrying: base.carrying.map((carried, index) =>
-      index === carriedIndex && isDish(carried)
-        ? { ...carried, status: "dirty" as const, content: null }
-        : carried,
-    ),
+    carrying: base.carrying.filter((_, index) => index !== carriedIndex),
   });
   if (!target) {
     // 실수는 횟수만 센다. 골드는 깎지 않는다.
@@ -1491,6 +1761,7 @@ function submitFood(
           actorId,
           emptied(spend(actor, actionCost.carry, "CARRYING")),
         ),
+        pendingReturns: [...missed.pendingReturns, ...returned],
       },
     );
   }
@@ -1516,6 +1787,7 @@ function submitFood(
       ),
       orders,
       filled,
+      pendingReturns: [...state.pendingReturns, ...returned],
       gold: cleared ? state.gold + GOLD_PER_ORDER : state.gold,
       // 레시피 목록을 다 처리하면 남은 턴과 무관하게 끝난다.
       phase:
@@ -1546,8 +1818,25 @@ export function endTurn(state: GameState): GameState {
       stock: Math.min(INGREDIENT_MAX, ingredients[id]!.stock + INGREDIENT_PER_TURN),
     };
   }
+  // 제출한 그릇은 한 턴 뒤 첫 반납대에 더러운 채로 나온다.
+  const returnStation = stationInstancesByType["dish-return"][0];
+  const dishReturns = { ...state.dishReturns };
+  if (returnStation && state.pendingReturns.length > 0) {
+    dishReturns[returnStation.id] = [
+      ...(dishReturns[returnStation.id] ?? []),
+      ...state.pendingReturns,
+    ];
+  }
   const turnsLeft = state.turnsLeft - 1;
-  const played = { ...state, actors, ingredients, turnsLeft, turn: state.turn + 1 };
+  const played = {
+    ...state,
+    actors,
+    ingredients,
+    dishReturns,
+    pendingReturns: [],
+    turnsLeft,
+    turn: state.turn + 1,
+  };
   if (turnsLeft > 0) {
     return { ...played, refusal: null };
   }
