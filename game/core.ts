@@ -1280,7 +1280,11 @@ function atStove(
 
   // 여기부터는 도마 사용. 레시피가 정한 속성만 썰 수 있다.
   if (actor.carrying.length > 0) {
-    return refuse(state, actor, "들고 있는 물건을 먼저 내려놓아야 합니다.");
+    return refuse(
+      state,
+      actor,
+      `${withParticle(carriedLabel(actor.carrying[0]!))} 먼저 내려놓아야 합니다.`,
+    );
   }
   const recipe = onBoard ? recipeAt("stove", onBoard) : null;
   if (!recipe) {
@@ -1427,7 +1431,11 @@ function atBlender(
     );
   }
   if (actor.carrying.length > 0) {
-    return refuse(state, actor, "들고 있는 물건을 먼저 내려놓아야 합니다.");
+    return refuse(
+      state,
+      actor,
+      `${withParticle(carriedLabel(actor.carrying[0]!))} 먼저 내려놓아야 합니다.`,
+    );
   }
   return event(
     state,

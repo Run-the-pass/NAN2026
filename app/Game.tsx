@@ -172,23 +172,18 @@ const foodImages: Partial<Record<ItemId, string>> = {
   "strawberry-smoothie": "/food/strawberry-smoothie.png",
 };
 
-// 소지품은 머리 위가 아니라 슬라임이 앞으로 든 것처럼 놓는다. 등을 돌리면
-// 몸 뒤로 넘겨 위쪽만 살짝 보이게 한다. 경고 말풍선은 그대로 머리 위다.
-const carryOffsets: Record<Facing, { x: number; y: number; behind?: boolean }> = {
-  down: { x: 0, y: 17 },
-  left: { x: -23, y: 9 },
-  right: { x: 23, y: 9 },
-  up: { x: 0, y: -20, behind: true },
-};
-
-const carriedIcon = (carried: Carried) =>
-  isDish(carried)
-    ? carried.status === "dirty"
-      ? "🍽️💧"
-      : carried.content
-        ? `🍽️${itemIcons[carried.content]}`
-        : "🍽️"
-    : itemIcons[carried];
+// 손에 든 것은 실제 게임 그림으로 "?" 왼쪽에 보여 준다. 그릇은 접시 그림
+// 위에 담긴 음식 그림을 얹는다. 이모지는 쓰지 않는다.
+const DIRTY_PLATE_ART = "/food/dirty-plate.png";
+function carriedArt(carried: Carried): { bg?: string; fg?: string } {
+  if (isDish(carried)) {
+    return {
+      bg: carried.status === "dirty" ? DIRTY_PLATE_ART : stationBadgeArt["dish-rack"],
+      fg: carried.content ? foodImages[carried.content] : undefined,
+    };
+  }
+  return { fg: foodImages[carried] };
+}
 
 type Metrics = {
   buttonCommands: number;
@@ -353,6 +348,14 @@ function FlowIcon({ art, fallback }: { art?: string; fallback: string }) {
   return <img className="flow-icon" src={art} alt="" aria-hidden />;
 }
 
+// 설비를 대표하는 아이콘. 상자류는 담긴 재료 그림을 쓰고, 나머지는 설비
+// 그림을 그대로 쓴다. 인게임과 같은 그림이라 이모지보다 바로 알아본다.
+function StationIcon({ id }: { id: StationId }) {
+  const art = stationBadgeArt[id] ?? stationArt[id];
+  // eslint-disable-next-line @next/next/no-img-element
+  return <img src={art} alt="" aria-hidden />;
+}
+
 // 재료 → (믹서기라면 물) → 기구 순서. 주문 카드 두 종류가 같이 쓴다.
 function OrderFlow({ foodId }: { foodId: ItemId }) {
   const recipe = recipes[foodId];
@@ -450,8 +453,15 @@ function StationStock({ state, id }: { state: GameState; id: StationInstanceId }
   return (
     <div className="station-stock">
       <b>{stock.label}</b>
-      <span className="stock-gauge" data-full={stock.have >= stock.max ? "" : undefined}>
-        <i style={{ width: `${Math.min(100, (stock.have / stock.max) * 100)}%` }} />
+      <span
+        className="stat-gauge"
+        role="img"
+        aria-label={`${stock.label} ${stock.have} / ${stock.max}`}
+        data-full={stock.have >= stock.max ? "" : undefined}
+      >
+        {Array.from({ length: stock.max }, (_, cell) => (
+          <i key={cell} data-on={cell < stock.have ? "" : undefined} />
+        ))}
       </span>
       <small>{stock.have} / {stock.max}</small>
     </div>
@@ -500,7 +510,7 @@ function GameInspector({
     <aside className="game-inspector" data-station aria-label={`${stationLabels[type]} 정보`}>
       <button className="inspector-close" type="button" onClick={onClose} aria-label="정보 패널 닫기">×</button>
       <button className="inspector-station-icon" type="button" onClick={() => onHelp(type)} aria-label={`${stationLabels[type]} 자세히 보기`}>
-        <span aria-hidden>{stationIcons[type]}</span>
+        <StationIcon id={type} />
       </button>
       <p className="eyebrow">STATION INFO</p>
       <h2>{stationLabels[type]}</h2>
@@ -534,7 +544,9 @@ function StationHelp({ id, onClose }: { id: StationId; onClose: () => void }) {
   return (
     <section className="station-help-overlay" role="dialog" aria-modal="true" aria-labelledby="station-help-title">
       <div>
-        <span className="station-help-icon" aria-hidden>{stationIcons[id]}</span>
+        <span className="station-help-icon" aria-hidden>
+          <StationIcon id={id} />
+        </span>
         <section>
           <p className="eyebrow">도구 인포</p>
           <h2 id="station-help-title">{stationLabels[id]}</h2>
@@ -701,7 +713,7 @@ export default function Game() {
             visual: Phaser.GameObjects.Container;
             art: Phaser.GameObjects.Image;
             faceLayer?: Phaser.GameObjects.Graphics;
-            carried: Phaser.GameObjects.Text;
+            carried: { bg: Phaser.GameObjects.Image; fg: Phaser.GameObjects.Image }[];
             selected: Phaser.GameObjects.Arc;
             // 행동력이 남았을 때 머리 위에 뜨는 물음표와, 골랐을 때의 이름표.
             idleMark: Phaser.GameObjects.Text;
@@ -729,7 +741,8 @@ export default function Game() {
       stationLift!: Partial<Record<StationInstanceId, number>>;
       sparks!: Phaser.GameObjects.Particles.ParticleEmitter;
 
-      // 게이지 한 줄. 남은 양을 설비 위에 가로 막대로 그린다.
+      // 게이지 한 줄. 남은 양을 칸으로 나눠 그린다. 이어 붙은 막대는 눈대중
+      // 으로 세야 해서 칸마다 떨어뜨려 그린다.
       drawGauge(
         id: StationInstanceId,
         x: number,
@@ -739,19 +752,20 @@ export default function Game() {
       ) {
         const gauge = this.gauges[id];
         if (!gauge) return;
-        const width = 34;
-        const height = 5;
+        const cell = 6;
+        const gap = 2;
+        const height = 6;
+        const width = total * cell + (total - 1) * gap;
         const left = x - width / 2;
-        gauge
-          .setVisible(true)
-          .clear()
-          .fillStyle(0x1c0f07, 0.85)
-          .fillRoundedRect(left - 1, y - 1, width + 2, height + 2, 3);
-        if (filled > 0) {
-          // 가득 차면 색이 바뀌어, 소각기가 찼는지 상자가 찼는지 바로 보인다.
+        gauge.setVisible(true).clear();
+        const color = filled >= total ? 0xffc65c : 0x8ed07a;
+        for (let i = 0; i < total; i++) {
+          const cx = left + i * (cell + gap);
           gauge
-            .fillStyle(filled >= total ? 0xffc65c : 0x8ed07a, 1)
-            .fillRoundedRect(left, y, (width * filled) / total, height, 2);
+            .fillStyle(i < filled ? color : 0x1c0f07, i < filled ? 1 : 0.85)
+            .fillRoundedRect(cx, y, cell, height, 1.5)
+            .lineStyle(1, 0x000000, 0.35)
+            .strokeRoundedRect(cx, y, cell, height, 1.5);
         }
       }
 
@@ -919,14 +933,14 @@ export default function Game() {
           sprite.selected.setPosition(x, y + 14).setDepth(y - 1);
           sprite.nameTag.setPosition(x, y + 26).setDepth(y + 6);
           // 위아래로 살랑이게 한다. 몸을 따라다녀야 해서 tween 대신 계산한다.
-          sprite.idleMark
-            .setPosition(x + 18, y - 30 + Math.sin(this.time.now / 320) * 3)
-            .setDepth(y + 3);
-          const hold = carryOffsets[sprite.facing];
-          sprite.carried
-            .setPosition(x + hold.x, y + hold.y)
-            // 등을 돌렸을 때만 몸보다 뒤에 그린다. 선택 링(-1)보다는 앞이다.
-            .setDepth(y + (hold.behind ? -0.5 : 2));
+          const markY = y - 30 + Math.sin(this.time.now / 320) * 3;
+          sprite.idleMark.setPosition(x + 18, markY).setDepth(y + 3);
+          // 들고 있는 것은 "?"와 같은 줄, 바로 왼쪽에 나란히 놓는다.
+          sprite.carried.forEach((slot, index) => {
+            const slotX = x + 18 - 16 - index * 18;
+            slot.bg.setPosition(slotX, markY).setDepth(y + 3);
+            slot.fg.setPosition(slotX, markY).setDepth(y + 4);
+          });
         }
       }
 
@@ -935,6 +949,8 @@ export default function Game() {
           ...Object.values(stationArt),
           ...Object.values(stationBadgeArt),
           ...Object.values(blenderArt),
+          ...Object.values(foodImages),
+          DIRTY_PLATE_ART,
         ])) {
           this.load.image(url, url);
         }
@@ -1140,10 +1156,12 @@ export default function Game() {
                 );
               },
             );
-          const carried = this.add
-            .text(spot.x, spot.y - 52, "", { fontSize: "24px", resolution: RENDER_SCALE })
-            .setOrigin(0.5)
-            .setDepth(spot.y + 2);
+          // 손에 든 것 표시 칸. 땅 슬라임이 그릇 두 개를 나르는 경우까지
+          // 미리 만들어 두고 안 쓸 때는 숨긴다.
+          const carried = Array.from({ length: dishConfig.earthDishCarry }, () => ({
+            bg: this.add.image(spot.x, spot.y, stationBadgeArt["dish-rack"]!).setOrigin(0.5).setDisplaySize(18, 18).setVisible(false),
+            fg: this.add.image(spot.x, spot.y, stationBadgeArt["dish-rack"]!).setOrigin(0.5).setDisplaySize(14, 14).setVisible(false),
+          }));
           const selected = this.add
             .circle(spot.x, spot.y + 14, 30)
             .setStrokeStyle(3, typeColors[actor.typeId], 0.95)
@@ -1300,7 +1318,14 @@ export default function Game() {
                 });
               }
               sprite.last = { x: spot.x, y: spot.y };
-              sprite.carried.setText(actor.carrying.map(carriedIcon).join(" ") ?? "");
+              sprite.carried.forEach((slot, index) => {
+                const held = actor.carrying[index];
+                const art = held ? carriedArt(held) : null;
+                slot.bg.setVisible(Boolean(art?.bg));
+                if (art?.bg) slot.bg.setTexture(art.bg);
+                slot.fg.setVisible(Boolean(art?.fg));
+                if (art?.fg) slot.fg.setTexture(art.fg);
+              });
               sprite.selected.setVisible(selectedActorRef.current === actorId);
               sprite.nameTag.setVisible(selectedActorRef.current === actorId);
               // 아직 행동력이 남은 슬라임에게만 물음표를 띄운다. 지금 고른
@@ -1495,13 +1520,32 @@ export default function Game() {
           setResumeCount(next || helpStation !== null ? null : 3);
           return next;
         });
+        return;
+      }
+      // 스페이스바: 행동력이 남은 다음 슬라임을 고른다. 아무도 남지
+      // 않았으면 턴을 넘긴다. 자기 자신뿐이면 고른 채로 둔다.
+      if (event.code === "Space") {
+        if (settingsOpen || helpStation) return;
+        const current = stateRef.current;
+        if (!current || current.phase !== "playing") return;
+        event.preventDefault();
+        const roster = squadActorIds(squad);
+        const ready = roster.filter((id) => (current.actors[id]?.actionPoints ?? 0) > 0);
+        if (ready.length === 0) {
+          finishTurn();
+          return;
+        }
+        const selected = selectedActorRef.current;
+        setSelectedActor(
+          selected ? (nextReadyActor(current, roster, selected) ?? selected) : ready[0]!,
+        );
       }
     };
     window.addEventListener("keydown", down);
     return () => {
       window.removeEventListener("keydown", down);
     };
-  }, [helpStation, settingsOpen, squad]);
+  }, [helpStation, settingsOpen, squad, finishTurn]);
 
   // 판을 고르기 전에는 선택 화면을 보여 준다.
   if (!squad || !state) {

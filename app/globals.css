@@ -406,13 +406,13 @@ button, select { font: inherit; }
 .order-process .flow-icon { width: 30px; height: 30px; object-fit: contain; }
 .order-card-empty { visibility: hidden; }
 
-/* 설비가 들고 있는 수량. 캔버스 게이지와 같은 값을 숫자까지 보여 준다. */
+/* 설비가 들고 있는 수량. 캔버스 게이지와 같은 값을 숫자까지 보여 준다. 칸
+   나눈 표시는 행동력 게이지(.stat-gauge)와 같은 모양을 쓰고 색만 바꾼다. */
 .station-stock { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 8px; margin: 8px 0 2px; }
 .station-stock b { font-size: 12px; color: #4a2d17; }
 .station-stock small { font-size: 12px; color: #6c4523; font-variant-numeric: tabular-nums; }
-.stock-gauge { display: block; height: 9px; border: 1px solid #8b5c2c; border-radius: 5px; background: #2a1608; overflow: hidden; }
-.stock-gauge i { display: block; height: 100%; background: #8ed07a; }
-.stock-gauge[data-full] i { background: #ffc65c; }
+.station-stock .stat-gauge i[data-on] { background: #8ed07a; border-color: #8ed07a; }
+.station-stock .stat-gauge[data-full] i[data-on] { background: #ffc65c; border-color: #ffc65c; }
 
 /* 영업 시작·마감 임박 문구. 잠깐 크게 떴다가 사라진다. */
 .stage-banner {
@@ -560,8 +560,10 @@ button, select { font: inherit; }
   background: #fff !important;
   object-fit: contain;
 }
-.stage-frame .inspector-station-icon { display: grid; place-items: center; color: #2c1a0e; font-size: clamp(52px, 7vw, 86px); }
+.stage-frame .inspector-station-icon { display: grid; place-items: center; color: #2c1a0e; }
 .stage-frame .inspector-station-icon:hover { transform: translateY(-2px); }
+.inspector-station-icon img,
+.station-help-icon img { width: 78%; height: 78%; object-fit: contain; }
 .game-inspector .eyebrow { margin: 0; color: #7d421d; font-size: 11px; letter-spacing: .14em; }
 .game-inspector h2 { margin: 5px 0 18px; font-size: clamp(26px, 3vw, 38px); }
 .game-inspector h3 { margin: 28px 0 10px; color: #5c3419; font-size: 15px; }
@@ -602,7 +604,7 @@ button, select { font: inherit; }
   background: linear-gradient(#4b2b17, #2b180d);
   box-shadow: 0 24px 80px #000b;
 }
-.station-help-icon { display: grid; place-items: center; width: 108px; height: 108px; border-radius: 50%; background: #fff; font-size: 58px; }
+.station-help-icon { display: grid; place-items: center; width: 108px; height: 108px; border-radius: 50%; background: #fff; }
 .station-help-overlay h2 { margin: 4px 0 10px; font-size: 30px; }
 .station-help-overlay p { margin: 4px 0; color: #e5dced; }
 .station-help-overlay button { grid-column: 1 / -1; justify-self: center; min-width: 140px; background: var(--gold); color: #21120a; }
@@ -1161,7 +1163,6 @@ button, select { font: inherit; }
   .game-inspector { width: 100%; padding: 9px 14px; }
   .stage-frame .inspector-close { width: 32px; height: 32px; font-size: 23px; }
   .inspector-portrait, .inspector-station-icon { width: 76px; height: 76px; margin: 0 auto 3px; border-width: 3px !important; padding: 8px !important; }
-  .stage-frame .inspector-station-icon { font-size: 38px; }
   .game-inspector .eyebrow { font-size: 7px; }
   .game-inspector h2 { margin: 2px 0 5px; font-size: 20px; }
   .game-inspector h3 { margin: 8px 0 4px; font-size: 10px; }
@@ -1174,7 +1175,7 @@ button, select { font: inherit; }
   .inspector-hint { margin-top: 8px; font-size: 8px; }
   .station-help-overlay { padding-right: var(--game-info-rail); }
   .station-help-overlay > div { gap: 10px; width: min(500px, calc(100% - 18px)); padding: 12px; }
-  .station-help-icon { width: 66px; height: 66px; font-size: 36px; }
+  .station-help-icon { width: 66px; height: 66px; }
   .station-help-overlay h2 { margin: 2px 0 4px; font-size: 20px; }
   .station-help-overlay p { font-size: 10px; }
   .station-help-overlay button { min-width: 100px; padding: 5px 10px; }
