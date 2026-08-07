@@ -77,7 +77,6 @@ function validate({ balance, recipes, stages }, list) {
   say(whole(dish.rackCapacity, 1), "그릇 상자 용량은 1 이상이어야 합니다.");
   say(whole(dish.initialCount, 0) && dish.initialCount <= dish.rackCapacity, "초기 그릇 수는 0 이상이고 상자 용량 이하여야 합니다.");
   say(whole(dish.washerCapacity, 1), "세척대 용량은 1 이상이어야 합니다.");
-  say(whole(dish.earthDishCarry, 1), "땅 슬라임 그릇 운반 수는 1 이상이어야 합니다.");
   say(whole(dish.tableCapacity, 1), "테이블 용량은 1 이상이어야 합니다.");
   say(whole(balance.incinerator?.capacity, 1), "소각기 용량은 1 이상이어야 합니다.");
   const orders = balance.orders ?? {};

@@ -29,7 +29,6 @@
     "initialCount": 3,
     "rackCapacity": 3,
     "washerCapacity": 1,
-    "earthDishCarry": 2,
     "tableCapacity": 1
   },
   "incinerator": {

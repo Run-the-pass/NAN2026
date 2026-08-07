@@ -161,7 +161,10 @@ const stationArtStyle: Partial<
   Record<StationId, { onTable?: boolean; lift?: number; grow?: number }>
 > = {
   stove: { onTable: true, lift: 16, grow: 0.92 },
-  blender: { onTable: true, lift: 26, grow: 1.35 },
+  // 믹서기는 칸을 조금 넘되 슬라임보다 커 보이지 않을 만큼만.
+  blender: { onTable: true, lift: 18, grow: 1.18 },
+  // 소각기는 칸을 꽉 채우는데도 어두워서 작아 보인다. 살짝 키워 세운다.
+  trash: { lift: 5, grow: 1.14 },
 };
 // 판이 시작할 때와 마감이 다가올 때 잠깐 띄우는 큰 문구.
 const bannerImages = {
@@ -214,52 +217,52 @@ type InspectorTarget =
 
 const stationPanelInfo: Record<
   StationId,
-  { description: string[]; required: SlimeTypeId[]; steps: string[] }
+  { description: string[]; required: SlimeTypeId[]; steps: { art: string; text: string }[] }
 > = {
   "potato-box": {
     description: ["턴이 끝날 때마다 감자가 한 개 찹니다.", "빈손이나 깨끗한 그릇으로 꺼냅니다. (행동력 1)"],
     required: [],
-    steps: ["🥔 감자 받기"],
+    steps: [{ art: "/food/gamja.png", text: "감자 받기" }],
   },
   "carrot-box": {
     description: ["턴이 끝날 때마다 당근이 한 개 찹니다.", "빈손이나 깨끗한 그릇으로 꺼냅니다. (행동력 1)"],
     required: [],
-    steps: ["🥕 당근 받기"],
+    steps: [{ art: "/food/carrot.png", text: "당근 받기" }],
   },
   "cabbage-box": {
     description: ["턴이 끝날 때마다 양배추가 한 개 찹니다.", "빈손이나 깨끗한 그릇으로 꺼냅니다. (행동력 1)"],
     required: [],
-    steps: ["🥬 양배추 받기"],
+    steps: [{ art: "/food/cabbage.png", text: "양배추 받기" }],
   },
   "banana-box": {
     description: ["바나나를 꺼냅니다. (행동력 1)", "빈손이나 깨끗한 그릇으로 꺼냅니다."],
     required: [],
-    steps: ["🍌 바나나 받기"],
+    steps: [{ art: "/food/banana.png", text: "바나나 받기" }],
   },
   "strawberry-box": {
     description: ["딸기를 꺼냅니다. (행동력 1)", "빈손이나 깨끗한 그릇으로 꺼냅니다."],
     required: [],
-    steps: ["🍓 딸기 받기"],
+    steps: [{ art: "/food/strawberry.png", text: "딸기 받기" }],
   },
   "mushroom-box": {
     description: ["버섯을 꺼냅니다. (행동력 1)", "빈손이나 깨끗한 그릇으로 꺼냅니다."],
     required: [],
-    steps: ["🍄 버섯 받기"],
+    steps: [{ art: "/food/mushroom.png", text: "버섯 받기" }],
   },
   oven: {
     description: ["불 슬라임만 구울 수 있습니다. (행동력 1)", "재료를 올리고 꺼내는 것은 누구나 합니다."],
     required: ["fire"],
-    steps: ["🍄 버섯", "🔥 불 슬라임이 굽기", "🍽️ 그릇"],
+    steps: [{ art: "/food/mushroom.png", text: "버섯" }, { art: "/stations/oven.png", text: "불 슬라임이 굽기" }, { art: "/food/plate.png", text: "그릇에 담기" }],
   },
   "dish-return": {
     description: ["제출한 그릇이 한 턴 뒤 더러운 채로 나옵니다.", "집어서 세척대로 옮깁니다. (행동력 1)"],
     required: [],
-    steps: ["🍴 그릇 회수", "🫧 세척대로"],
+    steps: [{ art: "/food/dirty-plate.png", text: "더러운 그릇 회수" }, { art: "/stations/washer.png", text: "세척대로" }],
   },
   fryer: {
     description: ["불 슬라임만 튀길 수 있습니다. (행동력 1)", "감자와 버섯을 튀깁니다."],
     required: ["fire"],
-    steps: ["🥔 감자·버섯", "🍤 불 슬라임이 튀기기", "🍽️ 그릇"],
+    steps: [{ art: "/food/gamja.png", text: "감자·버섯" }, { art: "/stations/fryer.png", text: "불 슬라임이 튀기기" }, { art: "/food/plate.png", text: "그릇에 담기" }],
   },
   blender: {
     description: [
@@ -267,52 +270,54 @@ const stationPanelInfo: Record<
       "넣은 과일은 뺄 수 없고, 물을 먼저 채울 수도 없습니다.",
     ],
     required: ["water", "lightning"],
-    steps: ["🍌 과일 넣기", "💧 물 슬라임이 물", "🔌 번개 슬라임이 가동"],
+    steps: [{ art: "/food/banana.png", text: "과일 넣기" }, { art: "/stations/washer-water.png", text: "물 슬라임이 물" }, { art: "/ui/energy.png", text: "번개 슬라임이 가동" }],
   },
   stove: {
     description: ["땅 슬라임만 재료를 썰 수 있습니다. (행동력 1)", "감자·당근·양배추를 채썹니다."],
     required: ["earth"],
-    steps: ["🥔 감자", "🔪 땅 슬라임이 썰기", "🍽️ 그릇"],
+    steps: [{ art: "/food/gamja.png", text: "감자·당근·양배추" }, { art: "/food/doma.png", text: "땅 슬라임이 썰기" }, { art: "/food/plate.png", text: "그릇에 담기" }],
   },
   submission: {
     description: ["주문 음식이 담긴 그릇을 제출합니다. (행동력 1)", "그릇은 한 턴 뒤 반납대로 갑니다."],
     required: [],
-    steps: ["🍲 음식", "📬 제출"],
+    steps: [{ art: "/food/plate.png", text: "완성 음식" }, { art: "/stations/submission.png", text: "제출" }],
   },
   trash: {
     description: ["쓰레기를 최대 5개까지 보관합니다. (버리기 행동력 1)", "불 슬라임이 소각해 비웁니다. (행동력 1)"],
     required: ["fire"],
-    steps: ["🗑️ 쓰레기 투입", "🔥 소각"],
+    steps: [{ art: "/stations/trash-full.png", text: "쓰레기 투입" }, { art: "/stations/trash.png", text: "불 슬라임이 소각" }],
   },
   "dish-rack": {
     description: ["깨끗한 그릇을 꺼냅니다. (행동력 1)", "상자에는 그릇이 최대 3개고 새로 생기지 않습니다."],
     required: [],
-    steps: ["🍽️ 그릇 받기"],
+    steps: [{ art: "/food/plate.png", text: "깨끗한 그릇 받기" }],
   },
   washer: {
     description: ["더러운 그릇을 맡깁니다. (행동력 1)", "물 슬라임만 세척할 수 있습니다. (행동력 1)"],
     required: ["water"],
-    steps: ["🍽️ 더러운 그릇", "💧 세척"],
+    steps: [{ art: "/food/dirty-plate.png", text: "더러운 그릇 넣기" }, { art: "/stations/washer-water.png", text: "물 슬라임이 세척" }],
   },
   table: {
     description: ["재료나 그릇을 한 칸 보관합니다.", "다른 슬라임에게 물건을 인계할 수 있습니다."],
     required: [],
-    steps: ["🪵 보관", "🤝 인계"],
+    steps: [{ art: "/stations/table.png", text: "잠깐 올려 두기" }, { art: "/food/plate.png", text: "다시 집기" }],
   },
 };
 
-// 슬라임 정보 패널의 "가능한 일"에 붙일 아이콘.
-const roleIcons: Record<string, string> = {
-  "물 공급": "💧",
-  설거지: "🫧",
-  가열: "🔥",
-  소각: "🗑️",
-  운반: "📦",
-  발전: "🔌",
-  손질: "🔪",
-  썰기: "🥕",
-  "다중 운반": "🍽️",
+// 슬라임 "특징"에 붙일 그림. 이모지 대신 게임에 쓰는 에셋을 그대로 쓴다.
+const traitArt: Record<string, string> = {
+  "water-supply": "/stations/washer-water.png",
+  wash: "/stations/washer.png",
+  "cook-heat": "/stations/oven.png",
+  burn: "/stations/trash.png",
+  "double-move": "/ui/energy.png",
+  power: "/stations/blender.png",
+  chop: "/food/doma.png",
 };
+
+// 버튼에 쓸 표정 없는 몸. 그려 온 SVG는 얼굴이 따로라 그대로 쓰면 된다.
+const facelessSlime = (typeId: SlimeTypeId) =>
+  authoredSlimeAssets[typeId] ?? slimeDataUri(typeId, "down", { faceless: true });
 
 const slimePortrait = (typeId: SlimeTypeId) =>
   typeId === "water"
@@ -325,9 +330,9 @@ function ActionPoints({ actor }: { actor: { typeId: SlimeTypeId; actionPoints: n
   return (
     <ul className="slime-stats">
       <li>
+        <span>행동력</span>
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img className="energy-icon" src="/ui/energy.png" alt="" aria-hidden />
-        <span>행동력</span>
         <span
           className="stat-gauge"
           role="img"
@@ -396,7 +401,8 @@ function OrderFlow({ foodId }: { foodId: ItemId }) {
       {recipe.station === "blender" ? (
         <>
           <i aria-hidden>+</i>
-          <span aria-hidden>💧</span>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img className="flow-icon" src="/stations/washer-water.png" alt="" aria-hidden />
         </>
       ) : null}
       <i aria-hidden>→</i>
@@ -488,12 +494,10 @@ function GameInspector({
   state,
   target,
   onClose,
-  onHelp,
 }: {
   state: GameState;
   target: InspectorTarget;
   onClose: () => void;
-  onHelp: (id: StationId) => void;
 }) {
   if (target.kind === "actor") {
     const actor = state.actors[target.id];
@@ -504,16 +508,18 @@ function GameInspector({
         <button className="inspector-close" type="button" onClick={onClose} aria-label="정보 패널 닫기">×</button>
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img className="inspector-portrait" src={slimePortrait(actor.typeId)} alt="" />
-        <p className="eyebrow">SLIME INFO</p>
         <h2>{actor.name}</h2>
         <p className="inspector-copy">{type.trait}</p>
         <ActionPoints actor={actor} />
-        <h3>가능한 일</h3>
+        <h3>특징</h3>
         <div className="inspector-badges">
-          {type.role.split(" · ").map((role) => (
-            <span key={role}>
-              <i aria-hidden>{roleIcons[role] ?? "•"}</i>
-              {role}
+          {type.traits.map((one) => (
+            // 자세한 설명은 마우스를 올렸을 때만 보여 준다. 패널이 길어지면
+            // 정작 봐야 할 행동력과 재고가 밀린다.
+            <span key={one.id} title={one.detail}>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={traitArt[one.id]} alt="" aria-hidden />
+              {one.name}
             </span>
           ))}
         </div>
@@ -526,10 +532,9 @@ function GameInspector({
   return (
     <aside className="game-inspector" data-station aria-label={`${stationLabels[type]} 정보`}>
       <button className="inspector-close" type="button" onClick={onClose} aria-label="정보 패널 닫기">×</button>
-      <button className="inspector-station-icon" type="button" onClick={() => onHelp(type)} aria-label={`${stationLabels[type]} 자세히 보기`}>
+      <span className="inspector-station-icon" aria-hidden>
         <StationIcon id={type} />
-      </button>
-      <p className="eyebrow">STATION INFO</p>
+      </span>
       <h2>{stationLabels[type]}</h2>
       <div className="inspector-copy">
         {info.description.map((line) => <p key={line}>{line}</p>)}
@@ -545,34 +550,19 @@ function GameInspector({
           </span>
         )) : <span className="any-slime">누구나 사용 가능</span>}
       </div>
-      <h3>작업 흐름</h3>
+      <h3>가능한 작업</h3>
       <div className="station-workflow">
         {info.steps.map((step, index) => (
-          <span key={step}>{index > 0 && <i aria-hidden>→</i>}<b>{step}</b></span>
+          <span key={step.text}>
+            {index > 0 && <i aria-hidden>→</i>}
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={step.art} alt="" aria-hidden />
+            <b>{step.text}</b>
+          </span>
         ))}
       </div>
       <small className="inspector-hint">옆 칸에 선 슬라임을 고르고 설비를 클릭하면 사용합니다.</small>
     </aside>
-  );
-}
-
-function StationHelp({ id, onClose }: { id: StationId; onClose: () => void }) {
-  const info = stationPanelInfo[id];
-  return (
-    <section className="station-help-overlay" role="dialog" aria-modal="true" aria-labelledby="station-help-title">
-      <div>
-        <span className="station-help-icon" aria-hidden>
-          <StationIcon id={id} />
-        </span>
-        <section>
-          <p className="eyebrow">도구 인포</p>
-          <h2 id="station-help-title">{stationLabels[id]}</h2>
-          {info.description.map((line) => <p key={line}>{line}</p>)}
-          <p><b>조작:</b> 설비 옆 칸의 슬라임을 고르고 설비 타일을 클릭</p>
-        </section>
-        <button type="button" onClick={onClose}>확인</button>
-      </div>
-    </section>
   );
 }
 
@@ -584,12 +574,11 @@ export default function Game() {
   // 턴제는 한 마리씩 조작한다. 선택은 늘 0마리 아니면 1마리다.
   const [selectedActor, setSelectedActor] = useState<ActorId | null>(null);
   const [inspected, setInspected] = useState<InspectorTarget | null>(null);
-  const [helpStation, setHelpStation] = useState<StationId | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [resumeCount, setResumeCount] = useState<number | null>(null);
   const [banner, setBanner] = useState<keyof typeof bannerImages | null>(null);
   const [toast, setToast] = useState<string | null>(null);
-  const paused = settingsOpen || helpStation !== null || resumeCount !== null;
+  const paused = settingsOpen || resumeCount !== null;
 
   const [saved, setSaved] = useState("");
   const stateRef = useRef(state);
@@ -756,7 +745,7 @@ export default function Game() {
         contents: Phaser.GameObjects.Image;
         showContents: (key: string) => void;
       }>>;
-      blenderHints!: Partial<Record<StationInstanceId, Phaser.GameObjects.Text>>;
+      blenderHints!: Partial<Record<StationInstanceId, Phaser.GameObjects.Image>>;
       // 재고 게이지와, 골랐을 때만 뜨는 이름표.
       gauges!: Partial<Record<StationInstanceId, Phaser.GameObjects.Graphics>>;
       stationNames!: Partial<Record<StationInstanceId, Phaser.GameObjects.Text>>;
@@ -1001,6 +990,19 @@ export default function Game() {
 
       create() {
         // 파티클용 점 텍스처. 파일을 더 두지 않고 그려서 만든다.
+        if (!this.textures.exists("water-drop")) {
+          // 물이 필요하다는 표시. 이모지 대신 그려서 텍스처로 만든다.
+          const drop = this.make.graphics({ x: 0, y: 0 }, false);
+          drop.fillStyle(0x2a1608, 1)
+            .fillCircle(16, 22, 12)
+            .fillTriangle(16, 2, 5, 20, 27, 20);
+          drop.fillStyle(0x6ec8ff, 1)
+            .fillCircle(16, 22, 9)
+            .fillTriangle(16, 7, 8, 20, 24, 20);
+          drop.fillStyle(0xffffff, 0.75).fillCircle(12, 21, 3);
+          drop.generateTexture("water-drop", 32, 36);
+          drop.destroy();
+        }
         if (!this.textures.exists("spark-dot")) {
           const dot = this.make.graphics({ x: 0, y: 0 }, false);
           dot.fillStyle(0xffffff, 1).fillCircle(6, 6, 6);
@@ -1126,13 +1128,11 @@ export default function Game() {
             };
             // 물이 필요할 때 띄우는 안내 아이콘.
             this.blenderHints[id] = this.add
-              .text(x + TILE_SIZE / 2 - 8, y - lift - 12, "", {
-                fontFamily: "Jua, sans-serif",
-                fontSize: "20px",
-                resolution: RENDER_SCALE,
-              })
+              .image(x + TILE_SIZE / 2 - 6, y - lift - 10, "water-drop")
               .setOrigin(0.5)
-              .setDepth(y + 3);
+              .setDisplaySize(16, 18)
+              .setDepth(y + 3)
+              .setVisible(false);
           }
           const itemArt = stationBadgeArt[type];
           if (itemArt) {
@@ -1199,10 +1199,16 @@ export default function Game() {
                 inputEvent.stopPropagation();
                 if (!fromCanvas(pointer)) return;
                 if (!pointer.leftButtonDown()) return;
-                // 설비 클릭은 정보를 열고, 고른 슬라임이 있으면 사용까지 한다.
+                // 쓸 수 있으면 그대로 쓴다. 쓸 수 없는 설비를 누른 것은
+                // "이게 뭔지 보자"는 뜻이지 실패를 보고 싶다는 뜻이 아니다.
+                // 그럴 때는 거절 토스트를 띄우지 않고 슬라임 선택을 놓는다.
                 setInspected({ kind: "station", id });
                 const actorId = selectedActorRef.current;
                 if (!actorId) return;
+                if (!this.usable[id]) {
+                  setSelectedActor(null);
+                  return;
+                }
                 metrics.current.buttonCommands += 1;
                 setState((value) =>
                   value ? interactActor(value, actorId, id) : value,
@@ -1212,12 +1218,16 @@ export default function Game() {
         }
 
         this.sparks = this.add
+          // 점 하나짜리 파티클이라 크게 튀기면 싸구려로 보인다. 작게,
+          // 짧게, 옅게 흩어지도록 둔다.
           .particles(0, 0, "spark-dot", {
-            lifespan: 520,
-            speed: { min: 40, max: 90 },
-            scale: { start: 0.55, end: 0 },
-            alpha: { start: 0.95, end: 0 },
-            gravityY: 120,
+            lifespan: { min: 260, max: 430 },
+            speed: { min: 25, max: 70 },
+            angle: { min: 200, max: 340 },
+            scale: { start: 0.32, end: 0 },
+            alpha: { start: 0.8, end: 0 },
+            rotate: { start: 0, end: 180 },
+            gravityY: 200,
             emitting: false,
           })
           .setDepth(900);
@@ -1260,9 +1270,9 @@ export default function Game() {
                 );
               },
             );
-          // 손에 든 것 표시 칸. 땅 슬라임이 그릇 두 개를 나르는 경우까지
-          // 미리 만들어 두고 안 쓸 때는 숨긴다.
-          const carried = Array.from({ length: dishConfig.earthDishCarry }, () => ({
+          // 손에 든 것 표시 칸. 한 번에 하나만 들지만 배열로 두면 표시
+          // 코드가 그대로다.
+          const carried = Array.from({ length: 1 }, () => ({
             bg: this.add.image(spot.x, spot.y, stationBadgeArt["dish-rack"]!).setOrigin(0.5).setDisplaySize(18, 18).setVisible(false),
             fg: this.add.image(spot.x, spot.y, stationBadgeArt["dish-rack"]!).setOrigin(0.5).setDisplaySize(14, 14).setVisible(false),
           }));
@@ -1394,12 +1404,14 @@ export default function Game() {
                 sprite.motion = this.startMotion(sprite.visual, mode, sprite.scale);
                 // 발밑에서 작게 튀는 먼지. 걸을 때와 일할 때 색을 다르게 준다.
                 if (mode !== "walk") {
+                  // 몸 아래쪽에서 살짝. 발밑에 딱 붙이면 바닥에 박힌 것처럼
+                  // 보이고, 몸 한가운데면 슬라임을 가린다.
                   this.burst(
                     spot.x,
-                    spot.y + 14,
+                    spot.y + 8,
                     mode === "stir" ? 0xffe08a : 0xd8c7a8,
-                    mode === "stir" ? 10 : 6,
-                    mode === "stir" ? 110 : 60,
+                    mode === "stir" ? 7 : 5,
+                    mode === "stir" ? 80 : 50,
                   );
                 }
                 this.time.delayedCall(MOTION_MS, () => {
@@ -1532,7 +1544,7 @@ export default function Game() {
                 else view.contents.setVisible(false);
                 view.water.setVisible(blender.water);
                 // 과일만 들어간 믹서기는 물이 필요하다는 것을 아이콘으로 알린다.
-                this.blenderHints[id]!.setText(stage === "needs-water" ? "💧" : "");
+                this.blenderHints[id]!.setVisible(stage === "needs-water");
               }
             }
             // 설비에서 무슨 일이 일어났는지 파티클로 한 번 보여 준다.
@@ -1632,7 +1644,6 @@ export default function Game() {
     setSaved("");
     setSelectedActor(null);
     setInspected(null);
-    setHelpStation(null);
     setSettingsOpen(false);
     setResumeCount(null);
     setState(next);
@@ -1660,16 +1671,11 @@ export default function Game() {
       ["SELECT", "INPUT", "TEXTAREA"].includes(target.tagName);
     const down = (event: KeyboardEvent) => {
       if (isTyping(event.target) || event.repeat) return;
-      if (event.code === "Escape" && helpStation) {
-        event.preventDefault();
-        setHelpStation(null);
-        return;
-      }
       if (event.code === "Escape") {
         event.preventDefault();
         setSettingsOpen((open) => {
           const next = !open;
-          setResumeCount(next || helpStation !== null ? null : 3);
+          setResumeCount(next ? null : 3);
           return next;
         });
         return;
@@ -1677,7 +1683,7 @@ export default function Game() {
       // 스페이스바: 행동력이 남은 다음 슬라임을 고른다. 아무도 남지
       // 않았으면 턴을 넘긴다. 자기 자신뿐이면 고른 채로 둔다.
       if (event.code === "Space") {
-        if (settingsOpen || helpStation) return;
+        if (settingsOpen) return;
         const current = stateRef.current;
         if (!current || current.phase !== "playing") return;
         event.preventDefault();
@@ -1703,7 +1709,7 @@ export default function Game() {
     return () => {
       window.removeEventListener("keydown", down);
     };
-  }, [helpStation, settingsOpen, squad, finishTurn]);
+  }, [settingsOpen, squad, finishTurn]);
 
   // 판을 고르기 전에는 선택 화면을 보여 준다.
   if (!squad || !state) {
@@ -1746,7 +1752,7 @@ export default function Game() {
           open={settingsOpen}
           onOpenChange={(open) => {
             setSettingsOpen(open);
-            setResumeCount(open || helpStation !== null ? null : 3);
+            setResumeCount(open ? null : 3);
           }}
         />
         {resumeCount !== null && (
@@ -1799,7 +1805,13 @@ export default function Game() {
                     setSelectedActor((current) => (current === actorId ? null : actorId))
                   }
                 >
-                  <b>{slimeTypes[actor.typeId].name}</b>
+                  {/* 표정 없는 몸만. 얼굴은 캔버스에서만 그린다. */}
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    className="roster-slime"
+                    src={facelessSlime(actor.typeId)}
+                    alt={slimeTypes[actor.typeId].name}
+                  />
                   <small>
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img className="energy-icon" src="/ui/energy.png" alt="" aria-hidden />
@@ -1827,14 +1839,9 @@ export default function Game() {
               state={state}
               target={inspected}
               onClose={() => setInspected(null)}
-              onHelp={setHelpStation}
             />
           )}
         </div>
-
-        {helpStation && (
-          <StationHelp id={helpStation} onClose={() => setHelpStation(null)} />
-        )}
 
 
       </div>

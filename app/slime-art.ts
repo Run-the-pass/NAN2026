@@ -39,10 +39,11 @@ const idleCss = `<style>
 export function slimeSvg(
   typeId: SlimeTypeId,
   facing: Facing = "down",
-  opts: { blink?: boolean; animate?: boolean } = {},
+  opts: { blink?: boolean; animate?: boolean; faceless?: boolean } = {},
 ) {
   const { outer, inner } = palettes[typeId];
-  const face = faceOffsets[facing];
+  // 버튼처럼 몸만 보여 주는 자리에서는 얼굴을 그리지 않는다.
+  const face = opts.faceless ? null : faceOffsets[facing];
   const eyes = opts.blink
     ? `<rect x="493" y="668" width="66" height="16" rx="8" fill="#000000"/>
 <rect x="693" y="668" width="66" height="16" rx="8" fill="#000000"/>`
@@ -80,7 +81,7 @@ ${
 export function slimeDataUri(
   typeId: SlimeTypeId,
   facing: Facing = "down",
-  opts: { blink?: boolean; animate?: boolean } = {},
+  opts: { blink?: boolean; animate?: boolean; faceless?: boolean } = {},
 ) {
   return `data:image/svg+xml;base64,${btoa(slimeSvg(typeId, facing, opts))}`;
 }

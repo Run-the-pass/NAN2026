@@ -223,8 +223,7 @@ function checkBalance() {
     !whole(dish.initialCount, 0) ||
     dish.initialCount > dish.rackCapacity ||
     !whole(dish.washerCapacity, 1) ||
-    !whole(dish.earthDishCarry, 1) ||
-    !whole(dish.tableCapacity, 1)
+        !whole(dish.tableCapacity, 1)
   ) {
     problems.push("그릇 수치가 올바르지 않습니다. 초기 개수는 보관함 용량 이하여야 합니다.");
   }
@@ -313,7 +312,8 @@ export const slimeTypes: Record<
   {
     name: string;
     trait: string;
-    role: string;
+    // 정보 패널의 "특징". 이름과, 마우스를 올렸을 때 보여 줄 설명이다.
+    traits: { id: string; name: string; detail: string }[];
     element: SlimeElement;
     elementLabel: string;
   }
@@ -321,28 +321,39 @@ export const slimeTypes: Record<
   water: {
     name: "물",
     trait: "물을 공급하고 설거지를 담당합니다.",
-    role: "물 공급 · 설거지",
+    traits: [
+      { id: "water-supply", name: "물 공급", detail: "믹서기에 물을 채웁니다. 과일을 넣은 뒤에만 채울 수 있습니다." },
+      { id: "wash", name: "설거지", detail: "세척대에 든 더러운 그릇을 한 번에 씻습니다." },
+    ],
     element: "water",
     elementLabel: "물",
   },
   fire: {
     name: "불",
-    trait: "열을 다뤄 쓰레기를 소각합니다.",
-    role: "가열 · 소각",
+    trait: "열을 다뤄 굽고 튀기고 태웁니다.",
+    traits: [
+      { id: "cook-heat", name: "가열 조리", detail: "화로와 튀김기를 돌려 굽거나 튀깁니다." },
+      { id: "burn", name: "소각", detail: "가득 찬 소각기를 한 번에 비웁니다." },
+    ],
     element: "fire",
     elementLabel: "불",
   },
   lightning: {
     name: "번개",
     trait: "턴마다 두 번 움직여 재료와 음식을 빠르게 나릅니다.",
-    role: "운반 · 발전",
+    traits: [
+      { id: "double-move", name: "두 번 행동", detail: "턴마다 행동력이 2입니다. 다른 슬라임은 1입니다." },
+      { id: "power", name: "발전", detail: "믹서기를 돌려 스무디를 만듭니다." },
+    ],
     element: "lightning",
     elementLabel: "번개",
   },
   earth: {
     name: "땅",
-    trait: "재료를 썰고 여러 그릇을 안정적으로 나릅니다.",
-    role: "손질 · 썰기 · 다중 운반",
+    trait: "재료를 도마에서 손질합니다.",
+    traits: [
+      { id: "chop", name: "손질", detail: "도마에서 감자·당근·양배추를 채썹니다." },
+    ],
     element: "earth",
     elementLabel: "땅",
   },
@@ -1081,18 +1092,9 @@ function spend(actor: ActorState, cost: number, status: ActorStatus): ActorState
   };
 }
 
-function carryCapacity(actor: ActorState, carried: Carried) {
-  return actor.typeId === "earth" && isDish(carried)
-    ? dishConfig.earthDishCarry
-    : 1;
-}
-
-function canCarry(actor: ActorState, carried: Carried) {
-  if (actor.carrying.length >= carryCapacity(actor, carried)) return false;
-  return (
-    actor.carrying.length === 0 ||
-    (isDish(carried) && actor.carrying.every(isDish))
-  );
+// 누구나 한 번에 하나만 든다. 땅 슬라임의 그릇 다중 운반은 없앴다.
+function canCarry(actor: ActorState) {
+  return actor.carrying.length === 0;
 }
 
 const dishIndex = (
@@ -1247,7 +1249,7 @@ function atIngredientBox(
     return refuse(state, actor, `${stationLabels[stationType(station)]}가 비어 있습니다.`);
   }
   const clean = dishIndex(actor, (dish) => dish.status === "clean");
-  if (clean < 0 && !canCarry(actor, item)) {
+  if (clean < 0 && !canCarry(actor)) {
     return refuse(state, actor, "이미 음식이나 그릇을 들고 있습니다.");
   }
   const next = spend(actor, actionCost.carry, "CARRYING");
@@ -1348,7 +1350,7 @@ function atCooktop(
     const clean = servedBare(onBoard)
       ? -1
       : dishIndex(actor, (dish) => dish.status === "clean");
-    if (clean < 0 && !canCarry(actor, onBoard)) {
+    if (clean < 0 && !canCarry(actor)) {
       return refuse(state, actor, "완성 음식을 들 자리가 없습니다.");
     }
     const carrying =
@@ -1442,7 +1444,7 @@ function atBlender(
     const clean = servedBare(blender.food)
       ? -1
       : dishIndex(actor, (dish) => dish.status === "clean");
-    if (clean < 0 && !canCarry(actor, blender.food)) {
+    if (clean < 0 && !canCarry(actor)) {
       return refuse(state, actor, "완성 음식을 들 자리가 없습니다.");
     }
     const food = blender.food;
@@ -1595,7 +1597,7 @@ function atWasher(
     });
   }
   // 씻은 그릇 꺼내기.
-  if (!canCarry(actor, washer.dish)) {
+  if (!canCarry(actor)) {
     return refuse(state, actor, "씻은 그릇을 들 수 없습니다.");
   }
   return event(state, `${actor.name}이(가) 씻은 그릇을 꺼냈습니다.`, {
@@ -1678,7 +1680,7 @@ function atDishReturn(
   const waiting = state.dishReturns[station]!;
   const dish = waiting[0];
   if (!dish) return refuse(state, actor, "반납대가 비어 있습니다.");
-  if (!canCarry(actor, dish)) {
+  if (!canCarry(actor)) {
     return refuse(state, actor, "더러운 그릇을 들 자리가 없습니다.");
   }
   return event(state, `${actor.name}이(가) 반납대에서 더러운 그릇을 들었습니다.`, {
@@ -1719,7 +1721,7 @@ function atDishRack(
       },
     );
   }
-  if (ready && canCarry(actor, ready)) {
+  if (ready && canCarry(actor)) {
     return event(state, `${actor.name}이(가) 깨끗한 그릇을 들었습니다.`, {
       actors: patchActor(state, actorId, {
         ...spend(actor, actionCost.carry, "CARRYING"),
@@ -1803,7 +1805,7 @@ function atTable(
 
   // 빈손이면 집어 든다. 빈 테이블이면 아무 동작도 하지 않는다.
   if (!tableItem) return refuse(state, actor, "테이블이 비어 있습니다.");
-  if (!canCarry(actor, tableItem)) {
+  if (!canCarry(actor)) {
     return refuse(state, actor, "테이블의 물건을 들 수 없습니다.");
   }
   return put(

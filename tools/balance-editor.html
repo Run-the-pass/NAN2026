@@ -147,7 +147,6 @@ function drawBalance() {
       numberField("시작 개수", () => b.dish.initialCount, (v) => { b.dish.initialCount = v; }),
       numberField("그릇 상자 용량", () => b.dish.rackCapacity, (v) => { b.dish.rackCapacity = v; }, 1),
       numberField("세척대 용량", () => b.dish.washerCapacity, (v) => { b.dish.washerCapacity = v; }, 1),
-      numberField("땅 슬라임 운반 수", () => b.dish.earthDishCarry, (v) => { b.dish.earthDishCarry = v; }, 1),
       numberField("테이블 용량", () => b.dish.tableCapacity, (v) => { b.dish.tableCapacity = v; }, 1),
     ]),
     group("소각기", [

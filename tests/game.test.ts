@@ -783,7 +783,12 @@ test("세척은 물 슬라임만 하고 넣기는 누구나 한다", () => {
 
 test("속성 슬라임은 새 ID와 턴당 행동력을 사용한다", () => {
   assert.deepEqual(Object.keys(slimeTypes), ["water", "fire", "lightning", "earth"]);
-  assert.equal(slimeTypes.earth.role.includes("썰기"), true);
+  assert.ok(slimeTypes.earth.traits.some((one) => one.id === "chop"));
+  // 특징마다 툴팁에 쓸 설명이 있어야 한다.
+  for (const type of Object.values(slimeTypes)) {
+    assert.ok(type.traits.length > 0);
+    for (const one of type.traits) assert.ok(one.name && one.detail.length > 5);
+  }
   assert.equal(maxActionPoints("lightning"), 2);
   assert.equal(maxActionPoints("earth"), 1);
   assert.doesNotThrow(() =>
@@ -885,21 +890,21 @@ test("슬라임 아트는 네 속성색과 방향별 얼굴을 만든다", () =>
   assert.equal(authoredFaceLayout("up"), null);
 });
 
-test("그릇은 고유 ID로 생성되고 땅 슬라임만 두 개를 나른다", () => {
-  let state = initialState(1, ["earth", "water"]);
+test("그릇은 고유 ID로 생성되고 누구나 하나씩 든다", () => {
+  const state = initialState(1, ["earth", "water"]);
   assert.equal(state.dishRacks[dishRackId]!.length, dishConfig.initialCount);
   assert.equal(
     new Set(state.dishRacks[dishRackId]!.map((dish) => dish.id)).size,
     state.dishRacks[dishRackId]!.length,
   );
-  state = actAt(state, "earth-1", dishRackId);
-  state = actAt(state, "earth-1", dishRackId);
-  assert.equal(state.actors["earth-1"]!.carrying.length, dishConfig.earthDishCarry);
-
-  let ordinary = initialState(1, ["water"]);
-  ordinary = actAt(ordinary, "water-1", dishRackId);
-  ordinary = actAt(ordinary, "water-1", dishRackId);
-  assert.ok(ordinary.actors["water-1"]!.carrying.length <= 1);
+  // 누구나 한 번에 하나만 든다. 땅 슬라임의 그릇 다중 운반은 없앴다.
+  for (const actorId of ["earth-1", "water-1"] as const) {
+    const took = actAt(state, actorId, dishRackId);
+    assert.equal(took.actors[actorId]!.carrying.length, 1);
+    // 한 번 더 눌러도 두 개가 되지는 않는다.
+    const again = actAt(took, actorId, dishRackId);
+    assert.ok(again.actors[actorId]!.carrying.length <= 1);
+  }
 });
 
 test("그릇은 조리·제출·오염·세척 동안 ID를 보존한다", () => {
