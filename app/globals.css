@@ -21,7 +21,7 @@ html, body { width: 100%; margin: 0; min-height: 100%; overscroll-behavior: none
 html:has(.home-screen), html:has(.home-screen) body { overflow: hidden; }
 
 body {
-  background: #241408;
+  background: var(--plank-wall), #241408;
   color: var(--ink);
   font-family: Jua, "Apple SD Gothic Neo", sans-serif;
 }
@@ -33,6 +33,11 @@ button, select { font: inherit; }
   --cursor-arrow: url("/ui/cursor.png") 2 0, auto;
   --cursor-hand: url("/ui/cursor-click.png") 9 0, pointer;
   --cursor-deny: url("/ui/cursor.png") 2 0, not-allowed;
+  /* 나뭇결. 원래보다 대비를 크게 낮춰 배경이 튀지 않게 한다. 산만하면
+     두 색을 더 가깝게, 밋밋하면 더 벌리면 된다. 여기 한곳만 만진다. */
+  --plank-wall: repeating-linear-gradient(0deg, #33200f 0 58px, #2b1a0c 59px 63px);
+  --plank-rail: repeating-linear-gradient(0deg, #44290f 0 58px, #3b230c 59px 63px);
+  --plank-floor: repeating-linear-gradient(90deg, #573520 0 58px, #4e2f1b 59px 62px);
 }
 body { cursor: var(--cursor-arrow); }
 button:not(:disabled), a, [role="button"], summary, label, input[type="range"] {
@@ -300,7 +305,7 @@ button:disabled { cursor: var(--cursor-arrow); }
   width: 100%;
   height: 100%;
   overflow: hidden;
-  background: #241408;
+  background: var(--plank-wall), #241408;
 }
 
 #game-canvas {
@@ -310,7 +315,7 @@ button:disabled { cursor: var(--cursor-arrow); }
   bottom: var(--game-bottom-rail);
   left: var(--game-side-rail);
   overflow: hidden;
-  background: #2e1a0c;
+  background: var(--plank-floor), #2e1a0c;
 }
 
 #game-canvas canvas {
@@ -359,14 +364,15 @@ button:disabled { cursor: var(--cursor-arrow); }
 
 .order-card {
   display: grid;
-  grid-template-rows: auto 1fr auto auto;
+  grid-template-rows: 1fr auto;
+  align-content: center;
   min-width: 0;
-  min-height: 158px;
+  min-height: 118px;
   overflow: hidden;
   position: relative;
   border: 2px solid #815329;
   border-radius: 4px;
-  padding-top: 8px;
+  padding: 8px 0;
   background: linear-gradient(#f0ddb3, #d7b77e);
   box-shadow: inset 0 0 0 2px #fff3ce66, 0 7px 0 #221208, 0 10px 18px #0006;
   color: #2c1a0e;
@@ -388,13 +394,7 @@ button:disabled { cursor: var(--cursor-arrow); }
 }
 .order-next b { font-size: 10px; opacity: .85; }
 .order-next-empty { font-size: 13px; opacity: .6; }
-.order-card > header,
-.order-card > footer { display: flex; align-items: center; justify-content: space-between; gap: 6px; padding: 6px 9px; }
-.order-card > header { color: #5b371c; font-size: 10px; }
-.order-card > header span { white-space: nowrap; }
-.order-card > footer { justify-content: center; background: #4b2b17; color: #fff0c8; font-size: 10px; }
-.order-card > footer span { font-size: 18px; }
-.order-food { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 7px; padding: 4px 10px; font-size: 15px; }
+.order-food { display: grid; grid-template-columns: auto 1fr; align-items: center; gap: 7px; padding: 4px 10px; font-size: 15px; }
 .order-food > span { font-size: 34px; }
 .order-food small { color: #8b3f1f; font-size: 13px; }
 /* 완성 음식은 빈 접시 위에 얹어 보여 준다. */
@@ -525,7 +525,7 @@ button:disabled { cursor: var(--cursor-arrow); }
   bottom: 0;
   width: var(--game-info-rail);
   border-left: 5px solid #1d1009;
-  background: linear-gradient(90deg, #0004, transparent 12px), #3f2413;
+  background: linear-gradient(90deg, #0004, transparent 12px), var(--plank-rail), #3f2413;
 }
 
 .game-inspector {
@@ -637,7 +637,7 @@ button:disabled { cursor: var(--cursor-arrow); }
   width: 100%;
   min-height: 100svh;
   padding: 20px;
-  background: #2b1a0d;
+  background: var(--plank-wall), #2b1a0d;
 }
 
 .select-shell button,
@@ -1152,6 +1152,7 @@ button:disabled { cursor: var(--cursor-arrow); }
   .order-card > header { padding: 2px 5px; font-size: 7px; }
   .order-card > footer { padding: 2px 4px; font-size: 7px; }
   .order-card > footer span { font-size: 12px; }
+  .order-card { min-height: 84px; }
   .order-food { gap: 3px; padding: 2px 5px; font-size: 10px; }
   .order-food > span { font-size: 21px; }
   .order-food small { font-size: 9px; }
@@ -1352,4 +1353,4 @@ button:disabled { cursor: var(--cursor-arrow); }
 
 /* 다음 주문 카드는 같은 판형에 흐리게. 아직 받은 주문이 아니다. */
 .order-card-next { opacity: .62; }
-.order-card-next > header { color: #7a5330; }
+

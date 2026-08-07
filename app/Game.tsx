@@ -46,6 +46,7 @@ import {
   stationElements,
   allRecipes,
   type ActorId,
+  type Order,
   type Carried,
   type GameState,
   type ItemId,
@@ -397,52 +398,29 @@ function OrderFlow({ foodId }: { foodId: ItemId }) {
 function OrderCards({ state }: { state: GameState }) {
   const orders = activeOrders(state);
   const upcoming = upcomingOrders(state);
+  // 카드에는 무엇을 만들지만 둔다. 번호·개수·기구 이름은 그림과 조리 흐름이
+  // 이미 말해 주고 있어 글자로 또 적으면 읽을 것만 늘어난다.
+  const card = (order: Order, next = false) => (
+    <article className={next ? "order-card order-card-next" : "order-card"} key={order.id}>
+      <strong className="order-food">
+        <OrderDish foodId={order.foodId} />
+        {itemLabel(order.foodId)}
+      </strong>
+      <OrderFlow foodId={order.foodId} />
+    </article>
+  );
   return (
     <section className="order-cards" aria-label="진행 중인 주문">
       {[0, 1].map((index) => {
         const order = orders[index];
         if (!order) return <span className="order-card order-card-empty" aria-hidden key={index} />;
-        return (
-          <article className="order-card" key={order.id}>
-            <header>
-              <b>주문 {index + 1}</b>
-            </header>
-            <strong className="order-food">
-              <OrderDish foodId={order.foodId} />
-              {itemLabel(order.foodId)}
-              <small>{order.submittedCount}/{order.targetCount}</small>
-            </strong>
-            <OrderFlow foodId={order.foodId} />
-            <footer>
-              {recipes[order.foodId]
-                ? stationLabels[recipes[order.foodId]!.station]
-                : "조리 정보 없음"}
-            </footer>
-          </article>
-        );
+        return card(order);
       })}
-      {upcoming.map((order) => (
-        <article className="order-card order-card-next" key={order.id}>
-          <header>
-            <b>다음</b>
-          </header>
-          <strong className="order-food">
-            <OrderDish foodId={order.foodId} />
-            {itemLabel(order.foodId)}
-          </strong>
-          <OrderFlow foodId={order.foodId} />
-          <footer>
-            {recipes[order.foodId]
-              ? stationLabels[recipes[order.foodId]!.station]
-              : "조리 정보 없음"}
-          </footer>
-        </article>
-      ))}
+      {upcoming.map((order) => card(order, true))}
     </section>
   );
 }
 
-// 설비가 지금 무엇을 얼마나 들고 있는지. 캔버스 게이지와 같은 값을 쓴다.
 function stationStock(state: GameState, id: StationInstanceId) {
   const type = stationType(id);
   if (isBoxStation(type)) {
