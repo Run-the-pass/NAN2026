@@ -65,8 +65,11 @@ function validate({ balance, recipes, stages }, list) {
   for (const [name, cost] of Object.entries(balance.actionCost ?? {})) {
     say(whole(cost, 1), `${name} 비용은 1 이상이어야 합니다.`);
   }
-  for (const [job, element] of Object.entries(balance.stationElements ?? {})) {
-    say(list.elements.includes(element), `${job}을(를) 맡을 속성이 올바르지 않습니다.`);
+  for (const [job, workers] of Object.entries(balance.stationElements ?? {})) {
+    say(
+      Array.isArray(workers) && workers.length > 0 && workers.every((one) => list.elements.includes(one)),
+      `${job}을(를) 맡을 속성을 하나 이상 골라야 합니다.`,
+    );
   }
   say(whole(balance.ingredients?.max, 1), "재료 상자 최대치는 1 이상이어야 합니다.");
   say(whole(balance.ingredients?.perTurn, 1), "턴당 재료 보충은 1 이상이어야 합니다.");
@@ -99,7 +102,11 @@ function validate({ balance, recipes, stages }, list) {
     say(list.items.includes(recipe?.foodId), `${where}: 완성품이 목록에 없습니다.`);
     say(list.items.includes(recipe?.ingredient), `${where}: 재료가 목록에 없습니다.`);
     say(list.stations.includes(recipe?.station), `${where}: 기구가 목록에 없습니다.`);
-    say(list.elements.includes(recipe?.worker), `${where}: 담당 속성이 올바르지 않습니다.`);
+    say(
+      Array.isArray(recipe?.workers) && recipe.workers.length > 0 &&
+        recipe.workers.every((one) => list.elements.includes(one)),
+      `${where}: 담당 속성을 하나 이상 골라야 합니다.`,
+    );
     say(!foods.has(recipe?.foodId), `${where}: 같은 완성품이 두 번 있습니다.`);
     const pair = `${recipe?.station}/${recipe?.ingredient}`;
     say(!perStation.has(pair), `${where}: 같은 기구에서 같은 재료를 두 번 씁니다.`);

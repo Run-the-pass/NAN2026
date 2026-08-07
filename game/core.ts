@@ -183,9 +183,9 @@ export type Recipe = {
   foodId: ItemId;
   ingredient: { itemId: ItemId; count: number };
   station: StationId;
-  // 조리를 시작할 수 있는 속성. 재료를 올리고 완성품을 가져가는 것은
-  // 누구나 할 수 있고, 이 속성만 조리 작업을 돌린다.
-  worker: SlimeElement;
+  // 조리를 시작할 수 있는 속성. 여럿일 수 있고, 그중 아무나 돌리면 된다.
+  // 재료를 올리고 완성품을 가져가는 것은 누구나 할 수 있다.
+  workers: SlimeElement[];
   requiresCleanDish: boolean;
   submissionStation: StationId;
 };
@@ -205,9 +205,13 @@ function checkBalance() {
   for (const [name, cost] of Object.entries(balanceData.actionCost)) {
     if (!whole(cost, 1)) problems.push(`${name} 비용은 1 이상 정수여야 합니다.`);
   }
-  for (const [job, element] of Object.entries(balanceData.stationElements)) {
-    if (!allElements.includes(element as SlimeElement)) {
-      problems.push(`${job}을(를) 맡을 속성이 올바르지 않습니다: ${element}`);
+  for (const [job, list] of Object.entries(balanceData.stationElements)) {
+    if (
+      !Array.isArray(list) ||
+      list.length < 1 ||
+      list.some((one) => !allElements.includes(one as SlimeElement))
+    ) {
+      problems.push(`${job}을(를) 맡을 속성이 올바르지 않습니다.`);
     }
   }
   if (!whole(balanceData.ingredients.max, 1) || !whole(balanceData.ingredients.perTurn, 1)) {
@@ -258,17 +262,19 @@ function readRecipes(): Partial<Record<ItemId, Recipe>> {
   // 한 기구 안에서 같은 재료가 두 결과를 내면 어느 쪽인지 정할 수 없다.
   const perStation = new Set<string>();
   for (const row of recipeData.recipes) {
-    const { foodId, ingredient, station, worker } = row as {
+    const { foodId, ingredient, station, workers } = row as {
       foodId: ItemId;
       ingredient: ItemId;
       station: StationId;
-      worker: SlimeElement;
+      workers: SlimeElement[];
     };
     if (
       !allItems.includes(foodId) ||
       !allItems.includes(ingredient) ||
       !allStations.includes(station) ||
-      !allElements.includes(worker) ||
+      !Array.isArray(workers) ||
+      workers.length < 1 ||
+      workers.some((one) => !allElements.includes(one)) ||
       table[foodId] ||
       perStation.has(`${station}/${ingredient}`)
     ) {
@@ -279,7 +285,7 @@ function readRecipes(): Partial<Record<ItemId, Recipe>> {
       foodId,
       ingredient: { itemId: ingredient, count: 1 },
       station,
-      worker,
+      workers: [...workers],
       requiresCleanDish: true,
       submissionStation: "submission",
     };
@@ -357,9 +363,13 @@ export const actionCost = balanceData.actionCost;
 // 다를 수 있어 `Recipe.worker`가 정한다. 여기 없는 기구는 모든
 // 슬라임이 쓰고, 물건을 집고 놓는 것은 "물건" 분류라 제한을 받지 않는다.
 export const stationElements = balanceData.stationElements as {
-  wash: SlimeElement;
-  burn: SlimeElement;
+  wash: SlimeElement[];
+  burn: SlimeElement[];
 };
+
+// 속성 목록을 "물·번개 슬라임"처럼 읽히게 붙인다.
+export const elementNames = (list: SlimeElement[]) =>
+  list.map((one) => slimeTypes[one].name).join("·");
 
 // 아직 확정되지 않은 주문 규칙은 여기서만 바꾼다.
 export const orderConfig = balanceData.orders as {
@@ -1357,11 +1367,11 @@ function atCooktop(
   if (!recipe) {
     return refuse(state, actor, `${label}에 조리할 재료가 없습니다.`);
   }
-  if (actor.typeId !== recipe.worker) {
+  if (!recipe.workers.includes(actor.typeId)) {
     return refuse(
       state,
       actor,
-      `${slimeTypes[recipe.worker].name} 슬라임만 ${withParticle(label)} 쓸 수 있습니다.`,
+      `${elementNames(recipe.workers)} 슬라임만 ${withParticle(label)} 쓸 수 있습니다.`,
     );
   }
   const step = progressStep(actor, actionCost.chop, workstation.progress);
@@ -1475,11 +1485,11 @@ function atBlender(
 
   // 물 채우기. 물 슬라임만 한다.
   if (!blender.water) {
-    if (actor.typeId !== stationElements.wash) {
+    if (!stationElements.wash.includes(actor.typeId)) {
       return refuse(
         state,
         actor,
-        `${slimeTypes[stationElements.wash].name} 슬라임이 믹서기에 물을 채워야 합니다.`,
+        `${elementNames(stationElements.wash)} 슬라임이 믹서기에 물을 채워야 합니다.`,
       );
     }
     return event(state, `${actor.name}이(가) 믹서기에 물을 채웠습니다.`, {
@@ -1490,11 +1500,11 @@ function atBlender(
 
   // 가동. 레시피가 정한 속성만 돌릴 수 있다.
   const recipe = recipeAt("blender", blender.fruit)!;
-  if (actor.typeId !== recipe.worker) {
+  if (!recipe.workers.includes(actor.typeId)) {
     return refuse(
       state,
       actor,
-      `${slimeTypes[recipe.worker].name} 슬라임만 믹서기를 돌릴 수 있습니다.`,
+      `${elementNames(recipe.workers)} 슬라임만 믹서기를 돌릴 수 있습니다.`,
     );
   }
   if (actor.carrying.length > 0) {
@@ -1532,11 +1542,11 @@ function atWasher(
   }
   // 세척. 물 슬라임만 할 수 있다.
   if (washer.dish.status === "dirty") {
-    if (actor.typeId !== stationElements.wash) {
+    if (!stationElements.wash.includes(actor.typeId)) {
       return refuse(
         state,
         actor,
-        `${slimeTypes[stationElements.wash].name} 슬라임만 그릇을 씻을 수 있습니다.`,
+        `${elementNames(stationElements.wash)} 슬라임만 그릇을 씻을 수 있습니다.`,
       );
     }
     const step = progressStep(actor, actionCost.wash, washer.progress);
@@ -1585,7 +1595,7 @@ function atIncinerator(
   const carried = actor.carrying[0];
   const full = incinerator.count >= incineratorConfig.capacity;
   // 가득 찬 소각기 앞에서는 물건을 든 불 슬라임도 넣기 대신 소각부터 한다.
-  const burnsInstead = full && actor.typeId === stationElements.burn;
+  const burnsInstead = full && stationElements.burn.includes(actor.typeId);
   if (carried && !burnsInstead) {
     if (full) return refuse(state, actor, "소각기가 가득 찼습니다.");
     if (isDish(carried) && !carried.content) {
@@ -1605,11 +1615,11 @@ function atIncinerator(
       },
     });
   }
-  if (actor.typeId !== stationElements.burn) {
+  if (!stationElements.burn.includes(actor.typeId)) {
     return refuse(
       state,
       actor,
-      `${slimeTypes[stationElements.burn].name} 슬라임만 소각기를 비울 수 있습니다.`,
+      `${elementNames(stationElements.burn)} 슬라임만 소각기를 비울 수 있습니다.`,
     );
   }
   if (incinerator.count < 1) {

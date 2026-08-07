@@ -27,6 +27,8 @@
   button.small:hover { border-color: #f0b357; }
   .menu-picks { display: flex; flex-wrap: wrap; gap: 4px 12px; }
   .menu-picks label { display: inline-flex; grid-template-columns: none; gap: 5px; }
+  label.wide { grid-template-columns: 1fr; gap: 5px; }
+  label.pick { white-space: nowrap; }
   footer { position: fixed; right: 0; bottom: 0; left: 0; display: flex; align-items: center; gap: 14px; padding: 12px 24px; border-top: 1px solid #55361b; background: #241609; }
   footer button { border: 1px solid #f0b357; border-radius: 6px; padding: 9px 22px; background: #6a3f18; color: #ffd98a; font-weight: 700; cursor: pointer; }
   #status { color: #b79a72; }
@@ -97,6 +99,23 @@ function selectField(label, options, get, set, name = (v) => v) {
   return el("label", {}, [el("span", { textContent: label }), select]);
 }
 
+// 여러 속성을 고를 수 있는 칸. 기구 하나를 여러 슬라임이 돌릴 수 있다.
+function elementPicks(label, get, set) {
+  const boxes = list.elements.map((element) => {
+    const box = el("input", { type: "checkbox", checked: get().includes(element) });
+    box.addEventListener("change", () => {
+      set(box.checked
+        ? [...get(), element]
+        : get().filter((one) => one !== element));
+    });
+    return el("label", { className: "pick" }, [box, el("span", { textContent: elementNames[element] ?? element })]);
+  });
+  return el("label", { className: "wide" }, [
+    el("span", { textContent: label }),
+    el("span", { className: "menu-picks" }, boxes),
+  ]);
+}
+
 function checkField(label, get, set) {
   const input = el("input", { type: "checkbox", checked: get() });
   input.addEventListener("change", () => set(input.checked));
@@ -117,10 +136,9 @@ function drawBalance() {
     group("행동에 드는 행동력", Object.keys(b.actionCost).map((name) =>
       numberField({ move: "이동", carry: "집기·놓기", chop: "조리", wash: "세척", burn: "소각" }[name] ?? name,
         () => b.actionCost[name], (v) => { b.actionCost[name] = v; }, 1))),
-    group("기구를 돌리는 속성", Object.keys(b.stationElements).map((job) =>
-      selectField({ wash: "세척대", burn: "소각기" }[job] ?? job, list.elements,
-        () => b.stationElements[job], (v) => { b.stationElements[job] = v; },
-        (v) => elementNames[v] ?? v))),
+    group("기구를 돌리는 속성 (여러 개 고를 수 있음)", Object.keys(b.stationElements).map((job) =>
+      elementPicks({ wash: "세척대·믹서기 물", burn: "소각기" }[job] ?? job,
+        () => b.stationElements[job], (v) => { b.stationElements[job] = v; }))),
     group("재료 상자", [
       numberField("최대 보관", () => b.ingredients.max, (v) => { b.ingredients.max = v; }, 1),
       numberField("턴마다 보충", () => b.ingredients.perTurn, (v) => { b.ingredients.perTurn = v; }, 1),
@@ -153,6 +171,20 @@ function drawBalance() {
   );
 }
 
+// 레시피 담당 속성도 여러 개다.
+function workerCell(recipe) {
+  const boxes = list.elements.map((element) => {
+    const box = el("input", { type: "checkbox", checked: recipe.workers.includes(element) });
+    box.addEventListener("change", () => {
+      recipe.workers = box.checked
+        ? [...recipe.workers, element]
+        : recipe.workers.filter((one) => one !== element);
+    });
+    return el("label", { className: "pick" }, [box, el("span", { textContent: elementNames[element] ?? element })]);
+  });
+  return el("td", { className: "menu-picks" }, boxes);
+}
+
 function drawRecipes() {
   const rows = data.recipes.map((recipe, index) => {
     const pick = (key, options, name) => {
@@ -169,7 +201,7 @@ function drawRecipes() {
       pick("foodId", list.items, itemName),
       pick("ingredient", list.items, itemName),
       pick("station", list.cooktops, stationName),
-      pick("worker", list.elements, (v) => elementNames[v] ?? v),
+      workerCell(recipe),
       el("td", { className: "row-tools" }, [remove]),
     ]);
   });
@@ -236,7 +268,7 @@ for (const button of document.querySelectorAll("nav button")) {
 $("add-recipe").addEventListener("click", () => {
   data.recipes.push({
     foodId: list.items[0], ingredient: list.items[0],
-    station: list.cooktops[0], worker: list.elements[0],
+    station: list.cooktops[0], workers: [list.elements[0]],
   });
   drawRecipes();
   drawStages();

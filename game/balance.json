@@ -14,8 +14,12 @@
     "burn": 1
   },
   "stationElements": {
-    "wash": "water",
-    "burn": "fire"
+    "wash": [
+      "water"
+    ],
+    "burn": [
+      "fire"
+    ]
   },
   "ingredients": {
     "max": 4,

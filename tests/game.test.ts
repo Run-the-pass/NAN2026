@@ -49,6 +49,7 @@ import {
   nextStage,
   incineratorConfig,
   blenderStage,
+  stationElements,
   stationInstances,
   stationInstancesByType,
   type ActorId,
@@ -96,7 +97,7 @@ test("레시피는 recipes.json을 그대로 읽어 온다", () => {
     foodId: "shredded-potato",
     ingredient: { itemId: "potato", count: 1 },
     station: "stove",
-    worker: "earth",
+    workers: ["earth"],
     requiresCleanDish: true,
     submissionStation: "submission",
   });
@@ -104,7 +105,7 @@ test("레시피는 recipes.json을 그대로 읽어 온다", () => {
     foodId: "banana-smoothie",
     ingredient: { itemId: "banana", count: 1 },
     station: "blender",
-    worker: "lightning",
+    workers: ["lightning"],
     requiresCleanDish: true,
     submissionStation: "submission",
   });
@@ -328,6 +329,30 @@ test("믹서기는 과일 → 물 → 가동 순서로만 스무디를 만든다
   state = actAt(state, "lightning-1", blenderId);
   assert.deepEqual(state.actors["lightning-1"]!.carrying, ["banana-smoothie"]);
   assert.deepEqual(state.blenders[blenderId], { fruit: null, water: false, food: null });
+});
+
+test("기구를 돌릴 수 있는 속성은 여럿일 수 있다", () => {
+  // 목록에 든 속성이면 누구나 돌린다. 밸런스 파일에서 늘리고 줄인다.
+  assert.ok(recipes["shredded-potato"]!.workers.length >= 1);
+  assert.ok(Array.isArray(stationElements.wash) && stationElements.wash.length >= 1);
+  assert.ok(Array.isArray(stationElements.burn) && stationElements.burn.length >= 1);
+
+  const stoveWorkers = recipes["shredded-potato"]!.workers;
+  for (const element of allElements) {
+    let state = initialState(1, [element]);
+    state = actAt(state, `${element}-1`, potatoBoxId);
+    state = actAt(state, `${element}-1`, stoveId);
+    const after = actAt(state, `${element}-1`, stoveId);
+    if (stoveWorkers.includes(element)) {
+      assert.deepEqual(after.stoves[stoveId], ["shredded-potato"], `${element}는 썰 수 있어야 한다`);
+    } else {
+      assert.ok(after.refusal?.message.includes("슬라임만"), `${element}는 거절당해야 한다`);
+      // 거절 문구는 목록에 든 속성을 모두 알려 준다.
+      for (const allowed of stoveWorkers) {
+        assert.ok(after.refusal!.message.includes(slimeTypes[allowed].name));
+      }
+    }
+  }
 });
 
 test("도마와 믹서기는 서로의 재료를 받지 않는다", () => {

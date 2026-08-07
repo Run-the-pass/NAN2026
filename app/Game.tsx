@@ -43,6 +43,8 @@ import {
   carriedLabel,
   isDish,
   blenderStage,
+  stationElements,
+  allRecipes,
   type ActorId,
   type Carried,
   type GameState,
@@ -142,8 +144,10 @@ const stationBadgeArt: Partial<Record<StationId, string>> = {
 // 그림을 따로 만들면 레시피가 늘 때마다 에셋이 필요해서, 재료·완성품이
 // 이미 가진 그림을 유리병 자리에 얹는 방식으로 둔다.
 const BLENDER_ART = "/stations/blender.png";
-// blender.png(205×256) 안에서 유리병 안쪽 칸. 그림 가운데를 기준으로 잰다.
-const BLENDER_JAR = { dx: -15, dy: -46.5, width: 85, height: 73 };
+// blender.png(205×256) 안에서 유리병 안쪽 칸과 물이 차는 칸. 그림 가운데를
+// 기준으로 잰 값이라 그림을 칸에 맞춘 배율만 곱하면 된다.
+const BLENDER_JAR = { dx: -14.5, dy: -47, width: 88, height: 78 };
+const BLENDER_WATER = { dx: -14.5, dy: -38, width: 88, height: 60 };
 
 // 도마·믹서기는 조리대 위에 놓인 물건이다. 아래에 테이블을 깔고 그림을
 // 위로 올려 얹힌 것처럼 보이게 한다. 칸을 넘어가도 되고, 앞뒤 순서는
@@ -477,6 +481,18 @@ function StationStock({ state, id }: { state: GameState; id: StationInstanceId }
   );
 }
 
+// 이 설비를 실제로 돌릴 수 있는 속성. 밸런스 파일을 고치면 같이 바뀐다.
+function workersFor(type: StationId): SlimeTypeId[] {
+  if (type === "washer") return stationElements.wash;
+  if (type === "trash") return stationElements.burn;
+  const list = allRecipes.filter((recipe) => recipe.station === type);
+  if (!list.length) return [];
+  const seen = new Set(list.flatMap((recipe) => recipe.workers));
+  // 믹서기는 물을 채우는 속성도 필요하다.
+  if (type === "blender") for (const one of stationElements.wash) seen.add(one);
+  return [...seen];
+}
+
 function GameInspector({
   state,
   target,
@@ -515,6 +531,7 @@ function GameInspector({
   }
   const type = stationType(target.id);
   const info = stationPanelInfo[type];
+  const required = workersFor(type);
   return (
     <aside className="game-inspector" data-station aria-label={`${stationLabels[type]} 정보`}>
       <button className="inspector-close" type="button" onClick={onClose} aria-label="정보 패널 닫기">×</button>
@@ -529,7 +546,7 @@ function GameInspector({
       <StationStock state={state} id={target.id} />
       <h3>필요 슬라임</h3>
       <div className="required-slimes">
-        {info.required.length ? info.required.map((typeId) => (
+        {required.length ? required.map((typeId) => (
           <span key={typeId}>
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src={slimePortrait(typeId)} alt="" />
@@ -1086,9 +1103,17 @@ export default function Game() {
             const jarY = y - lift + BLENDER_JAR.dy * k;
             const jarW = BLENDER_JAR.width * k;
             const jarH = BLENDER_JAR.height * k;
-            // 물은 과일 뒤에, 내용물은 앞에 둔다.
+            // 물은 유리병 아래쪽만 채운다. 병 전체를 덮으면 물인지
+            // 유리인지 알아볼 수 없다. 과일 뒤에 깔아 잠긴 것처럼 보인다.
             const water = this.add
-              .rectangle(jarX, jarY, jarW, jarH, 0x6fc7ff, 0.45)
+              .rectangle(
+                x + BLENDER_WATER.dx * k,
+                y - lift + BLENDER_WATER.dy * k,
+                BLENDER_WATER.width * k,
+                BLENDER_WATER.height * k,
+                0x6ec8ff,
+                0.67,
+              )
               .setDepth(y + 1.2)
               .setVisible(false);
             const contents = this.add
@@ -1104,7 +1129,7 @@ export default function Game() {
               showContents: (key: string) => {
                 contents.setTexture(key).setVisible(true);
                 contents.setScale(
-                  Math.min(jarW / contents.width, jarH / contents.height) * 0.86,
+                  Math.min(jarW / contents.width, jarH / contents.height) * 0.8,
                 );
               },
             };
