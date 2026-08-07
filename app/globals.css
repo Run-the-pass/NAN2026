@@ -477,11 +477,15 @@ button:disabled { cursor: var(--cursor-arrow); }
 
 /* 슬라임별 남은 행동력과 턴 종료 */
 .turn-bar { display: flex; align-items: end; gap: clamp(5px, .8vw, 10px); }
+/* 슬라임 몸이 버튼 배경이다. 표정 없이 조금 어둡게 깔고, 그 위에 남은
+   에너지만 얹는다. */
 .stage-frame .turn-bar button {
+  position: relative;
   display: grid;
   place-items: center;
   width: clamp(54px, 6vw, 78px);
   aspect-ratio: 1;
+  overflow: hidden;
   border: 3px solid #ffffff8c;
   border-radius: 50%;
   padding: 5px;
@@ -489,6 +493,16 @@ button:disabled { cursor: var(--cursor-arrow); }
   box-shadow: 0 7px 18px #0007;
   transform: none;
 }
+.roster-slime {
+  position: absolute;
+  inset: -6%;
+  width: 112%;
+  height: 112%;
+  object-fit: contain;
+  filter: brightness(.62) saturate(.9);
+}
+.stage-frame .turn-bar button[aria-pressed="true"] .roster-slime { filter: none; }
+.turn-bar .energy-row { position: relative; }
 .stage-frame .turn-bar button[data-type="fire"] { background: #a74435ec; }
 .stage-frame .turn-bar button[data-type="lightning"] { background: #9b771fec; }
 .stage-frame .turn-bar button[data-type="earth"] { background: #647832ec; }
@@ -580,6 +594,7 @@ button:disabled { cursor: var(--cursor-arrow); }
 /* 동그라미 안 그림은 세로로 긴 것(당근·믹서기)도 가운데에 오도록
    칸 전체를 쓰고 contain으로 줄인다. */
 .inspector-station-icon img { display: block; width: 100%; height: 100%; padding: 18%; object-fit: contain; box-sizing: border-box; }
+.inspector-station-icon img[data-wide] { padding: 2%; }
 .game-inspector .eyebrow { margin: 0; color: #7d421d; font-size: 11px; letter-spacing: .14em; }
 .game-inspector h2 { margin: 5px 0 18px; font-size: clamp(26px, 3vw, 38px); }
 .game-inspector h3 { margin: 28px 0 10px; color: #5c3419; font-size: 15px; }
@@ -666,16 +681,18 @@ button:disabled { cursor: var(--cursor-arrow); }
 
 .slime-stats li {
   display: grid;
-  grid-template-columns: 1fr auto auto auto;
+  grid-template-columns: 1fr auto;
   align-items: center;
   gap: 6px;
   color: #f0d8ad;
   font-size: 12px;
 }
 
-/* 행동력 표시는 그려 온 번개 그림을 쓴다. */
-.energy-icon { width: 1.05em; height: 1.35em; object-fit: contain; vertical-align: -0.22em; }
-.roster-slime { width: 30px; height: 26px; object-fit: contain; }
+/* 행동력은 밝은 번개와 어두운 번개로 보여 준다. 칸 게이지는 쓰지 않는다. */
+.energy-row { display: inline-flex; align-items: center; gap: 3px; }
+.energy-icon { width: 1.05em; height: 1.4em; object-fit: contain; }
+.turn-bar .energy-icon { width: 15px; height: 20px; filter: drop-shadow(0 1px 2px #000a); }
+.game-inspector .energy-icon { width: 22px; height: 29px; }
 .stat-count { color: #6c4523; font-size: 12px; font-variant-numeric: tabular-nums; }
 .stat-gauge { display: inline-flex; gap: 3px; }
 .stat-gauge i {
@@ -1192,7 +1209,7 @@ button:disabled { cursor: var(--cursor-arrow); }
 
   .select-shell { overflow-y: auto; padding: 8px; }
               .slime-stats { gap: 2px; margin-top: 0; }
-  .slime-stats li { grid-template-columns: 1fr auto auto auto; gap: 2px; font-size: 9px; }
+  .slime-stats li { grid-template-columns: 1fr auto; gap: 2px; font-size: 9px; }
   .stat-gauge { gap: 1px; }
   .stat-gauge i { width: 7px; height: 6px; }
   
@@ -1208,7 +1225,7 @@ button:disabled { cursor: var(--cursor-arrow); }
 }
 
 @media (min-width: 761px) and (max-width: 900px) {
-  .slime-stats li { grid-template-columns: 1fr auto auto auto; gap: 4px; }
+  .slime-stats li { grid-template-columns: 1fr auto; gap: 4px; }
   .stat-gauge { gap: 2px; }
   .stat-gauge i { width: 9px; }
 }
@@ -1320,7 +1337,7 @@ button:disabled { cursor: var(--cursor-arrow); }
 /* 행동력 한 줄. 스탯이 여러 개이던 시절의 3열 배치는 한 줄에는 벌어져
    보여서, 아이콘·이름·칸을 가운데로 모은다. */
 .game-inspector .slime-stats li {
-  grid-template-columns: auto auto auto auto;
+  grid-template-columns: auto auto;
   justify-content: center;
   gap: 9px;
   font-size: 15px;
