@@ -21,9 +21,7 @@ html, body { width: 100%; margin: 0; min-height: 100%; overscroll-behavior: none
 html:has(.home-screen), html:has(.home-screen) body { overflow: hidden; }
 
 body {
-  background:
-    repeating-linear-gradient(0deg, #2f1a0f 0 62px, #1d1009 63px 66px),
-    var(--wood-dark);
+  background: #241408;
   color: var(--ink);
   font-family: Jua, "Apple SD Gothic Neo", sans-serif;
 }
@@ -290,9 +288,7 @@ button, select { font: inherit; }
   width: 100%;
   height: 100%;
   overflow: hidden;
-  background:
-    linear-gradient(#1b0f08aa, #1b0f08aa),
-    repeating-linear-gradient(0deg, #4a2a17 0 58px, #2a170d 59px 63px);
+  background: #241408;
 }
 
 #game-canvas {
@@ -302,9 +298,7 @@ button, select { font: inherit; }
   bottom: var(--game-bottom-rail);
   left: var(--game-side-rail);
   overflow: hidden;
-  background:
-    linear-gradient(#2b160022, #2b160022),
-    repeating-linear-gradient(90deg, #a9713a 0 58px, #7d4f26 59px 62px);
+  background: #2e1a0c;
 }
 
 #game-canvas canvas {
@@ -519,9 +513,7 @@ button, select { font: inherit; }
   bottom: 0;
   width: var(--game-info-rail);
   border-left: 5px solid #1d1009;
-  background:
-    linear-gradient(90deg, #0004, transparent 12px),
-    repeating-linear-gradient(0deg, #5b351d 0 58px, #3b2112 59px 63px);
+  background: linear-gradient(90deg, #0004, transparent 12px), #3f2413;
 }
 
 .game-inspector {
@@ -633,9 +625,7 @@ button, select { font: inherit; }
   width: 100%;
   min-height: 100svh;
   padding: 20px;
-  background:
-    linear-gradient(#1b0e07b8, #1b0e07b8),
-    repeating-linear-gradient(0deg, #684022 0 76px, #3a2112 77px 82px);
+  background: #2b1a0d;
 }
 
 .select-shell button,
@@ -732,9 +722,7 @@ button, select { font: inherit; }
   gap: clamp(10px, 1.8vh, 18px);
   overflow: auto;
   padding: clamp(18px, 3.5vw, 44px);
-  background:
-    linear-gradient(#1b0e07aa, #1b0e07aa),
-    repeating-linear-gradient(0deg, #654020 0 76px, #382011 77px 82px);
+  background: #2b1a0d;
 }
 
 .stage-info-header {
@@ -1243,9 +1231,7 @@ button, select { font: inherit; }
   width: 100%;
   min-height: 100svh;
   padding: 88px 20px 40px;
-  background:
-    linear-gradient(#2f150099, #2f150099),
-    url("/home/bg.png") center / cover no-repeat;
+  background: #241408;
 }
 
 .stage-select h1 {
