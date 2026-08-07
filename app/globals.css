@@ -400,7 +400,7 @@ button:disabled { cursor: var(--cursor-arrow); }
   box-shadow: 0 5px 0 #221208, 0 8px 14px #0006;
   animation: order-slide-in 420ms cubic-bezier(.22, 1, .36, 1) both;
 }
-.order-next .order-dish { width: 42px; height: 34px; }
+.order-next .order-dish { width: 40px; height: 41px; }
 
 /* 각 칸은 흰 접시 같은 원 위에 그림 하나. 원 크기가 정해져 있어 그림이
    들쭉날쭉해 보이지 않는다. */
@@ -430,7 +430,7 @@ button:disabled { cursor: var(--cursor-arrow); }
 .order-part::before { height: 18.5cqh; }
 .order-plate > *,
 .order-part > * { position: relative; }
-.order-plate .order-dish { width: auto; height: 22cqh; aspect-ratio: 202 / 163; }
+.order-plate .order-dish { width: auto; height: 24cqh; aspect-ratio: 251 / 256; }
 .order-part img { width: auto; height: 13cqh; object-fit: contain; }
 .order-method { display: flex; align-items: center; justify-content: center; gap: 2px; }
 .order-method img { height: 12cqh; }
@@ -440,18 +440,19 @@ button:disabled { cursor: var(--cursor-arrow); }
 }
 
 /* 완성 음식은 빈 접시 위에 얹어 보여 준다. 접시를 바닥에 깔고 음식을 그
-   위에 얹는다. 칸 비율을 접시 그림(202×163)에 맞춰 두면 접시가 칸을 그대로
+   위에 얹는다. 칸 비율을 접시 그림(251×256)에 맞춰 두면 접시가 칸을 그대로
    채우고, 음식 자리를 접시 그림 좌표로 바로 적을 수 있다. */
-.order-dish { position: relative; width: 48px; height: 39px; flex: none; }
+.order-dish { position: relative; width: 46px; height: 47px; flex: none; }
 .order-dish img { position: absolute; object-fit: contain; }
 .order-dish img:first-child { inset: 0; width: 100%; height: 100%; }
-/* 접시 안쪽 면(그림 기준 x 45~160, y 33~118). object-position으로 밑변을
-   접시 바닥에 붙여, 납작한 음식도 키 큰 음식도 같은 자리에 앉는다. */
+/* 접시 안쪽 면. 그림에서 안쪽 테두리 자리를 재서 얻은 값이다.
+   object-position으로 밑변을 접시 바닥에 붙여, 납작한 음식도 키 큰 음식도
+   같은 자리에 앉는다. */
 .order-dish img:last-child {
-  top: 20.2%;
-  left: 22.3%;
-  width: 56.9%;
-  height: 52.1%;
+  top: 19.9%;
+  left: 23.1%;
+  width: 53.6%;
+  height: 54.5%;
   object-position: center bottom;
 }
 /* 그릇 없이 내는 음식은 접시가 없다. 컵처럼 키가 큰 그림이 접시에 담긴
@@ -699,9 +700,9 @@ button:disabled { cursor: var(--cursor-arrow); }
 .station-holding { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 8px; margin: 8px 0 2px; }
 .station-holding b { font-size: 12px; color: #4a2d17; }
 .station-holding small { font-size: 12px; color: #6c4523; }
-.carried-art { position: relative; display: block; width: 44px; height: 36px; margin: 0 auto; }
+.carried-art { position: relative; display: block; width: 42px; height: 43px; margin: 0 auto; }
 .carried-art img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
-.carried-art img + img { top: 18%; left: 22%; width: 57%; height: 52%; object-position: center bottom; }
+.carried-art img + img { top: 19.9%; left: 23.1%; width: 53.6%; height: 54.5%; object-position: center bottom; }
 
 /* 마우스를 올리거나 키보드로 짚었을 때만 뜨는 설명. title 속성은 뜨는 데
    시간이 걸리고 터치에서는 아예 안 떠서 직접 그린다. */
