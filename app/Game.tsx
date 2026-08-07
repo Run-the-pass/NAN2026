@@ -972,13 +972,38 @@ export default function Game() {
         // 실제 캔버스에서 시작한 포인터만 게임 명령으로 처리한다.
         const fromCanvas = (pointer: Phaser.Input.Pointer) =>
           pointer.event?.target === this.game.canvas;
-        // 바닥과 벽은 단색이다. 그림이 많아 결까지 그리면 산만해진다.
+        // 나무와 금속 중심의 판타지 식당 바닥과 벽.
         const planks = this.add.graphics().setDepth(0);
         KITCHEN_ROWS.forEach((row, rowIndex) => {
           [...row].forEach((tile, colIndex) => {
             const { x, y } = tileCenter({ col: colIndex, row: rowIndex });
-            planks.fillStyle(tile === "#" ? 0xa9713a : 0x3d2314, 1);
-            planks.fillRect(x - TILE_SIZE / 2, y - TILE_SIZE / 2, TILE_SIZE, TILE_SIZE);
+            const left = x - TILE_SIZE / 2;
+            const top = y - TILE_SIZE / 2;
+            const wall = tile === "#";
+            // 판자마다 결이 조금씩 다르게 보이도록 행마다 색을 흔든다.
+            const shade = (rowIndex * 7 + colIndex * 13) % 3;
+            planks.fillStyle(
+              wall
+                ? [0xa9713a, 0xb0773e, 0xa26c36][shade]
+                : [0x402514, 0x452917, 0x3b2112][shade],
+              1,
+            );
+            planks.fillRect(left, top, TILE_SIZE, TILE_SIZE);
+            if (wall) {
+              // 벽은 세로 널, 바닥은 가로 판자로 결을 반대로 준다.
+              planks.fillStyle(0x7d4f26, 0.85);
+              planks.fillRect(left + TILE_SIZE - 4, top, 4, TILE_SIZE);
+              planks.fillStyle(0xffffff, 0.07);
+              planks.fillRect(left + 3, top, 3, TILE_SIZE);
+            } else {
+              planks.fillStyle(0x2c180d, 0.9);
+              planks.fillRect(left, top + TILE_SIZE - 3, TILE_SIZE, 3);
+              if ((colIndex + rowIndex) % 2 === 0) {
+                planks.fillRect(left, top, 2, TILE_SIZE);
+              }
+              planks.fillStyle(0xffffff, 0.03);
+              planks.fillRect(left, top + 3, TILE_SIZE, 2);
+            }
           });
         });
         // 기구는 차지한 칸 범위에 그림만 얹는다. 배경 네모는 두지 않는다.
