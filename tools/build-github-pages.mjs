@@ -36,9 +36,16 @@ async function rewritePublicPaths(directory) {
     } else if (/\.(?:css|html|js|json|txt)$/.test(entry.name)) {
       const source = await readFile(path, "utf8");
       const rewritten = source.replace(
-        /(["'])\/(favicon\.svg|(?:food|home|music|sfx|slimes|stations|text|ui)\/)/g,
+        /([("'])\/(favicon\.svg|(?:food|home|music|sfx|slimes|stations|text|ui)\/)/g,
         "$1/NAN2026/$2",
       );
+      if (
+        /[("']\/(?:favicon\.svg|(?:food|home|music|sfx|slimes|stations|text|ui)\/)/.test(
+          rewritten,
+        )
+      ) {
+        throw new Error(`unprefixed public asset in ${path}`);
+      }
       if (rewritten !== source) await writeFile(path, rewritten);
     }
   }
