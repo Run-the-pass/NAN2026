@@ -1387,11 +1387,10 @@ test("다이얼로그는 확정된 음식·도구·슬라임 이름만 구분한
 });
 
 test("튜토리얼 화살표와 쿠키 진행도는 조절·검증된 값만 쓴다", () => {
-  // 푸름이를 가리키는 화살표는 같은 줄 왼쪽에서 오른쪽을 본다. 줄이 어긋나면
-  // 슬라임이 아니라 윗줄 도마를 가리킨다.
+  // 푸름이 타일과 겹치지 않도록 왼쪽 위에서 오른쪽을 본다.
   const selectEarth = arrowLayoutFor("SELECT_EARTH")!;
   assert.equal(selectEarth.side, "left");
-  assert.equal(selectEarth.offsetRow, 0);
+  assert.equal(selectEarth.offsetRow, -1);
   assert.equal(selectEarth.bobY, 0);
   assert.equal(arrowLayoutFor("PICK_CABBAGE")!.bobX > 0, true);
   assert.deepEqual(

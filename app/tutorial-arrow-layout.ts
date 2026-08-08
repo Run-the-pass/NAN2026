@@ -30,7 +30,7 @@ const left = (offsetCol = 0, offsetRow = 0): TutorialArrowLayout => ({
 });
 
 export const tutorialArrowLayout: Record<TutorialCue["id"], TutorialArrowLayout> = {
-  SELECT_EARTH: left(),
+  SELECT_EARTH: left(0, -1),
   MOVE_TO_CABBAGE: left(),
   PICK_CABBAGE: left(),
   MOVE_TO_CUTTING_BOARD: top(),

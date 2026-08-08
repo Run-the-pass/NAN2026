@@ -591,7 +591,7 @@ button:disabled { cursor: var(--cursor-arrow); }
 
 /* 설비가 들고 있는 수량. 캔버스 게이지와 같은 값을 숫자까지 보여 준다. 칸
    나눈 표시는 행동력 게이지(.stat-gauge)와 같은 모양을 쓰고 색만 바꾼다. */
-.station-stock { display: grid; grid-template-columns: repeat(3, max-content); justify-content: center; align-items: center; gap: 6px; margin: 8px 0 2px; }
+.station-stock { display: grid; width: fit-content; grid-template-columns: repeat(3, max-content); align-items: center; gap: 6px; margin: 8px auto 2px; }
 .station-stock b { font-size: 12px; color: #4a2d17; }
 .station-stock small { font-size: 12px; color: #6c4523; font-variant-numeric: tabular-nums; }
 .station-stock .stat-gauge i[data-on] { background: #8ed07a; border-color: #8ed07a; }
