@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { simulate, actAt } from "../game/cli.js";
 import { activeActorIds, finishTutorial, prepareTutorialState, tutorialCue, tutorialDone } from "../app/tutorial.js";
+import { dialogueParts } from "../app/dialogue-script.js";
 import { parseSession } from "../game/session.js";
 import recipeData from "../game/recipes.json" with { type: "json" };
 import stageData from "../game/stages.json" with { type: "json" };
@@ -1302,4 +1303,13 @@ test("튜토리얼은 첫 양배추 제출까지 한 번에 한 가지만 시킨
   assert.equal(step(state, "water-1"), null);
   // 첫 주문을 내면 나머지 슬라임도 공개되고 일반 플레이로 넘어간다.
   assert.equal(activeActorIds(state).length, 4);
+});
+
+test("다이얼로그는 확정된 음식·도구·슬라임 이름만 구분한다", () => {
+  assert.deepEqual(
+    dialogueParts("푸름이가 양배추를 도마에 올려요.")
+      .filter(({ tone }) => tone)
+      .map(({ text, tone }) => [text, tone]),
+    [["푸름이", "slime"], ["양배추", "food"], ["도마", "tool"]],
+  );
 });

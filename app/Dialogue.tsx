@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { slimeTypes, type SlimeTypeId } from "../game/core";
-import { type DialogueFocus, type DialogueLine } from "./dialogue-script";
+import { dialogueParts, type DialogueFocus, type DialogueLine } from "./dialogue-script";
 
 // 한 글자씩 찍는 속도(ms). 다 찍히기 전에 누르면 남은 글자가 한 번에 나온다.
 const LETTER_MS = 28;
@@ -86,7 +86,13 @@ export default function Dialogue({
         <img className="dialogue-face" src={line.portrait ?? portrait(line.speaker)} alt="" aria-hidden />
         <b className="dialogue-name">{name}</b>
         <p className="dialogue-text">
-          {full.slice(0, visible)}
+          {dialogueParts(full.slice(0, visible)).map((part, index) =>
+            part.tone ? (
+              <strong className={`dialogue-term dialogue-term-${part.tone}`} key={`${index}-${part.text}`}>
+                {part.text}
+              </strong>
+            ) : part.text
+          )}
           {!passive && done && <i className="dialogue-more" aria-hidden>▼</i>}
         </p>
       </div>

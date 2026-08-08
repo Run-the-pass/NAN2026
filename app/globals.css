@@ -340,22 +340,83 @@ button:disabled { cursor: var(--cursor-arrow); }
 
 .hud-top { top: 12px; right: 96px; }
 
+@property --turn-elapsed {
+  syntax: "<angle>";
+  inherits: true;
+  initial-value: 0deg;
+}
+
 .hud-chip {
+  --turn-elapsed: 0deg;
+  position: relative;
   display: grid;
-  align-items: center;
-  justify-items: center;
+  place-items: center;
   width: 150px;
   aspect-ratio: 516 / 192;
-  /* 나무판 그림에 시계가 그려져 있다. 글자는 판의 왼쪽 나무 부분에만 온다. */
-  padding: 0 33% 4px 0;
-  background: url("/ui/turn-plate.png") center / 100% 100% no-repeat;
+  padding: 0;
   color: #fff3d8;
   font-size: 13px;
   line-height: 1.05;
   white-space: nowrap;
   text-shadow: 0 2px 0 #63340f, 0 0 6px #2a1409;
 }
+.turn-wood {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 86%;
+  height: 100%;
+}
+.hud-chip-copy {
+  z-index: 3;
+  display: grid;
+  place-items: center;
+  width: 69%;
+  margin-right: 31%;
+  padding-bottom: 4px;
+}
 .hud-chip b { font-size: 21px; }
+.turn-clock {
+  position: absolute;
+  z-index: 2;
+  top: 7%;
+  right: 0;
+  width: 30%;
+  aspect-ratio: 1;
+}
+.turn-clock > img { width: 100%; height: 100%; object-fit: contain; }
+.turn-clock-face {
+  position: absolute;
+  z-index: 1;
+  inset: 17%;
+  border-radius: 50%;
+  background: conic-gradient(#777 0 var(--turn-elapsed), #fff var(--turn-elapsed) 1turn);
+  box-shadow: inset 0 0 5px #0005;
+  transition: --turn-elapsed 500ms ease;
+}
+.turn-clock-face::before,
+.turn-clock-face::after {
+  position: absolute;
+  left: 50%;
+  content: "";
+  background: #202020;
+}
+.turn-clock-face::before {
+  z-index: 2;
+  top: 50%;
+  width: 12%;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+}
+.turn-clock-face::after {
+  bottom: 50%;
+  width: 7%;
+  height: 42%;
+  border-radius: 999px;
+  transform: translateX(-50%) rotate(var(--turn-elapsed));
+  transform-origin: 50% 100%;
+  transition: transform 500ms ease;
+}
 .hud-chip[data-warn] { filter: hue-rotate(-22deg) saturate(1.5) brightness(.95); color: #fff0e0; }
 .hud-goal { color: var(--gold); }
 
@@ -472,6 +533,7 @@ button:disabled { cursor: var(--cursor-arrow); }
 
 @media (prefers-reduced-motion: reduce) {
   .order-card, .order-next { animation: none; }
+  .turn-clock-face, .turn-clock-face::after { transition: none; }
 }
 
 /* 완성 음식은 빈 접시 위에 얹어 보여 준다. 접시를 바닥에 깔고 음식을 그
@@ -525,36 +587,36 @@ button:disabled { cursor: var(--cursor-arrow); }
   pointer-events: none;
 }
 .dialogue-arrow-orders {
-  --arrow-x: 0;
-  --arrow-y: -12px;
+  --arrow-x: 12px;
+  --arrow-y: 0;
   top: clamp(164px, 23vh, 188px);
   left: clamp(78px, 7.5vw, 96px);
   rotate: 180deg;
 }
 .dialogue-arrow-next-order {
-  --arrow-x: 0;
-  --arrow-y: -12px;
+  --arrow-x: 12px;
+  --arrow-y: 0;
   top: clamp(82px, 13vh, 96px);
   left: clamp(217px, 20.4vw, 261px);
   rotate: 180deg;
 }
 .dialogue-arrow-earth {
-  --arrow-x: -12px;
-  --arrow-y: 0;
+  --arrow-x: 0;
+  --arrow-y: -12px;
   top: 37%;
-  left: 23%;
+  left: 24.5%;
   rotate: 90deg;
 }
 .dialogue-arrow-inspector {
-  --arrow-x: 12px;
-  --arrow-y: 0;
+  --arrow-x: 0;
+  --arrow-y: 12px;
   top: 38%;
   right: calc(var(--game-info-rail) + 2%);
   rotate: -90deg;
 }
 @keyframes dialogue-arrow {
-  from { transform: translate(0, 0); }
-  to { transform: translate(var(--arrow-x), var(--arrow-y)); }
+  from { translate: 0 0; }
+  to { translate: var(--arrow-x) var(--arrow-y); }
 }
 
 /* 설명 중인 DOM UI는 어두운 막보다 앞으로 꺼낸다. 캔버스 안의 푸름이는
@@ -568,8 +630,13 @@ button:disabled { cursor: var(--cursor-arrow); }
   filter: brightness(.22) drop-shadow(0 6px 5px #0007);
 }
 .dialogue-screen[data-focus="earth"] {
-  background: radial-gradient(circle at 21% 43%, transparent 0 58px, #120a05a8 86px);
+  background:
+    linear-gradient(#120a05a8, #120a05a8) top / 100% var(--game-top-rail) no-repeat,
+    linear-gradient(#120a05a8, #120a05a8) bottom / 100% var(--game-bottom-rail) no-repeat,
+    linear-gradient(#120a05a8, #120a05a8) 0 var(--game-top-rail) / var(--game-side-rail) calc(100% - var(--game-top-rail) - var(--game-bottom-rail)) no-repeat,
+    linear-gradient(#120a05a8, #120a05a8) 100% var(--game-top-rail) / var(--game-info-rail) calc(100% - var(--game-top-rail) - var(--game-bottom-rail)) no-repeat;
 }
+.stage-frame:has(> .dialogue-screen[data-focus="earth"]) #game-canvas { background: #120a05; }
 
 /* 행동 중 안내도 기획서의 하단 대화 상자를 쓴다. 조작과 지도 강조는 가리지
    않도록 검은 막과 입력 차단만 뺀다. */
@@ -646,6 +713,10 @@ button:disabled { cursor: var(--cursor-arrow); }
 }
 /* 초상이 상자 왼쪽을 가리므로 글은 그만큼 안쪽에서 시작한다. */
 .dialogue-text { padding-left: clamp(96px, 15vw, 200px); }
+.dialogue-term { font-weight: inherit; }
+.dialogue-term-food { color: #b84e24; }
+.dialogue-term-tool { color: #286b93; }
+.dialogue-term-slime { color: #4f7f2a; }
 
 /* 다 찍히면 "다음" 표시가 깜빡인다. */
 .dialogue-more {
@@ -829,21 +900,20 @@ button:disabled { cursor: var(--cursor-arrow); }
 }
 
 /* 스테이지 랭크 별 */
-.stage-rank { display: flex; justify-content: center; gap: 8px; margin: 0; font-size: clamp(26px, 3.4vw, 40px); }
-.stage-rank i {
-  color: #6b4a1e;
-  font-style: normal;
-  opacity: .4;
+.stage-rank { display: flex; justify-content: center; gap: 8px; margin: 0; }
+.stage-rank img {
+  width: clamp(38px, 4.5vw, 54px);
+  height: auto;
   transform: scale(.6);
   animation: rank-star 320ms cubic-bezier(.2, 1.5, .4, 1) both;
 }
-.stage-rank i[data-on] { color: var(--gold); opacity: 1; text-shadow: 0 0 12px #ffd46b88; }
+.stage-rank img[data-on] { filter: drop-shadow(0 0 7px #ffd46b88); }
 @keyframes rank-star {
   from { opacity: 0; transform: scale(1.9) rotate(-25deg); }
   to { transform: scale(1); }
 }
 @media (prefers-reduced-motion: reduce) {
-  .stage-rank i { animation: none; transform: none; }
+  .stage-rank img { animation: none; transform: none; }
 }
 
 /* 맵과 겹치지 않는 우측 선택 정보 레일 */

@@ -1,7 +1,7 @@
 "use client";
 
 import * as Phaser from "phaser";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
 import {
   TILE_SIZE,
   MAP_WIDTH,
@@ -716,6 +716,8 @@ export default function Game() {
   const skippedActors = useRef(new Set<ActorId>());
   // 튜토리얼이 지금 짚는 설비. 캔버스가 그 자리에 표시를 그린다.
   const coachRef = useRef<StationId | StationInstanceId | null>(null);
+  // 도입 대사가 짚는 슬라임. Phaser의 어두운 막보다 앞으로 올린다.
+  const dialogueActorRef = useRef<ActorId | null>(null);
   const view = useRef<View | null>(null);
   const metrics = useRef<Metrics>(emptyMetrics());
   const savedRef = useRef(false);
@@ -752,7 +754,9 @@ export default function Game() {
   }, [state, tutorialComplete]);
 
   const showDialogueFocus = useCallback((focus: DialogueFocus | undefined) => {
+    dialogueActorRef.current = focus === "earth" ? "earth-1" : null;
     setInspected(focus === "inspector" ? { kind: "actor", id: "earth-1" } : null);
+    if (stateRef.current) view.current?.sync(stateRef.current);
   }, []);
 
   useEffect(() => {
@@ -890,6 +894,7 @@ export default function Game() {
       // 지금 고른 슬라임이 각 설비를 쓸 수 있는지. 커서 모양이 이걸 본다.
       usable!: Partial<Record<StationInstanceId, boolean>>;
       sparks!: Phaser.GameObjects.Particles.ParticleEmitter;
+      tutorialShade!: Phaser.GameObjects.Graphics;
 
       // 그림을 정해진 칸 안에 넣는다. 긴 쪽을 기준으로 줄여 비율은
       // 그대로 둔다. 늘리거나 눌러 담지 않는다.
@@ -1103,7 +1108,7 @@ export default function Game() {
           const sprite = this.slimes[actorId];
           if (!sprite) continue;
           const { x, y } = sprite.body;
-          sprite.body.setDepth(y);
+          sprite.body.setDepth(dialogueActorRef.current === actorId ? 9001 : y);
           sprite.selected.setPosition(x, y + 14).setDepth(y - 1);
           sprite.nameTag.setPosition(x, y + 26).setDepth(y + 6);
           // 위아래로 살랑이게 한다. 몸을 따라다녀야 해서 tween 대신 계산한다.
@@ -1169,6 +1174,7 @@ export default function Game() {
           pointer.event?.target === this.game.canvas;
         // 나무와 금속 중심의 판타지 식당 바닥과 벽.
         const planks = this.add.graphics().setDepth(0);
+        this.tutorialShade = this.add.graphics().setDepth(9000).setVisible(false);
         KITCHEN_ROWS.forEach((row, rowIndex) => {
           [...row].forEach((tile, colIndex) => {
             const { x, y } = tileCenter({ col: colIndex, row: rowIndex });
@@ -1554,6 +1560,13 @@ export default function Game() {
         view.current = {
           sync: (current) => {
             const shown = inspectedRef.current;
+            const focusedActor = dialogueActorRef.current;
+            this.tutorialShade.clear().setVisible(Boolean(focusedActor));
+            if (focusedActor) {
+              this.tutorialShade
+                .fillStyle(0x120a05, 0.66)
+                .fillRect(0, 0, MAP_WIDTH * TILE_SIZE, MAP_HEIGHT * TILE_SIZE);
+            }
             // 튜토리얼이 아직 소개하지 않은 슬라임은 지도에서도 감춘다.
             const revealed = activeActorIds(current);
             for (const actorId of roster) {
@@ -2022,6 +2035,7 @@ export default function Game() {
       (state.actors[actorId]?.actionPoints ?? 0) > 0,
   ).length;
   const rank = state.phase === "won" ? stageRank(state) : 0;
+  const turnAngle = 360 * (1 - state.turnsLeft / currentStage(state).turnLimit);
 
   return (
     <main className="stage">
@@ -2057,7 +2071,7 @@ export default function Game() {
             portrait={slimePortrait}
             onFocusChange={showDialogueFocus}
             onDone={() => {
-              setInspected(null);
+              showDialogueFocus(undefined);
               setIntro(false);
             }}
           />
@@ -2070,7 +2084,7 @@ export default function Game() {
             portrait={slimePortrait}
             onFocusChange={showDialogueFocus}
             onDone={() => {
-              setInspected(null);
+              showDialogueFocus(undefined);
               setTutorialOutro(false);
               setTutorialComplete(true);
             }}
@@ -2092,8 +2106,16 @@ export default function Game() {
           <span
             className="hud-chip"
             data-warn={state.turnsLeft <= RUSH_TURNS_LEFT ? "" : undefined}
+            style={{ "--turn-elapsed": `${turnAngle}deg` } as CSSProperties}
           >
-            남은 턴 <b>{state.turnsLeft}</b>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img className="turn-wood" src="/ui/turn-wood.png" alt="" aria-hidden />
+            <span className="hud-chip-copy">남은 턴 <b>{state.turnsLeft}</b></span>
+            <span className="turn-clock" aria-hidden>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src="/ui/turn-clock.svg" alt="" />
+              <i className="turn-clock-face" />
+            </span>
           </span>
         </div>
 
@@ -2198,14 +2220,15 @@ export default function Game() {
             {/* 별은 하나씩 차례로 찍힌다. 받은 개수만 밝다. */}
             <p className="stage-rank" aria-label={`스테이지 랭크 별 ${rank}개`}>
               {[0, 1, 2].map((index) => (
-                <i
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
                   key={index}
+                  src={index < rank ? "/ui/star-yellow.png" : "/ui/star-gray.png"}
+                  alt=""
                   aria-hidden
                   data-on={index < rank ? "" : undefined}
                   style={{ animationDelay: `${400 + index * 260}ms` }}
-                >
-                  ★
-                </i>
+                />
               ))}
             </p>
             {/* 정산: 채운 주문과 실수를 횟수로 센다. 숫자는 올라간다. */}
@@ -2236,7 +2259,11 @@ export default function Game() {
                   다음 스테이지
                 </button>
               ) : (
-                <button autoFocus onClick={() => startRound(squad, currentStage(state).id)}>
+                <button
+                  className="art-button result-art-button"
+                  autoFocus
+                  onClick={() => startRound(squad, currentStage(state).id)}
+                >
                   다시 도전
                 </button>
               )}

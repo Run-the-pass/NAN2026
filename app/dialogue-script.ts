@@ -1,4 +1,32 @@
-import { type SlimeTypeId } from "../game/core.js";
+import { itemLabels, stationLabels, slimeTypes, type SlimeTypeId } from "../game/core.js";
+
+export type DialogueTone = "food" | "tool" | "slime";
+
+const termTones = new Map<string, DialogueTone>([
+  ...Object.values(itemLabels).map((term) => [term, "food"] as const),
+  ...[...Object.values(stationLabels), "제출대", "접시", "그릇"].map(
+    (term) => [term, "tool"] as const,
+  ),
+  ...[
+    "점장 슬라임",
+    ...Object.values(slimeTypes).map(({ name }) => `${name} 슬라임`),
+    "푸름이",
+    "퐁당이",
+  ].map((term) => [term, "slime"] as const),
+]);
+const termPattern = new RegExp(
+  `(${[...termTones.keys()]
+    .sort((one, two) => two.length - one.length)
+    .map((term) => term.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
+    .join("|")})`,
+  "g",
+);
+
+export const dialogueParts = (text: string) =>
+  text.split(termPattern).filter(Boolean).map((part) => ({
+    text: part,
+    tone: termTones.get(part),
+  }));
 
 export type DialogueFocus = "orders" | "earth" | "inspector" | "next-order";
 export type DialogueLine = {
