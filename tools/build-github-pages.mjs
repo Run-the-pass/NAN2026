@@ -4,6 +4,7 @@ import { join } from "node:path";
 
 const route = "app/api/sessions/route.ts";
 const hiddenRoute = `${route}.pages-disabled`;
+const assetVersion = (process.env.GITHUB_SHA ?? "local").slice(0, 8);
 
 async function nextBuild() {
   await rename(route, hiddenRoute);
@@ -35,10 +36,15 @@ async function rewritePublicPaths(directory) {
       await rewritePublicPaths(path);
     } else if (/\.(?:css|html|js|json|txt)$/.test(entry.name)) {
       const source = await readFile(path, "utf8");
-      const rewritten = source.replace(
-        /([("'])\/(favicon\.svg|(?:food|home|music|sfx|slimes|stations|text|ui)\/)/g,
-        "$1/NAN2026/$2",
-      );
+      const rewritten = source
+        .replace(
+          /([("'])\/(favicon\.svg|(?:food|home|music|sfx|slimes|stations|text|ui)\/)/g,
+          "$1/NAN2026/$2",
+        )
+        .replace(
+          /(\/NAN2026\/_next\/static\/css\/[^"'\\\s<]+\.css)(?!\?)/g,
+          `$1?v=${assetVersion}`,
+        );
       if (
         /[("']\/(?:favicon\.svg|(?:food|home|music|sfx|slimes|stations|text|ui)\/)/.test(
           rewritten,
