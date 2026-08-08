@@ -212,42 +212,44 @@ button:disabled { cursor: var(--cursor-arrow); }
 
 .settings-overlay[data-open] { opacity: 1; pointer-events: auto; }
 
+/* 소리 설정은 가로로 긴 나무 액자 그림을 쓴다. 액자 두께가 사방 78/1019로
+   고른 그림이라 9분할이 그대로 먹는다. 창 폭(460)에 맞춰 두께를 35px로 줄여
+   비율을 지킨다. 모서리는 늘어나지 않고 가운데 종이만 늘어난다. */
 .settings-drawer {
   position: relative;
   display: grid;
-  overflow: hidden;
-  width: min(420px, calc(100vw - 24px));
+  width: min(460px, calc(100vw - 24px));
   gap: 14px;
-  border: 4px solid #6d421f;
-  border-radius: 4px;
-  padding: 18px;
-  background: linear-gradient(#efd9aa, #cda56d);
+  border: 35px solid transparent;
+  border-image: url("/ui/settings-frame.png") 80 fill / 35px / 0 stretch;
+  padding: 2px 12px 14px;
   color: var(--paper-ink);
-  box-shadow: 0 18px 50px #000a;
+  filter: drop-shadow(0 16px 40px #000b);
   transform: translateY(calc(-50vh - 100%));
   transition: transform 180ms ease;
 }
 
 .settings-overlay[data-open] .settings-drawer { transform: translateY(0); }
-.settings-drawer header { display: flex; align-items: center; justify-content: space-between; }
-.settings-drawer header strong { font-size: 20px; }
+.settings-drawer header { display: grid; place-items: center; }
+.settings-drawer header strong { color: #6b3d1a; font-size: 21px; }
 .settings-drawer button, .settings-home-link { border: 2px solid #8d592c; border-radius: 3px; padding: 8px 12px; background: #4b2b17; color: #fff1d0; cursor: var(--cursor-hand); }
-/* 닫기는 창 오른쪽 위 모서리에 붙는 빨간 네모다. */
-.settings-drawer header button {
+/* 닫기는 액자 오른쪽 위 모서리에 걸치는 빨간 동전이다. */
+.settings-drawer .settings-close {
   position: absolute;
-  top: 0;
-  right: 0;
-  width: 44px;
-  height: 44px;
-  border: 0;
-  border-radius: 0 0 0 12px;
+  z-index: 2;
+  top: -46px;
+  right: -46px;
+  width: 52px;
+  height: 52px;
+  border: 3px solid #4a1a24;
+  border-radius: 50%;
   padding: 0;
   background: #b8223c;
   color: #fff1d0;
-  font-size: 30px;
+  font-size: 28px;
   line-height: 1;
 }
-.settings-drawer header button:hover { background: #d1294a; transform: none; }
+.settings-drawer .settings-close:hover { background: #d1294a; transform: none; }
 .settings-drawer label { display: grid; gap: 8px; }
 .settings-drawer input { width: 100%; accent-color: var(--gold); }
 .settings-home-link { text-align: center; text-decoration: none; }
@@ -647,6 +649,8 @@ button:disabled { cursor: var(--cursor-arrow); }
 }
 
 .result-title-art { width: min(72%, 340px); margin: 0 auto 6px; }
+/* 액자 안에서는 리본 자리에 맞춘 크기를 쓴다. */
+.paper-window .result-title-art { width: 56%; margin: 0; }
 
 /* 하단 선택키 + 최근 상황 */
 .hud-bottom {
@@ -752,7 +756,7 @@ button:disabled { cursor: var(--cursor-arrow); }
 }
 
 /* 스테이지 랭크 별 */
-.stage-rank { display: flex; justify-content: center; gap: 8px; margin: 0 0 8px; font-size: 34px; }
+.stage-rank { display: flex; justify-content: center; gap: 8px; margin: 0; font-size: clamp(26px, 3.4vw, 40px); }
 .stage-rank i {
   color: #6b4a1e;
   font-style: normal;
@@ -790,10 +794,7 @@ button:disabled { cursor: var(--cursor-arrow); }
   position: relative;
   width: 100%;
   height: 100%;
-  /* 내용은 한 화면에 들어가게 맞춰 뒀다. 아주 낮은 화면에서 잘려 안 보이는
-     일만 막고, 막대는 띄우지 않는다. */
-  overflow-y: auto;
-  scrollbar-width: none;
+  overflow: hidden;
   border-width: var(--panel-frame-top) var(--panel-frame-x) var(--panel-frame-bottom);
   border-style: solid;
   border-color: transparent;
@@ -836,17 +837,19 @@ button:disabled { cursor: var(--cursor-arrow); }
 .station-workflow { display: grid; gap: 4px; }
 .station-workflow span { display: grid; grid-template-columns: 40px 1fr; align-items: center; gap: 8px; text-align: left; }
 /* 동그란 칸이면 그림의 네 귀퉁이가 잘린다. 가로로 긴 설비 그림은 좌우가
-   통째로 날아간다. 모서리만 둥근 네모로 두고 그림을 다 보여 준다. */
+   통째로 날아간다. 모서리만 둥근 네모로 두고 그림을 다 보여 준다.
+   칸을 grid로 두면 안 된다. 칸 높이가 내용에 따라 정해지는 꼴이 되어 그림의
+   height: 100%가 풀리지 않고, 세로로 긴 그림(당근·딸기·믹서기·물)이 제 크기
+   그대로 칸을 넘어간다. 높이가 확실한 block에 얹어야 모두 같은 크기가 된다. */
 .station-workflow i {
-  display: grid;
-  place-items: center;
+  display: block;
   width: 40px;
   height: 40px;
   border: 2px solid #fff;
   border-radius: 10px;
   background: #fff;
 }
-.station-workflow i img { width: 100%; height: 100%; padding: 6%; object-fit: contain; box-sizing: border-box; }
+.station-workflow i img { display: block; width: 100%; height: 100%; padding: 10%; object-fit: contain; box-sizing: border-box; }
 .station-workflow b { border: 1px solid #9b6735; border-radius: 3px; padding: 5px 9px; background: #f2ddb2; font-size: 12px; }
 .inspector-badges img { width: 26px; height: 26px; object-fit: contain; }
 .inspector-badges span { display: grid; grid-template-columns: 26px auto; align-items: center; gap: 6px; }
@@ -991,19 +994,52 @@ button:disabled { cursor: var(--cursor-arrow); }
   background: #160c07e8;
 }
 
-.result-overlay > div {
-  width: min(580px, 100%);
-  padding: 42px;
-  border: 8px solid #6f431f;
-  border-radius: 4px;
-  background: linear-gradient(#f2ddb1, #cda46b);
+/* 정산 창과 소리 설정 창은 같은 나무 액자 그림을 쓴다. 그림 비율(1055×1285)을
+   그대로 창 비율로 삼아 통째로 키우니 늘어나는 곳이 없다. 9분할이 필요 없다.
+   글자 자리는 그림에서 잰 종이 영역(가로 8.1~91.8%, 세로 20.9~93.4%)과 위쪽
+   리본(세로 4.2~17.2%, 가로 18~82%) 비율로 잡는다. */
+.paper-window {
+  position: relative;
+  /* 세로가 짧은 화면에서는 높이가 먼저 걸린다. 비율을 지키려면 폭을 줄여야
+     하므로 화면 높이에서 거꾸로 계산한 폭도 후보에 넣는다. */
+  width: min(var(--paper-w, 520px), 100%, calc((100svh - 40px) * 1055 / 1285));
+  aspect-ratio: 1055 / 1285;
+  background: url("/ui/paper-frame.png") center / 100% 100% no-repeat;
   color: var(--paper-ink);
   text-align: center;
-  box-shadow: inset 0 0 0 2px #fff2ca88, 0 18px 50px #000b;
+  filter: drop-shadow(0 16px 40px #000b);
+}
+
+.paper-title {
+  position: absolute;
+  top: 4.2%;
+  left: 18%;
+  display: grid;
+  place-content: center;
+  width: 64%;
+  height: 13%;
+  margin: 0;
+  color: #6b3d1a;
+  font-size: clamp(17px, 2vw, 24px);
+}
+/* 제목이 그림이면 리본 안에 꽉 차지 않게 조금 줄여 앉힌다. */
+img.paper-title { width: 56%; height: 11.4%; top: 4.9%; left: 22%; object-fit: contain; }
+
+.paper-body {
+  position: absolute;
+  top: 20.9%;
+  right: 8.3%;
+  bottom: 6.6%;
+  left: 8.1%;
+  display: grid;
+  align-content: center;
+  gap: clamp(6px, 1.4vh, 14px);
+  overflow: hidden;
+  padding: 4% 5%;
 }
 
 .result-overlay .eyebrow { color: #9b3f21; }
-.result-overlay h2 { margin: 8px 0 28px; font-size: clamp(1.6rem, 5vw, 2.8rem); }
+.result-overlay h2 { margin: 0; font-size: clamp(1rem, 1.7vw, 1.35rem); }
 .result-overlay button { border: 2px solid #7e4d24; border-radius: 3px; padding: 10px 14px; background: var(--gold); color: #21120a; font-weight: 800; cursor: var(--cursor-hand); }
 
 /* 스테이지 시작 전 정보 화면: 제목 / 맵+TIP / 음식 / 다음 순서를 유지한다. */
@@ -1206,7 +1242,7 @@ button:disabled { cursor: var(--cursor-arrow); }
 .stage-info-error { place-items: center; color: #ffc0ce; font-size: 22px; }
 
 /* 정산 표: 항목 · 계산식 · 소계 3열. */
-.settle { margin: 0 0 24px; }
+.settle { margin: 0; }
 .settle > div {
   display: grid;
   grid-template-columns: 1fr auto minmax(88px, auto);
@@ -1475,15 +1511,18 @@ button:disabled { cursor: var(--cursor-arrow); }
   .stat-gauge { gap: 1px; }
   .stat-gauge i { width: 7px; height: 6px; }
   
-  .result-overlay { align-items: start; overflow-y: auto; padding: 6px; }
-  .result-overlay > div { width: min(520px, 100%); padding: 12px 20px; border-width: 4px; }
+  /* 액자는 비율대로 통째로 줄어든다. 안에 든 글자만 따로 줄인다. */
+  .result-overlay { padding: 6px; }
+  .paper-body { gap: 4px; padding: 3% 4%; }
   .result-overlay .eyebrow { margin-bottom: 2px; font-size: 9px; }
-  .result-overlay h2 { margin: 2px 0 10px; font-size: 20px; }
-  .result-overlay .settle { margin-bottom: 6px; }
-  .result-overlay .settle > div { gap: 7px; padding: 4px; font-size: 11px; }
-  .result-overlay .settle dd:last-child { font-size: 14px; }
-  .result-overlay .mic-state { min-height: 0; margin: 4px 0; font-size: 9px; }
+  .result-overlay h2 { font-size: 12px; }
+  .result-overlay .settle > div { gap: 7px; padding: 3px; font-size: 10px; }
+  .result-overlay .settle dd:last-child { font-size: 13px; }
+  .result-overlay .mic-state { min-height: 0; margin: 0; font-size: 9px; }
   .result-overlay button { padding: 5px 10px; font-size: 10px; }
+  .settings-drawer { border-width: 24px; border-image-width: 24px; gap: 8px; padding: 2px 6px 8px; }
+  .settings-drawer header strong { font-size: 15px; }
+  .settings-drawer .settings-close { top: -32px; right: -32px; width: 38px; height: 38px; font-size: 21px; }
 }
 
 @media (min-width: 761px) and (max-width: 900px) {

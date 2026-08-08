@@ -2054,13 +2054,15 @@ export default function Game() {
           aria-modal="true"
           aria-labelledby="result-title"
         >
-          <div>
+          {/* 나무 액자 그림이 창 전체다. 제목은 위 리본, 나머지는 종이 안에 온다. */}
+          <div className="paper-window">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
-              className="result-title-art"
+              className="result-title-art paper-title"
               src={state.phase === "lost" ? "/text/game-over-title.png" : "/text/business-end-title.png"}
               alt={state.phase === "lost" ? "게임 오버" : "영업 종료"}
             />
+            <div className="paper-body">
             <h2 id="result-title">{result}</h2>
             {/* 별은 하나씩 차례로 찍힌다. 받은 개수만 밝다. */}
             <p className="stage-rank" aria-label={`스테이지 랭크 별 ${rank}개`}>
@@ -2116,6 +2118,7 @@ export default function Game() {
               >
                 모드 선택
               </button>
+            </div>
             </div>
           </div>
         </section>

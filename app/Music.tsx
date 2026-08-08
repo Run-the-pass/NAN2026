@@ -172,7 +172,14 @@ export function MusicSettings({
         >
           <header>
             <strong id={`${variant}-music-settings-title`}>소리 설정</strong>
-            <button type="button" onClick={() => changeOpen(false)} aria-label="소리 설정 닫기">×</button>
+            <button
+              type="button"
+              className="settings-close"
+              onClick={() => changeOpen(false)}
+              aria-label="소리 설정 닫기"
+            >
+              ×
+            </button>
           </header>
           <SoundRow
             label="음악"
