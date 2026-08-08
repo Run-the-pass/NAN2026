@@ -1171,3 +1171,22 @@ test("플레이테스트 세션은 위조된 요약을 저장 전에 거부한�
   assert.equal(parseSession({ ...valid, seed: -1 }).ok, false);
   assert.equal(parseSession("nope").ok, false);
 });
+
+test("옆에 선 슬라임이 쓸 수 없는 설비는 반드시 이유를 남긴다", () => {
+  // 화면은 이 메시지를 그대로 토스트로 띄운다. 조용히 거절하는 설비가 하나라도
+  // 있으면 플레이어는 왜 안 되는지 알 길이 없다. 거절은 행동력도 쓰지 않는다.
+  for (const station of stationInstances) {
+    const walked = actAt(initialState(7, ["water", "fire"]), "water-1", station.id);
+    if (walked.phase !== "playing") continue;
+    // 한 번에 성공했으면 볼 것이 없다.
+    if ((walked.refusal?.seq ?? 0) === 0) continue;
+    const before = walked.actors["water-1"]!.actionPoints;
+    if (before < 1) continue;
+    const again = interactActor(walked, "water-1", station.id);
+    assert.ok(
+      (again.refusal?.message ?? "").trim().length > 0,
+      `${station.id}는 거절 이유를 남겨야 한다`,
+    );
+    assert.equal(again.actors["water-1"]!.actionPoints, before);
+  }
+});

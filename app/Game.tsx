@@ -1341,16 +1341,17 @@ export default function Game() {
                 inputEvent.stopPropagation();
                 if (!fromCanvas(pointer)) return;
                 if (!pointer.leftButtonDown()) return;
-                // 쓸 수 있으면 그대로 쓴다. 쓸 수 없는 설비를 누른 것은
-                // "이게 뭔지 보자"는 뜻이지 실패를 보고 싶다는 뜻이 아니다.
-                // 그럴 때는 거절 토스트를 띄우지 않고 슬라임 선택을 놓는다.
                 setInspected({ kind: "station", id });
                 const actorId = selectedActorRef.current;
                 if (!actorId) return;
-                if (!this.usable[id]) {
+                // 닿지도 않는 설비를 누른 것은 "이게 뭔지 보자"는 뜻이다.
+                // 그럴 때만 조용히 슬라임 선택을 놓는다.
+                if (this.usable[id] === undefined) {
                   setSelectedActor(null);
                   return;
                 }
+                // 옆에 서 있는데 안 되는 것은 왜 안 되는지 알아야 한다.
+                // 코어를 그대로 돌려 거절 이유를 토스트로 띄운다.
                 metrics.current.buttonCommands += 1;
                 setState((value) =>
                   value ? interactActor(value, actorId, id) : value,
