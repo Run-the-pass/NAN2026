@@ -78,6 +78,8 @@ sources:
 - [업데이트 다이얼로그·플레이테스트 계획](plan-dialogue-update-playtest.md) — PDF 53쪽의 1~4스테이지 대사·연출과 직접 플레이 보고서 범위.
 - [다이얼로그 업데이트 플레이 흐름 보고서](playtest-dialogue-flow-2026-08-09.md) — 튜토리얼 전체 직접 플레이 결과, 발견·수정 사항과 남은 무한 모드 결정.
 - [GitHub Pages 배포 계획](plan-github-pages.md) — 현재 게임을 `/NAN2026` 경로의 정적 Pages 빌드로 공개하는 범위와 완료 조건.
+- [튜토리얼 화살표·이어하기·상호작용 보정 계획](plan-tutorial-arrow-resume-interaction.md) — 화살표 외곽 배치와 좌표 설정, 대화 레이어, 턴 경계, 쿠키 이어하기, 원거리 설비 상호작용 계획.
+- [설비 용량 표시 보정 계획](plan-station-capacity-panel.md) — 세척대 용량 누락과 과도하게 늘어난 용량 줄을 보정하는 범위.
 - [작업 로그](log.md) — ingest, 계획, 구현, 검증의 시간순 기록.
 
 원문: [감자·도마·접시 에셋](../raw/assets_0/), [화면 문구 이미지](../raw/text/), [추가본 정리](../raw/%EC%B6%94%EA%B0%80%EB%B3%B8_%EC%A0%95%EB%A6%AC/) (덱 `raw/추가본.pptx`의 화면별 기획과 2026-08-02 확정·미정), [클로드 담당 작업: 주문과 화재](../raw/%ED%81%B4%EB%A1%9C%EB%93%9C_%EB%8B%B4%EB%8B%B9_%EC%9E%91%EC%97%85_%EC%A3%BC%EB%AC%B8%EA%B3%BC_%ED%99%94%EC%9E%AC.md), [프로젝트 브리프](../raw/project-brief.md), [홈 화면 v2 참고 이미지](../raw/home%20v2/home_reference.png), [홈 화면 v2 에셋](../raw/home%20v2/), [성장 선택 카드 참고 이미지](../raw/references/upgrade-choice-cards.png), [슬라임 스탯·가격·패널티](../raw/slime-stats-pricing-and-penalties.md), [펀테스트 변경 사항](../raw/fun-test-design-changes.md), [음성인식 시스템 논의](../raw/voice-command-discussion-summary-revised.md), [자원·제작 시스템 기획](../raw/slime-workshop-resource-production-design.md), [그릇·테이블·편의 선택 추가 명세](../raw/%E1%84%80%E1%85%B3%E1%84%85%E1%85%B3%E1%86%BA_%E1%84%90%E1%85%A6%E1%84%8B%E1%85%B5%E1%84%87%E1%85%B3%E1%86%AF_%E1%84%91%E1%85%A7%E1%86%AB%E1%84%8B%E1%85%B4%E1%84%89%E1%85%A5%E1%86%AB%E1%84%90%E1%85%A2%E1%86%A8_%E1%84%8E%E1%85%AE%E1%84%80%E1%85%A1_%E1%84%86%E1%85%A7%E1%86%BC%E1%84%89%E1%85%A6.md)
