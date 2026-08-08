@@ -68,6 +68,7 @@ import { GameSoundEffects } from "./SoundEffects";
 import StageSelect from "./StageSelect";
 import Dialogue from "./Dialogue";
 import { openingLines } from "./dialogue-script";
+import { activeActorIds, onTutorialStage, tutorialCue } from "./tutorial";
 import { readProgress, withResult, writeProgress, type StageProgress } from "./progress";
 
 type View = {
@@ -704,6 +705,8 @@ export default function Game() {
   const inspectedRef = useRef(inspected);
   // 행동력이 떨어져 자동으로 넘긴 슬라임. 같은 마리를 되풀이해 뺏지 않는다.
   const handedOff = useRef<ActorId | null>(null);
+  // 튜토리얼이 지금 짚는 설비. 캔버스가 그 자리에 표시를 그린다.
+  const coachRef = useRef<StationId | null>(null);
   const view = useRef<View | null>(null);
   const metrics = useRef<Metrics>(emptyMetrics());
   const savedRef = useRef(false);
@@ -721,6 +724,17 @@ export default function Game() {
     inspectedRef.current = inspected;
     view.current?.sync(stateRef.current!);
   }, [inspected]);
+
+  // 튜토리얼이 지금 짚어야 할 자리. 지도에 표시를 그려야 해서 ref로도 둔다.
+  const cue =
+    state && state.phase === "playing" && !intro && onTutorialStage(state)
+      ? tutorialCue(state, selectedActor, currentStage(state).turnLimit)
+      : null;
+  const cueStation = cue?.station ?? null;
+  useEffect(() => {
+    coachRef.current = cueStation;
+    if (stateRef.current) view.current?.sync(stateRef.current);
+  }, [cueStation]);
 
   useEffect(() => {
     setInspected((current) => selectedActor
@@ -1529,14 +1543,38 @@ export default function Game() {
         // 설비 상호작용 표시는 설비 그림 위에 그린다. 바닥에 깔면 도마처럼
         // 칸을 덮는 기구에서는 테두리가 그림에 가려 보이지 않는다.
         const hitMarks = this.add.graphics().setDepth(700);
+        // 튜토리얼이 짚는 자리. 깜박여서 눈에 먼저 들어오게 한다.
+        const coachMarks = this.add.graphics().setDepth(710);
+        this.tweens.add({
+          targets: coachMarks,
+          alpha: { from: 1, to: 0.25 },
+          duration: 620,
+          yoyo: true,
+          repeat: -1,
+          ease: "Sine.easeInOut",
+        });
 
         view.current = {
           sync: (current) => {
             const shown = inspectedRef.current;
+            // 튜토리얼이 아직 소개하지 않은 슬라임은 지도에서도 감춘다.
+            const revealed = activeActorIds(current);
             for (const actorId of roster) {
               const actor = current.actors[actorId];
               const sprite = this.slimes[actorId];
               if (!actor || !sprite) continue;
+              const visible = revealed.includes(actorId);
+              sprite.body.setVisible(visible);
+              if (!visible) {
+                sprite.carried.forEach((slot) => {
+                  slot.bg.setVisible(false);
+                  slot.fg.setVisible(false);
+                });
+                sprite.selected.setVisible(false);
+                sprite.idleMark.setVisible(false);
+                sprite.nameTag.setVisible(false);
+                continue;
+              }
               const spot = tileCenter(actor);
               const facing = facingFromDelta(
                 spot.x - sprite.last.x,
@@ -1617,6 +1655,25 @@ export default function Game() {
             }
             moveMarks.clear();
             hitMarks.clear();
+            coachMarks.clear();
+            const coached = coachRef.current
+              ? stationInstances.find((one) => one.type === coachRef.current)
+              : undefined;
+            if (coached) {
+              const first = tileCenter(coached.tiles[0]!);
+              const last = tileCenter(coached.tiles[coached.tiles.length - 1]!);
+              const width = Math.abs(last.x - first.x) + TILE_SIZE + 6;
+              const height = Math.abs(last.y - first.y) + TILE_SIZE + 6;
+              const x = (first.x + last.x) / 2 - width / 2;
+              const y = (first.y + last.y) / 2 - height / 2;
+              coachMarks
+                .fillStyle(0xffd46b, 0.22)
+                .fillRoundedRect(x, y, width, height, 10)
+                .lineStyle(6, 0xffd46b, 1)
+                .strokeRoundedRect(x, y, width, height, 10)
+                .lineStyle(3, 0x4a2a12, 0.9)
+                .strokeRoundedRect(x - 4, y - 4, width + 8, height + 8, 12);
+            }
             const selected = selectedActorRef.current;
             // 지금 고른 슬라임이 쓸 수 있는 설비. 코어를 한 번 돌려 보고
             // 거절당하는지로 판단해서, 화면이 규칙을 따로 흉내내지 않는다.
@@ -1827,7 +1884,7 @@ export default function Game() {
     const had = handedOff.current;
     handedOff.current = left > 0 ? selectedActor : null;
     if (left > 0 || had !== selectedActor) return;
-    const next = nextReadyActor(state, squadActorIds(squad), selectedActor);
+    const next = nextReadyActor(state, activeActorIds(state), selectedActor);
     if (next) setSelectedActor(next);
   }, [state, selectedActor, squad]);
 
@@ -1853,7 +1910,7 @@ export default function Game() {
       const next = endTurn(value);
       // 턴을 넘긴 뒤 아무도 골라져 있지 않으면 손이 멈춘다. 첫 마리를
       // 자동으로 골라 바로 이어서 시킬 수 있게 한다.
-      const first = squadActorIds(next.squad).find(
+      const first = activeActorIds(next).find(
         (id) => (next.actors[id]?.actionPoints ?? 0) > 0,
       );
       setSelectedActor(first ?? null);
@@ -1890,7 +1947,7 @@ export default function Game() {
         if (active instanceof HTMLElement && active.tagName === "BUTTON") {
           active.blur();
         }
-        const roster = squadActorIds(squad);
+        const roster = activeActorIds(current);
         const ready = roster.filter((id) => (current.actors[id]?.actionPoints ?? 0) > 0);
         if (ready.length === 0) {
           finishTurn();
@@ -1932,7 +1989,9 @@ export default function Game() {
       : isLastStage(state)
         ? "모든 스테이지를 클리어했습니다!"
         : `${currentStage(state).id} 스테이지 클리어!`;
-  const roster = squadActorIds(squad);
+  // 튜토리얼 중에는 아직 소개하지 않은 슬라임을 버튼에서도 지도에서도 뺀다.
+  // 한 번에 하나씩 알려 주기 위해서다.
+  const roster = activeActorIds(state);
   // 아직 행동력이 남은 슬라임. 턴 종료 버튼이 이걸 알려 준다.
   const readyCount = roster.filter(
     (actorId) => (state.actors[actorId]?.actionPoints ?? 0) > 0,
@@ -1997,6 +2056,15 @@ export default function Game() {
           </p>
         )}
 
+        {cue && (
+          // 화면을 덮지 않는 한 줄짜리 안내. 한 번에 한 가지만 말한다.
+          <p className="coach-line" role="status" aria-live="polite" key={cue.id}>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={slimePortrait(cue.speaker)} alt="" aria-hidden />
+            <span>{cue.text}</span>
+          </p>
+        )}
+
         <div className="hud-bottom">
           <div className="turn-bar" aria-label="슬라임 행동력">
             {roster.map((actorId) => {
@@ -2007,6 +2075,7 @@ export default function Game() {
                   type="button"
                   key={actorId}
                   data-type={actor.typeId}
+                  data-coach={cue?.actor === actorId ? "" : undefined}
                   data-spent={actor.actionPoints === 0 ? "" : undefined}
                   aria-label={`${actor.name} 선택, 남은 행동력 ${actor.actionPoints}`}
                   aria-pressed={selectedActor === actorId}
@@ -2042,6 +2111,7 @@ export default function Game() {
             <button
               type="button"
               className="turn-end"
+              data-coach={cue?.endTurn ? "" : undefined}
               onClick={finishTurn}
               aria-label={`턴 종료, 행동력이 남은 슬라임 ${readyCount}마리`}
             >

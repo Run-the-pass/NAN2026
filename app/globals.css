@@ -736,6 +736,54 @@ button:disabled { cursor: var(--cursor-arrow); }
 }
 
 /* 행동력을 쓰지 않고 거절된 이유 */
+/* 튜토리얼 한 줄 안내. 화면을 덮지 않고 슬라임 버튼 바로 위에 붙는다.
+   길게 설명하는 팝업 대신 한 번에 한 가지만 말하는 자리다. */
+.coach-line {
+  position: absolute;
+  z-index: 21;
+  right: calc(var(--game-info-rail) + 12px);
+  /* 실패 안내(action-toast)와 겹치지 않게 한 칸 위에 둔다. */
+  bottom: clamp(146px, 19vh, 202px);
+  left: 12px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: fit-content;
+  max-width: min(560px, 100%);
+  margin: 0 auto;
+  border: 3px solid #8d592c;
+  border-radius: 14px;
+  padding: 8px 16px 8px 10px;
+  background: #2c1a0ef2;
+  box-shadow: 0 8px 22px #0009;
+  color: #ffeec6;
+  font-size: clamp(13px, 1.3vw, 16px);
+  line-height: 1.4;
+  animation: coach-in 260ms ease-out both;
+}
+.coach-line img { width: 38px; height: 38px; flex: none; object-fit: contain; }
+
+@keyframes coach-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: none; }
+}
+
+/* 튜토리얼이 지금 누르라고 짚는 버튼. */
+.stage-frame [data-coach] {
+  border-color: var(--gold);
+  animation: coach-pulse 1.1s ease-in-out infinite;
+}
+
+@keyframes coach-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 #ffd46b00; }
+  50% { box-shadow: 0 0 0 7px #ffd46b55; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .coach-line { animation: none; }
+  .stage-frame [data-coach] { animation: none; box-shadow: 0 0 0 4px #ffd46b66; }
+}
+
 .action-toast {
   position: absolute;
   z-index: 20;

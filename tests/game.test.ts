@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { simulate, actAt } from "../game/cli.js";
+import { activeActorIds, tutorialCue } from "../app/tutorial.js";
 import { parseSession } from "../game/session.js";
 import recipeData from "../game/recipes.json" with { type: "json" };
 import stageData from "../game/stages.json" with { type: "json" };
@@ -554,8 +555,8 @@ test("행동력을 다 쓰면 다음으로 넘길 슬라임을 고른다", () =>
 
 test("유효하지 않은 상호작용은 행동력을 쓰지 않고 이유를 남긴다", () => {
   const state = initialState(1, ["water"]);
-  // 옆 칸에 서지 않고 설비를 쓰려 할 때.
-  const far = interactActor(state, "water-1", "submission");
+  // 옆 칸에 서지 않고 설비를 쓰려 할 때. 화로는 물 슬라임 자리에서 멀다.
+  const far = interactActor(state, "water-1", "oven");
   assert.equal(far.actors["water-1"]!.actionPoints, 1);
   assert.ok(far.refusal?.message.includes("옆 칸"));
 
@@ -681,7 +682,10 @@ test("감자를 썰어 제출하면 주문 수가 오른다", () => {
 });
 
 test("빈 접시 없이 음식은 꺼내도 제출은 접시에 담아야 한다", () => {
-  let state = initialState(1, ["earth"]);
+  // 1스테이지 첫 주문은 튜토리얼용 채썬 양배추라 여기서는 주문을 직접 정한다.
+  let state = initialState(1, ["earth"], oneStage([
+    { id: "a", foodId: "shredded-potato", targetCount: 1, submittedCount: 0 },
+  ]));
   state = actAt(state, "earth-1", "potato-box");
   state = actAt(state, "earth-1", stoveId);
   state = actAt(state, "earth-1", stoveId);
@@ -1189,4 +1193,39 @@ test("옆에 선 슬라임이 쓸 수 없는 설비는 반드시 이유를 남�
     );
     assert.equal(again.actors["water-1"]!.actionPoints, before);
   }
+});
+
+test("튜토리얼은 첫 주문을 끝낼 때까지 한 번에 한 가지만 시킨다", () => {
+  const cabbageBoxId = stationInstancesByType["cabbage-box"][0].id;
+  const rackId = stationInstancesByType["dish-rack"][0].id;
+  const submissionId = stationInstancesByType.submission[0].id;
+  const limit = defaultStages()[0]!.turnLimit;
+  const step = (value: GameState, selected: ActorId | null) =>
+    tutorialCue(value, selected, limit)?.id ?? null;
+
+  let state = initialState(7, ["earth", "water", "fire", "lightning"]);
+  // 처음에는 땅 슬라임만 나온다. 나머지는 아직 소개하지 않는다.
+  assert.deepEqual(activeActorIds(state), ["earth-1"]);
+  assert.equal(step(state, null), "SELECT_EARTH");
+  assert.equal(step(state, "earth-1"), "MOVE_TO_CABBAGE");
+
+  state = actAt(state, "earth-1", cabbageBoxId);
+  assert.ok(state.actors["earth-1"]!.carrying.includes("cabbage"));
+  assert.equal(step(state, "earth-1"), "USE_CUTTING_BOARD");
+
+  state = actAt(state, "earth-1", stoveId);
+  state = actAt(state, "earth-1", stoveId);
+  // 음식이 완성되면 물 슬라임이 나오고 안내가 그릇으로 넘어간다.
+  assert.deepEqual(activeActorIds(state).sort(), ["earth-1", "water-1"]);
+  assert.equal(step(state, "earth-1"), "PLATE_FOOD");
+
+  state = actAt(state, "water-1", rackId);
+  state = actAt(state, "water-1", stoveId);
+  assert.equal(step(state, "water-1"), "SUBMIT_ORDER");
+
+  state = actAt(state, "water-1", submissionId);
+  // 첫 주문을 끝내면 안내가 사라지고 나머지 슬라임이 모두 나온다.
+  assert.equal(state.filled, 1);
+  assert.equal(step(state, "water-1"), null);
+  assert.equal(activeActorIds(state).length, 4);
 });

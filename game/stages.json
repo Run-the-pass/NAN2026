@@ -3,14 +3,14 @@
   "stages": [
     {
       "id": "0",
-      "turnLimit": 40,
+      "turnLimit": 55,
       "stars": [
         1,
         2,
         3
       ],
       "orders": [
-        "shredded-potato",
+        "shredded-cabbage",
         "shredded-potato",
         "shredded-potato"
       ]
