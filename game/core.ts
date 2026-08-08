@@ -23,7 +23,8 @@ export type ItemId =
   | "strawberry-smoothie"
   | "fried-potato"
   | "fried-mushroom"
-  | "grilled-mushroom";
+  | "grilled-mushroom"
+  | "salad";
 export type DishStatus = "clean" | "filled" | "dirty";
 export type Dish = { id: string; status: DishStatus; content: ItemId | null };
 export type Carried = ItemId | Dish;
@@ -76,6 +77,7 @@ export const itemLabels: Record<ItemId, string> = {
   "fried-potato": "감자 튀김",
   "fried-mushroom": "버섯 튀김",
   "grilled-mushroom": "버섯 구이",
+  salad: "샐러드",
 };
 
 export const itemLabel = (item: ItemId) => itemLabels[item];
@@ -131,6 +133,7 @@ export const allItems: ItemId[] = [
   "fried-potato",
   "fried-mushroom",
   "grilled-mushroom",
+  "salad",
 ];
 export const allElements: SlimeElement[] = ["water", "fire", "lightning", "earth"];
 export const allStations: StationId[] = [
@@ -181,7 +184,7 @@ export const isCooktop = (type: StationId) => cooktopStations.includes(type);
 
 export type Recipe = {
   foodId: ItemId;
-  ingredient: { itemId: ItemId; count: number };
+  ingredients: { itemId: ItemId; count: number }[];
   station: StationId;
   // 조리를 시작할 수 있는 속성. 여럿일 수 있고, 그중 아무나 돌리면 된다.
   // 재료를 올리고 완성품을 가져가는 것은 누구나 할 수 있다.
@@ -256,27 +259,29 @@ function readRecipes(): Partial<Record<ItemId, Recipe>> {
   for (const row of recipeData.recipes) {
     const { foodId, ingredient, station, workers, servedInDish } = row as {
       foodId: ItemId;
-      ingredient: ItemId;
+      ingredient: ItemId | ItemId[];
       station: StationId;
       workers: SlimeElement[];
       servedInDish?: boolean;
     };
+    const ingredients = (Array.isArray(ingredient) ? ingredient : [ingredient]) as ItemId[];
     if (
       !allItems.includes(foodId) ||
-      !allItems.includes(ingredient) ||
+      ingredients.length < 1 ||
+      ingredients.some((item) => !allItems.includes(item)) ||
       !allStations.includes(station) ||
       !Array.isArray(workers) ||
       workers.length < 1 ||
       workers.some((one) => !allElements.includes(one)) ||
       table[foodId] ||
-      perStation.has(`${station}/${ingredient}`)
+      perStation.has(`${station}/${ingredients.join("+")}`)
     ) {
       throw new Error(`recipes.json의 레시피가 올바르지 않습니다: ${row.foodId}`);
     }
-    perStation.add(`${station}/${ingredient}`);
+    perStation.add(`${station}/${ingredients.join("+")}`);
     table[foodId] = {
       foodId,
-      ingredient: { itemId: ingredient, count: 1 },
+      ingredients: ingredients.map((itemId) => ({ itemId, count: 1 })),
       station,
       workers: [...workers],
       // 적지 않으면 그릇에 담아 낸다. 스무디처럼 컵째 나가는 것만 false다.
@@ -296,7 +301,9 @@ export const allRecipes = Object.values(recipes) as Recipe[];
 // 믹서기에 감자를 넣을 수 없는 것이 여기서 갈린다.
 export const recipeAt = (station: StationId, item: ItemId) =>
   allRecipes.find(
-    (recipe) => recipe.station === station && recipe.ingredient.itemId === item,
+    (recipe) => recipe.station === station &&
+      recipe.ingredients.length === 1 &&
+      recipe.ingredients[0]!.itemId === item,
   ) ?? null;
 
 // 그릇 없이 그대로 내는 음식인지. 스무디는 컵째 나간다.
@@ -1157,11 +1164,14 @@ export function nextReadyActor(
   state: GameState,
   roster: ActorId[],
   from: ActorId,
+  skipped?: ReadonlySet<ActorId>,
 ): ActorId | null {
   const at = roster.indexOf(from);
   if (at < 0) return null;
   const order = [...roster.slice(at + 1), ...roster.slice(0, at)];
-  return order.find((id) => (state.actors[id]?.actionPoints ?? 0) > 0) ?? null;
+  return order.find((id) =>
+    !skipped?.has(id) && (state.actors[id]?.actionPoints ?? 0) > 0
+  ) ?? null;
 }
 
 export function moveActor(
@@ -1312,7 +1322,9 @@ function cannotUseHere(actor: ActorState, type: StationId, label: string) {
   const held = actor.carrying[0]!;
   const item = isDish(held) ? held.content : held;
   if (item && !recipeAt(type, item)) {
-    const elsewhere = allRecipes.find((one) => one.ingredient.itemId === item);
+    const elsewhere = allRecipes.find((one) =>
+      one.ingredients.some((ingredient) => ingredient.itemId === item)
+    );
     return elsewhere
       ? `${itemLabel(item)}(으)로 ${withParticle(label)} 쓰는 요리는 없습니다. ${stationLabels[elsewhere.station]}에서 씁니다.`
       : `${itemLabel(item)}(으)로 만들 수 있는 요리가 아직 없습니다.`;
@@ -1795,6 +1807,37 @@ function atTable(
       tables: { ...state.tables, [station]: contents },
     });
 
+  const saladPair = (first: ItemId | null, second: ItemId | null) =>
+    new Set([first, second]).size === 2 &&
+    [first, second].every((item) =>
+      item === "shredded-carrot" || item === "shredded-cabbage"
+    );
+
+  // 썬 당근과 썬 양배추를 같은 접시에 올리면 샐러드가 된다.
+  const looseItem = actor.carrying.findIndex((carried) => !isDish(carried));
+  if (
+    tableItem && isDish(tableItem) && tableItem.status === "filled" &&
+    looseItem >= 0 && saladPair(tableItem.content, actor.carrying[looseItem] as ItemId)
+  ) {
+    return put(
+      `${actor.name}이(가) 샐러드를 완성했습니다.`,
+      actor.carrying.filter((_, index) => index !== looseItem),
+      [{ ...tableItem, content: "salad" }],
+    );
+  }
+  const filledDish = dishIndex(actor, (dish) => dish.status === "filled");
+  const carriedDish = actor.carrying[filledDish];
+  if (
+    tableItem && !isDish(tableItem) && filledDish >= 0 &&
+    carriedDish && isDish(carriedDish) && saladPair(carriedDish.content, tableItem)
+  ) {
+    return put(
+      `${actor.name}이(가) 샐러드를 완성했습니다.`,
+      actor.carrying.filter((_, index) => index !== filledDish),
+      [{ ...carriedDish, content: "salad" }],
+    );
+  }
+
   // 그릇을 들고 음식이 있는 테이블: 그릇을 내려놓고 음식을 담는다.
   // 음식이 담긴 그릇은 테이블 위에 남는다.
   const cleanDish = dishIndex(actor, (dish) => dish.status === "clean");
@@ -1808,7 +1851,6 @@ function atTable(
   }
 
   // 음식을 들고 빈 그릇이 있는 테이블: 음식을 그릇에 담는다.
-  const looseItem = actor.carrying.findIndex((carried) => !isDish(carried));
   if (tableItem && isDish(tableItem) && tableItem.status === "clean" && looseItem >= 0) {
     const food = actor.carrying[looseItem] as ItemId;
     return put(

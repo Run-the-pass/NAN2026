@@ -26,7 +26,7 @@
     "perTurn": 1
   },
   "dish": {
-    "initialCount": 3,
+    "initialCount": 5,
     "rackCapacity": 5,
     "washerCapacity": 1,
     "tableCapacity": 1,

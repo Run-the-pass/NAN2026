@@ -67,8 +67,8 @@ import { gameMusicSource } from "./music-source";
 import { GameSoundEffects } from "./SoundEffects";
 import StageSelect from "./StageSelect";
 import Dialogue from "./Dialogue";
-import { openingLines } from "./dialogue-script";
-import { activeActorIds, onTutorialStage, tutorialCue } from "./tutorial";
+import { openingLines, stageOpeningLine, tutorialCompleteLines, type DialogueFocus } from "./dialogue-script";
+import { activeActorIds, finishTutorial, onTutorialStage, prepareTutorialState, tutorialCue, tutorialDone } from "./tutorial";
 import { readProgress, withResult, writeProgress, type StageProgress } from "./progress";
 
 type View = {
@@ -210,6 +210,7 @@ const foodImages: Record<ItemId, string> = {
   "fried-potato": "/food/fried-potato.png",
   "fried-mushroom": "/food/fried-mushroom.png",
   "grilled-mushroom": "/food/grilled-mushroom.png",
+  salad: "/food/salad.png",
 };
 
 // 손에 든 것은 실제 게임 그림으로 "?" 왼쪽에 보여 준다. 그릇은 접시 그림
@@ -475,13 +476,18 @@ function OrderCard({ order, next }: { order: Order; next?: boolean }) {
       {recipe && (
         <>
           <span className="order-part order-part-item" aria-hidden>
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={foodImages[recipe.ingredient.itemId]}
-              alt=""
-              style={anchorStyle(foodImages[recipe.ingredient.itemId])}
-            />
-            <b>{itemLabel(recipe.ingredient.itemId)}</b>
+            <i>
+              {recipe.ingredients.map(({ itemId }) => (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  key={itemId}
+                  src={foodImages[itemId]}
+                  alt=""
+                  style={anchorStyle(foodImages[itemId])}
+                />
+              ))}
+            </i>
+            <b>{recipe.ingredients.map(({ itemId }) => itemLabel(itemId)).join(" + ")}</b>
           </span>
           <span className="order-part order-method" aria-hidden>
             <i>
@@ -689,24 +695,27 @@ export default function Game() {
   const [selectedActor, setSelectedActor] = useState<ActorId | null>(null);
   const [inspected, setInspected] = useState<InspectorTarget | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [resumeCount, setResumeCount] = useState<number | null>(null);
   const [banner, setBanner] = useState<keyof typeof bannerImages | null>(null);
   // 아르바이트를 시작할 때 한 번 나오는 인사. 이게 떠 있는 동안은 조작을 막는다.
   const [intro, setIntro] = useState(false);
+  const [tutorialOutro, setTutorialOutro] = useState(false);
+  const [tutorialComplete, setTutorialComplete] = useState(false);
+  const [stageIntro, setStageIntro] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   // 대사 중에는 장면을 멈추지 않는다. 멈추면 뒤에 보여야 할 주방이 검게
   // 남는다. 조작은 대사 화면이 덮고 있어 어차피 닿지 않는다.
-  const paused = settingsOpen || resumeCount !== null;
+  const paused = settingsOpen;
 
-  const [saved, setSaved] = useState("");
   const stateRef = useRef(state);
   const selectedActorRef = useRef(selectedActor);
   // 캔버스가 이름표를 띄울지 판단하는 데 쓴다.
   const inspectedRef = useRef(inspected);
   // 행동력이 떨어져 자동으로 넘긴 슬라임. 같은 마리를 되풀이해 뺏지 않는다.
   const handedOff = useRef<ActorId | null>(null);
+  // Space로 넘긴 슬라임은 이번 턴의 자동 선택에서 다시 부르지 않는다.
+  const skippedActors = useRef(new Set<ActorId>());
   // 튜토리얼이 지금 짚는 설비. 캔버스가 그 자리에 표시를 그린다.
-  const coachRef = useRef<StationId | null>(null);
+  const coachRef = useRef<StationId | StationInstanceId | null>(null);
   const view = useRef<View | null>(null);
   const metrics = useRef<Metrics>(emptyMetrics());
   const savedRef = useRef(false);
@@ -727,7 +736,7 @@ export default function Game() {
 
   // 튜토리얼이 지금 짚어야 할 자리. 지도에 표시를 그려야 해서 ref로도 둔다.
   const cue =
-    state && state.phase === "playing" && !intro && onTutorialStage(state)
+    state && state.phase === "playing" && !intro && !tutorialOutro && onTutorialStage(state)
       ? tutorialCue(state, selectedActor, currentStage(state).turnLimit)
       : null;
   const cueStation = cue?.station ?? null;
@@ -735,6 +744,16 @@ export default function Game() {
     coachRef.current = cueStation;
     if (stateRef.current) view.current?.sync(stateRef.current);
   }, [cueStation]);
+
+  useEffect(() => {
+    if (!state || !tutorialDone(state) || tutorialComplete) return;
+    setTutorialOutro(true);
+    if (state.phase === "playing") setState(finishTutorial(state));
+  }, [state, tutorialComplete]);
+
+  const showDialogueFocus = useCallback((focus: DialogueFocus | undefined) => {
+    setInspected(focus === "inspector" ? { kind: "actor", id: "earth-1" } : null);
+  }, []);
 
   useEffect(() => {
     setInspected((current) => selectedActor
@@ -775,15 +794,6 @@ export default function Game() {
   }, [refusalSeq]);
 
   useEffect(() => {
-    if (resumeCount === null) return;
-    const timer = window.setTimeout(
-      () => setResumeCount((count) => count === null || count <= 1 ? null : count - 1),
-      1_000,
-    );
-    return () => window.clearTimeout(timer);
-  }, [resumeCount]);
-
-  useEffect(() => {
     if (paused) view.current?.pause();
     else view.current?.resume();
   }, [paused]);
@@ -807,7 +817,6 @@ export default function Game() {
       return kept;
     });
     const counts = metrics.current;
-    setSaved("기록 저장 중…");
     fetch("/api/sessions", {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -823,19 +832,7 @@ export default function Game() {
         voiceFailures: 0,
         avgConfidence: null,
       }),
-    })
-      .then(async (response) => {
-        if (!response.ok) {
-          const payload = (await response.json().catch(() => ({}))) as {
-            error?: string;
-          };
-          throw new Error(payload.error || "기록 저장 실패");
-        }
-        setSaved("플레이 기록을 저장했습니다.");
-      })
-      .catch((error: unknown) => {
-        setSaved(error instanceof Error ? error.message : "기록 저장 실패");
-      });
+    }).catch(() => {});
   }, [state]);
 
   useEffect(() => {
@@ -1657,7 +1654,9 @@ export default function Game() {
             hitMarks.clear();
             coachMarks.clear();
             const coached = coachRef.current
-              ? stationInstances.find((one) => one.type === coachRef.current)
+              ? stationInstances.find(
+                  (one) => one.id === coachRef.current || one.type === coachRef.current,
+                )
               : undefined;
             if (coached) {
               const first = tileCenter(coached.tiles[0]!);
@@ -1875,48 +1874,67 @@ export default function Game() {
     document.fonts?.load(`12px Jua`, words).catch(() => {});
   }, []);
 
-  // 방금 행동력을 다 쓴 슬라임만 다음 마리에게 넘긴다. 행동력이 0인 마리를
-  // 손으로 고른 것은 정보를 보려는 것이니 그대로 둔다. 그래서 "남아 있다가
-  // 0이 된" 순간만 본다.
-  useEffect(() => {
-    if (!state || !squad || !selectedActor) return;
-    const left = state.actors[selectedActor]?.actionPoints ?? 0;
-    const had = handedOff.current;
-    handedOff.current = left > 0 ? selectedActor : null;
-    if (left > 0 || had !== selectedActor) return;
-    const next = nextReadyActor(state, activeActorIds(state), selectedActor);
-    if (next) setSelectedActor(next);
-  }, [state, selectedActor, squad]);
-
   function startRound(list: SlimeTypeId[], id: string = stageId ?? "0") {
     const index = Math.max(0, stageIndexOf(id));
-    const next = initialState(2026, list, defaultStages(), index);
+    const next = prepareTutorialState(initialState(2026, list, defaultStages(), index));
     setStageId(id);
     metrics.current = emptyMetrics();
     savedRef.current = false;
     roundSeed.current = next.seed;
-    setSaved("");
+    skippedActors.current.clear();
     setSelectedActor(null);
     setInspected(null);
     setSettingsOpen(false);
-    setResumeCount(null);
+    setTutorialOutro(false);
+    setStageIntro(false);
+    setTutorialComplete(id !== "0");
     setState(next);
     setSquad(list);
   }
 
   const finishTurn = useCallback(() => {
+    skippedActors.current.clear();
     setState((value) => {
       if (!value) return value;
       const next = endTurn(value);
-      // 턴을 넘긴 뒤 아무도 골라져 있지 않으면 손이 멈춘다. 첫 마리를
-      // 자동으로 골라 바로 이어서 시킬 수 있게 한다.
-      const first = activeActorIds(next).find(
+      // 튜토리얼은 대사가 지목한 슬라임을 이어서 고르고, 일반 판은 첫 번째로
+      // 행동할 수 있는 슬라임을 고른다.
+      const guided = onTutorialStage(next)
+        ? tutorialCue(next, null, currentStage(next).turnLimit)?.actor
+        : null;
+      const first = [guided, ...activeActorIds(next)].find(
         (id) => (next.actors[id]?.actionPoints ?? 0) > 0,
       );
       setSelectedActor(first ?? null);
       return next;
     });
   }, []);
+
+  // 방금 행동력을 다 쓴 슬라임에서 다음 마리로 넘긴다. 아무도 남지 않으면
+  // 튜토리얼과 일반 게임 모두 기다리지 않고 다음 턴을 시작한다.
+  useEffect(() => {
+    if (!state || state.phase !== "playing" || !squad || !selectedActor) return;
+    const left = state.actors[selectedActor]?.actionPoints ?? 0;
+    const had = handedOff.current;
+    handedOff.current = left > 0 ? selectedActor : null;
+    if (left > 0 || had !== selectedActor) return;
+    if (tutorialDone(state)) return;
+    if (
+      onTutorialStage(state) &&
+      tutorialCue(state, selectedActor, currentStage(state).turnLimit)?.endTurn
+    ) {
+      finishTurn();
+      return;
+    }
+    const next = nextReadyActor(
+      state,
+      activeActorIds(state),
+      selectedActor,
+      skippedActors.current,
+    );
+    if (next) setSelectedActor(next);
+    else finishTurn();
+  }, [state, selectedActor, squad, finishTurn]);
 
   useEffect(() => {
     if (!squad) return;
@@ -1927,15 +1945,11 @@ export default function Game() {
       if (isTyping(event.target) || event.repeat) return;
       if (event.code === "Escape") {
         event.preventDefault();
-        setSettingsOpen((open) => {
-          const next = !open;
-          setResumeCount(next ? null : 3);
-          return next;
-        });
+        setSettingsOpen((open) => !open);
         return;
       }
-      // 스페이스바: 행동력이 남은 다음 슬라임을 고른다. 아무도 남지
-      // 않았으면 턴을 넘긴다. 자기 자신뿐이면 고른 채로 둔다.
+      // 스페이스바: 현재 슬라임은 이번 턴에 쉬겠다는 뜻으로 기록하고 다음
+      // 슬라임을 고른다. 모두 행동했거나 쉬기로 했으면 바로 턴을 넘긴다.
       if (event.code === "Space") {
         if (settingsOpen) return;
         const current = stateRef.current;
@@ -1948,14 +1962,22 @@ export default function Game() {
           active.blur();
         }
         const roster = activeActorIds(current);
-        const ready = roster.filter((id) => (current.actors[id]?.actionPoints ?? 0) > 0);
+        const selected = selectedActorRef.current;
+        if (selected && (current.actors[selected]?.actionPoints ?? 0) > 0) {
+          skippedActors.current.add(selected);
+        }
+        const ready = roster.filter((id) =>
+          !skippedActors.current.has(id) &&
+          (current.actors[id]?.actionPoints ?? 0) > 0
+        );
         if (ready.length === 0) {
           finishTurn();
           return;
         }
-        const selected = selectedActorRef.current;
         setSelectedActor(
-          selected ? (nextReadyActor(current, roster, selected) ?? selected) : ready[0]!,
+          selected
+            ? (nextReadyActor(current, roster, selected, skippedActors.current) ?? ready[0]!)
+            : ready[0]!,
         );
       }
     };
@@ -1986,6 +2008,8 @@ export default function Game() {
   const result =
     state.phase === "lost"
       ? "영업 종료. 주문을 다 채우지 못했습니다."
+      : currentStage(state).id === "0"
+        ? "튜토리얼 완료!"
       : isLastStage(state)
         ? "모든 스테이지를 클리어했습니다!"
         : `${currentStage(state).id} 스테이지 클리어!`;
@@ -1994,7 +2018,8 @@ export default function Game() {
   const roster = activeActorIds(state);
   // 아직 행동력이 남은 슬라임. 턴 종료 버튼이 이걸 알려 준다.
   const readyCount = roster.filter(
-    (actorId) => (state.actors[actorId]?.actionPoints ?? 0) > 0,
+    (actorId) => !skippedActors.current.has(actorId) &&
+      (state.actors[actorId]?.actionPoints ?? 0) > 0,
   ).length;
   const rank = state.phase === "won" ? stageRank(state) : 0;
 
@@ -2012,14 +2037,8 @@ export default function Game() {
           open={settingsOpen}
           onOpenChange={(open) => {
             setSettingsOpen(open);
-            setResumeCount(open ? null : 3);
           }}
         />
-        {resumeCount !== null && (
-          <div className="resume-countdown" role="status" aria-live="assertive">
-            <strong key={resumeCount}>{resumeCount}</strong>
-          </div>
-        )}
 
         {banner && (
           // eslint-disable-next-line @next/next/no-img-element
@@ -2033,9 +2052,37 @@ export default function Game() {
 
         {intro && (
           <Dialogue
+            key="tutorial-opening"
             lines={openingLines}
             portrait={slimePortrait}
-            onDone={() => setIntro(false)}
+            onFocusChange={showDialogueFocus}
+            onDone={() => {
+              setInspected(null);
+              setIntro(false);
+            }}
+          />
+        )}
+
+        {tutorialOutro && (
+          <Dialogue
+            key="tutorial-complete"
+            lines={tutorialCompleteLines}
+            portrait={slimePortrait}
+            onFocusChange={showDialogueFocus}
+            onDone={() => {
+              setInspected(null);
+              setTutorialOutro(false);
+              setTutorialComplete(true);
+            }}
+          />
+        )}
+
+        {stageIntro && (
+          <Dialogue
+            key={`stage-${currentStage(state).id}`}
+            lines={[stageOpeningLine(currentStage(state).id)]}
+            portrait={slimePortrait}
+            onDone={() => setStageIntro(false)}
           />
         )}
 
@@ -2057,12 +2104,12 @@ export default function Game() {
         )}
 
         {cue && (
-          // 화면을 덮지 않는 한 줄짜리 안내. 한 번에 한 가지만 말한다.
-          <p className="coach-line" role="status" aria-live="polite" key={cue.id}>
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={slimePortrait(cue.speaker)} alt="" aria-hidden />
-            <span>{cue.text}</span>
-          </p>
+          <Dialogue
+            key={cue.id}
+            lines={[{ speaker: cue.speaker, text: cue.text }]}
+            portrait={slimePortrait}
+            passive
+          />
         )}
 
         <div className="hud-bottom">
@@ -2073,10 +2120,11 @@ export default function Game() {
               return (
                 <button
                   type="button"
+                  className="roster-button"
                   key={actorId}
                   data-type={actor.typeId}
                   data-coach={cue?.actor === actorId ? "" : undefined}
-                  data-spent={actor.actionPoints === 0 ? "" : undefined}
+                  data-spent={actor.actionPoints === 0 || skippedActors.current.has(actorId) ? "" : undefined}
                   aria-label={`${actor.name} 선택, 남은 행동력 ${actor.actionPoints}`}
                   aria-pressed={selectedActor === actorId}
                   onClick={() =>
@@ -2110,13 +2158,12 @@ export default function Game() {
             })}
             <button
               type="button"
-              className="turn-end"
+              className="turn-end art-button"
               data-coach={cue?.endTurn ? "" : undefined}
               onClick={finishTurn}
               aria-label={`턴 종료, 행동력이 남은 슬라임 ${readyCount}마리`}
             >
               <b>턴 종료</b>
-              <small>{readyCount ? `${readyCount}마리 대기` : "모두 사용"}</small>
             </button>
           </div>
 
@@ -2131,7 +2178,7 @@ export default function Game() {
 
       </div>
 
-      {state.phase !== "playing" && (
+      {state.phase !== "playing" && !tutorialOutro && (
         <section
           className="result-overlay"
           role="dialog"
@@ -2142,7 +2189,7 @@ export default function Game() {
           <div className="paper-window">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
-              className="result-title-art paper-title"
+              className={`result-title-art paper-title${state.phase === "lost" ? " result-title-art-game-over" : ""}`}
               src={state.phase === "lost" ? "/text/game-over-title.png" : "/text/business-end-title.png"}
               alt={state.phase === "lost" ? "게임 오버" : "영업 종료"}
             />
@@ -2174,16 +2221,16 @@ export default function Game() {
                 <dd><CountUp value={state.misses} delay={420} />번</dd>
               </div>
             </dl>
-            <p className="mic-state">{saved}</p>
             <div className="result-actions">
               {state.phase === "won" && !isLastStage(state) ? (
                 <button
+                  className="art-button result-art-button"
                   autoFocus
                   onClick={() => {
                     savedRef.current = false;
-                    setSaved("");
                     setSelectedActor(null);
                     setState(nextStage(state));
+                    setStageIntro(true);
                                   }}
                 >
                   다음 스테이지
@@ -2194,6 +2241,7 @@ export default function Game() {
                 </button>
               )}
               <button
+                className="art-button result-art-button"
                 onClick={() => {
                   setSquad(null);
                   setState(null);

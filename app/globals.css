@@ -148,7 +148,7 @@ button:disabled { cursor: var(--cursor-arrow); }
 
 .home-desk {
   z-index: 2;
-  top: 32%;
+  top: 34%;
   left: -4%;
   width: min(47%, 74svh);
   filter: brightness(.58) saturate(.8);
@@ -281,31 +281,14 @@ button:disabled { cursor: var(--cursor-arrow); }
 
 /* 대사가 화면을 덮고 있어도 설정은 눌러야 한다. 대사(40)보다 위에 둔다. */
 .music-settings-game { position: absolute; z-index: 60; top: 12px; right: 12px; }
-.game-settings-trigger { display: flex; align-items: center; gap: 5px; }
-
-.resume-countdown {
-  position: absolute;
-  z-index: 190;
-  inset: 0;
+.game-settings-trigger {
   display: grid;
+  width: 84px;
+  aspect-ratio: 758 / 339;
+  padding: 3px;
   place-items: center;
-  background: #160c0799;
-  pointer-events: auto;
 }
-
-.resume-countdown strong {
-  color: #fff4cf;
-  font-size: clamp(72px, 16vw, 150px);
-  line-height: 1;
-  text-shadow: 0 8px 0 #7b351c, 0 14px 38px #000;
-  animation: countdown-pop 1s ease-out;
-}
-
-@keyframes countdown-pop {
-  from { opacity: 0; transform: scale(1.35); }
-  20% { opacity: 1; }
-  to { opacity: .85; transform: scale(.8); }
-}
+.settings-icon { width: 18px; height: 18px; object-fit: contain; }
 
 .stage {
   position: relative;
@@ -470,6 +453,7 @@ button:disabled { cursor: var(--cursor-arrow); }
   color: #fff4dc;
 }
 .order-part-item { grid-row: 3; }
+.order-part-item i { display: flex; align-items: center; gap: 1px; }
 .order-method { grid-row: 4; }
 .order-part b {
   position: absolute;
@@ -530,6 +514,76 @@ button:disabled { cursor: var(--cursor-arrow); }
   cursor: var(--cursor-hand);
 }
 
+/* PDF처럼 현재 설명하는 대상을 큰 화살표로 짚는다. */
+.dialogue-arrow {
+  position: absolute;
+  z-index: 4;
+  width: clamp(62px, 7.5vw, 104px);
+  height: auto;
+  filter: drop-shadow(0 5px 0 #3c260d) drop-shadow(0 9px 10px #0009);
+  animation: dialogue-arrow 700ms ease-in-out infinite alternate;
+  pointer-events: none;
+}
+.dialogue-arrow-orders {
+  --arrow-x: 0;
+  --arrow-y: -12px;
+  top: clamp(164px, 23vh, 188px);
+  left: clamp(78px, 7.5vw, 96px);
+  rotate: 180deg;
+}
+.dialogue-arrow-next-order {
+  --arrow-x: 0;
+  --arrow-y: -12px;
+  top: clamp(82px, 13vh, 96px);
+  left: clamp(217px, 20.4vw, 261px);
+  rotate: 180deg;
+}
+.dialogue-arrow-earth {
+  --arrow-x: -12px;
+  --arrow-y: 0;
+  top: 37%;
+  left: 23%;
+  rotate: 90deg;
+}
+.dialogue-arrow-inspector {
+  --arrow-x: 12px;
+  --arrow-y: 0;
+  top: 38%;
+  right: calc(var(--game-info-rail) + 2%);
+  rotate: -90deg;
+}
+@keyframes dialogue-arrow {
+  from { transform: translate(0, 0); }
+  to { transform: translate(var(--arrow-x), var(--arrow-y)); }
+}
+
+/* 설명 중인 DOM UI는 어두운 막보다 앞으로 꺼낸다. 캔버스 안의 푸름이는
+   같은 방식으로 꺼낼 수 없어 해당 위치만 투명하게 비춘다. */
+.stage-frame:has(> .dialogue-screen[data-focus="orders"]) .order-cards,
+.stage-frame:has(> .dialogue-screen[data-focus="next-order"]) .order-cards,
+.stage-frame:has(> .dialogue-screen[data-focus="inspector"]) .info-rail {
+  z-index: 41;
+}
+.stage-frame:has(> .dialogue-screen[data-focus="next-order"]) .order-cards > .order-card {
+  filter: brightness(.22) drop-shadow(0 6px 5px #0007);
+}
+.dialogue-screen[data-focus="earth"] {
+  background: radial-gradient(circle at 21% 43%, transparent 0 58px, #120a05a8 86px);
+}
+
+/* 행동 중 안내도 기획서의 하단 대화 상자를 쓴다. 조작과 지도 강조는 가리지
+   않도록 검은 막과 입력 차단만 뺀다. */
+.dialogue-screen[data-passive] {
+  z-index: 21;
+  padding-left: clamp(180px, 18vw, 250px);
+  background: transparent;
+  cursor: default;
+  pointer-events: none;
+}
+.dialogue-screen[data-passive] .dialogue-bar {
+  padding-right: calc(var(--game-info-rail) + clamp(14px, 2.5vw, 34px));
+}
+
 .dialogue-bar {
   position: relative;
   display: grid;
@@ -550,6 +604,8 @@ button:disabled { cursor: var(--cursor-arrow); }
   margin-bottom: clamp(28px, 6vh, 64px);
   object-fit: contain;
   filter: drop-shadow(0 6px 10px #0009);
+  transform-origin: 50% 100%;
+  animation: cauldron-breathe 2.8s ease-in-out infinite;
 }
 
 /* 이름표는 그려 온 명패 그림을 9분할로 늘린다. 모서리는 그대로 두고 가운데만
@@ -562,7 +618,7 @@ button:disabled { cursor: var(--cursor-arrow); }
   display: grid;
   place-items: center;
   min-width: clamp(104px, 13vw, 160px);
-  margin: 0 0 -10px -14px;
+  margin: 0 0 -38px 4px;
   border: 15px solid transparent;
   border-image: url("/ui/dialogue-nameplate.png") 38 fill / 15px / 0 stretch;
   padding: 1px 10px 3px;
@@ -611,16 +667,16 @@ button:disabled { cursor: var(--cursor-arrow); }
   z-index: 60;
   top: 58px;
   right: 14px;
-  border: 3px solid #8d592c;
-  border-radius: 8px;
-  padding: 7px 14px;
-  background: #4b2b17e6;
-  color: var(--ink);
+  width: 96px;
+  height: auto;
+  aspect-ratio: 758 / 339;
+  padding: 0 10px;
+  color: #26160b;
   font-size: 13px;
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .dialogue-more { animation: none; opacity: 1; }
+  .dialogue-face, .dialogue-more, .dialogue-arrow { animation: none; opacity: 1; }
 }
 
 /* 영업 시작·마감 임박 문구. 잠깐 크게 떴다가 사라진다. */
@@ -723,49 +779,21 @@ button:disabled { cursor: var(--cursor-arrow); }
 .stage-frame .turn-bar button:hover { border-color: var(--gold); transform: translateY(-2px); }
 /* 행동력을 다 쓴 슬라임은 흐리게 둔다. 고를 수는 있다. */
 .stage-frame .turn-bar button[data-spent] { opacity: .5; }
-.turn-bar .turn-end b { font-size: clamp(13px, 1.5vw, 18px); }
-.turn-bar small { font-size: 10px; opacity: .9; }
+.roster-button { animation: roster-arrive 420ms cubic-bezier(.2, 1.5, .4, 1) both; }
+@keyframes roster-arrive {
+  from { opacity: 0; transform: translateY(18px) scale(.72); }
+  to { opacity: 1; transform: none; }
+}
+.turn-bar .turn-end b { color: #26160b; font-size: clamp(13px, 1.5vw, 18px); }
 .stage-frame .turn-bar .turn-end {
   display: grid;
   place-items: center;
-  width: clamp(76px, 8.5vw, 108px);
-  aspect-ratio: auto;
-  min-height: clamp(54px, 6vw, 78px);
-  border-radius: 10px;
-  background: #6b4021ec;
-}
-
-/* 행동력을 쓰지 않고 거절된 이유 */
-/* 튜토리얼 한 줄 안내. 화면을 덮지 않고 슬라임 버튼 바로 위에 붙는다.
-   길게 설명하는 팝업 대신 한 번에 한 가지만 말하는 자리다. */
-.coach-line {
-  position: absolute;
-  z-index: 21;
-  right: calc(var(--game-info-rail) + 12px);
-  /* 실패 안내(action-toast)와 겹치지 않게 한 칸 위에 둔다. */
-  bottom: clamp(146px, 19vh, 202px);
-  left: 12px;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  width: fit-content;
-  max-width: min(560px, 100%);
-  margin: 0 auto;
-  border: 3px solid #8d592c;
-  border-radius: 14px;
-  padding: 8px 16px 8px 10px;
-  background: #2c1a0ef2;
-  box-shadow: 0 8px 22px #0009;
-  color: #ffeec6;
-  font-size: clamp(13px, 1.3vw, 16px);
-  line-height: 1.4;
-  animation: coach-in 260ms ease-out both;
-}
-.coach-line img { width: 38px; height: 38px; flex: none; object-fit: contain; }
-
-@keyframes coach-in {
-  from { opacity: 0; transform: translateY(8px); }
-  to { opacity: 1; transform: none; }
+  width: clamp(88px, 9vw, 116px);
+  min-height: 0;
+  aspect-ratio: 758 / 339;
+  border: 0;
+  border-radius: 0;
+  background: url("/ui/button.png") center / 100% 100% no-repeat;
 }
 
 /* 튜토리얼이 지금 누르라고 짚는 버튼. */
@@ -780,7 +808,6 @@ button:disabled { cursor: var(--cursor-arrow); }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .coach-line { animation: none; }
   .stage-frame [data-coach] { animation: none; box-shadow: 0 0 0 4px #ffd46b66; }
 }
 
@@ -1049,7 +1076,6 @@ button:disabled { cursor: var(--cursor-arrow); }
 }
 .stat-gauge i[data-on] { border-color: var(--gold); background: var(--gold); }
 
-.mic-state { min-height: 20px; color: #7a4a24; font-size: 13px; }
 .eyebrow { margin: 0 0 8px; color: #e4a64d; font-size: 12px; font-weight: 800; letter-spacing: .13em; text-transform: uppercase; }
 .result-actions { display: flex; justify-content: center; gap: 10px; }
 
@@ -1093,6 +1119,8 @@ button:disabled { cursor: var(--cursor-arrow); }
 }
 /* 제목이 그림이면 리본 안에 꽉 차지 않게 조금 줄여 앉힌다. */
 img.paper-title { width: 56%; height: 11.4%; top: 4.9%; left: 22%; object-fit: contain; }
+/* 게임 오버 글자만 리본 중앙에 맞춘다. */
+.result-title-art-game-over { transform: translateY(4px); }
 
 .paper-body {
   position: absolute;
@@ -1533,9 +1561,9 @@ img.paper-title { width: 56%; height: 11.4%; top: 4.9%; left: 22%; object-fit: c
   .order-cards { top: 5px; left: 5px; gap: 5px; transform: scale(.62); transform-origin: top left; }
   .hud-bottom { right: calc(var(--game-info-rail) + 7px); bottom: 7px; left: 167px; }
   .stage-frame .turn-bar button { width: 44px; border-width: 2px; }
-  .stage-frame .turn-bar .turn-end { width: 62px; min-height: 44px; }
+  .stage-frame .turn-bar .turn-end { width: 74px; min-height: 0; }
   .turn-bar b { font-size: 11px; }
-  .turn-bar small, .feed { font-size: 7px; }
+  .feed { font-size: 7px; }
   .game-inspector { width: 100%; padding: 9px 14px; }
   .stage-frame .inspector-close { width: 32px; height: 32px; font-size: 23px; }
   .inspector-portrait, .inspector-station-icon { width: 76px; height: 76px; margin: 0 auto 3px; border-width: 3px !important; padding: 8px !important; }
@@ -1550,7 +1578,8 @@ img.paper-title { width: 56%; height: 11.4%; top: 4.9%; left: 22%; object-fit: c
   .station-workflow b { padding: 4px 6px; font-size: 8px; }
   .inspector-hint { margin-top: 8px; font-size: 8px; }
   .music-settings-game { top: 7px; right: 7px; }
-  .game-settings-trigger { padding: 6px 8px !important; font-size: 11px; }
+  .game-settings-trigger { width: 72px; height: auto; padding: 2px !important; }
+  .settings-icon { width: 16px; height: 16px; }
 
   .stage-info-screen { display: grid; gap: 6px; padding: 7px; }
   .stage-info-header { min-height: 38px; margin: 0; padding: 6px 12px; border-radius: 9px; }
@@ -1587,7 +1616,6 @@ img.paper-title { width: 56%; height: 11.4%; top: 4.9%; left: 22%; object-fit: c
   .result-overlay h2 { font-size: 12px; }
   .result-overlay .settle > div { gap: 7px; padding: 3px; font-size: 10px; }
   .result-overlay .settle dd:last-child { font-size: 13px; }
-  .result-overlay .mic-state { min-height: 0; margin: 0; font-size: 9px; }
   .result-overlay button { padding: 5px 10px; font-size: 10px; }
   .settings-drawer { border-width: 24px; border-image-width: 24px; gap: 8px; padding: 2px 6px 8px; }
   .settings-drawer header strong { font-size: 15px; }
@@ -1638,14 +1666,44 @@ img.paper-title { width: 56%; height: 11.4%; top: 4.9%; left: 22%; object-fit: c
 }
 
 .stage-select-back {
-  border: 3px solid #8d592c;
-  border-radius: 8px;
-  padding: 9px 16px;
-  background: #4b2b17e6;
+  width: 106px;
+  height: auto;
+  aspect-ratio: 758 / 339;
+  padding: 0 10px;
+  color: #26160b;
+  cursor: var(--cursor-hand);
+}
+.art-button,
+.stage-frame button.art-button {
+  border: 0;
+  border-radius: 0;
+  background: url("/ui/button.png") center / 100% 100% no-repeat;
   color: var(--ink);
   cursor: var(--cursor-hand);
 }
-.stage-select-back:hover { border-color: var(--gold); }
+.stage-frame button.dialogue-skip { color: #26160b; }
+.stage-frame .game-settings-trigger { padding: 3px; }
+.stage-select-back.art-button { color: #26160b; }
+.settings-home-link.art-button {
+  display: grid;
+  place-items: center;
+  width: 120px;
+  aspect-ratio: 758 / 339;
+  padding: 0;
+  color: #26160b;
+}
+.result-overlay button.result-art-button {
+  width: 128px;
+  aspect-ratio: 758 / 339;
+  border: 0;
+  border-radius: 0;
+  padding: 0 10px;
+  background: url("/ui/button.png") center / 100% 100% no-repeat;
+  color: #26160b;
+}
+.art-button:hover,
+.stage-frame button.art-button:hover { border-color: transparent; filter: brightness(1.08); transform: none; }
+.art-button:focus-visible { outline: 3px solid var(--gold); outline-offset: 2px; }
 .stage-select-bar .music-settings-game { position: static; }
 
 .mode-plates { display: grid; gap: clamp(14px, 3vh, 28px); justify-items: center; }
@@ -1685,4 +1743,3 @@ img.paper-title { width: 56%; height: 11.4%; top: 4.9%; left: 22%; object-fit: c
 .game-inspector .stat-gauge i { width: 20px; height: 14px; border-radius: 3px; }
 
 .inspector-badges span { cursor: var(--cursor-ask); }
-

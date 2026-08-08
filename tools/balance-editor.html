@@ -192,9 +192,12 @@ function drawRecipes() {
     };
     const remove = el("button", { className: "small", type: "button", textContent: "삭제" });
     remove.addEventListener("click", () => { data.recipes.splice(index, 1); drawRecipes(); drawStages(); });
+    const ingredient = Array.isArray(recipe.ingredient)
+      ? el("td", { textContent: recipe.ingredient.map(itemName).join(" + ") })
+      : pick("ingredient", list.items, itemName);
     return el("tr", {}, [
       pick("foodId", list.items, itemName),
-      pick("ingredient", list.items, itemName),
+      ingredient,
       pick("station", list.cooktops, stationName),
       workerCell(recipe),
       el("td", { className: "row-tools" }, [remove]),
