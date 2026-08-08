@@ -147,6 +147,7 @@ function drawBalance() {
       numberField("시작 개수", () => b.dish.initialCount, (v) => { b.dish.initialCount = v; }),
       numberField("그릇 상자 용량", () => b.dish.rackCapacity, (v) => { b.dish.rackCapacity = v; }, 1),
       numberField("세척대 용량", () => b.dish.washerCapacity, (v) => { b.dish.washerCapacity = v; }, 1),
+      numberField("반납대 용량", () => b.dish.returnCapacity, (v) => { b.dish.returnCapacity = v; }, 1),
       numberField("테이블 용량", () => b.dish.tableCapacity, (v) => { b.dish.tableCapacity = v; }, 1),
     ]),
     group("소각기", [
@@ -154,7 +155,6 @@ function drawBalance() {
     ]),
     group("주문", [
       numberField("동시에 보이는 수", () => b.orders.activeOrderCount, (v) => { b.orders.activeOrderCount = v; }, 1),
-      numberField("미리 보여 줄 수", () => b.orders.previewCount, (v) => { b.orders.previewCount = v; }),
       selectField("주문에 없는 음식", ["reject", "discard"], () => b.orders.invalidSubmission,
         (v) => { b.orders.invalidSubmission = v; }, (v) => v === "reject" ? "거절한다" : "버린다"),
       checkField("주문 소진 시 바로 종료", () => b.orders.endRoundWhenOrdersDone,
@@ -162,7 +162,6 @@ function drawBalance() {
     ]),
     group("그 밖에", [
       numberField("마감 임박 턴", () => b.rushTurnsLeft, (v) => { b.rushTurnsLeft = v; }),
-      numberField("주문당 골드", () => b.goldPerOrder, (v) => { b.goldPerOrder = v; }),
     ]),
   );
 }
@@ -254,10 +253,9 @@ function drawStages() {
       drawStages();
     });
     return el("fieldset", {}, [
-      el("legend", { textContent: `${stage.id} ${stage.name}` }),
+      el("legend", { textContent: `스테이지 ${stage.id}` }),
       el("div", { className: "grid" }, [
         textField("번호", "id", 12),
-        textField("이름", "name", 30),
         numberField("제한 턴", () => stage.turnLimit, (v) => { stage.turnLimit = v; }, 1),
         numberField("★ 통과", () => stage.stars[0], (v) => { stage.stars[0] = v; }, 1),
         numberField("★★ 기준", () => stage.stars[1], (v) => { stage.stars[1] = v; }, 1),
@@ -305,7 +303,7 @@ $("add-recipe").addEventListener("click", () => {
 $("add-stage").addEventListener("click", () => {
   const first = data.recipes.length ? data.recipes[0].foodId : null;
   data.stages.push({
-    id: String(data.stages.length), name: "새 스테이지",
+    id: String(data.stages.length),
     turnLimit: 60, stars: [1, 2, 3],
     orders: first ? [first, first, first] : [],
   });

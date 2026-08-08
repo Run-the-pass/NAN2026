@@ -223,6 +223,7 @@ function checkBalance() {
     !whole(dish.initialCount, 0) ||
     dish.initialCount > dish.rackCapacity ||
     !whole(dish.washerCapacity, 1) ||
+    !whole(dish.returnCapacity, 1) ||
         !whole(dish.tableCapacity, 1)
   ) {
     problems.push("그릇 수치가 올바르지 않습니다. 초기 개수는 보관함 용량 이하여야 합니다.");
@@ -233,14 +234,13 @@ function checkBalance() {
   const orders = balanceData.orders;
   if (
     !whole(orders.activeOrderCount, 1) ||
-    !whole(orders.previewCount, 0) ||
     !["reject", "discard"].includes(orders.invalidSubmission) ||
     typeof orders.endRoundWhenOrdersDone !== "boolean"
   ) {
     problems.push("주문 설정이 올바르지 않습니다.");
   }
-  if (!whole(balanceData.rushTurnsLeft, 0) || !whole(balanceData.goldPerOrder, 0)) {
-    problems.push("마감 임박 턴과 주문당 골드는 0 이상 정수여야 합니다.");
+  if (!whole(balanceData.rushTurnsLeft, 0)) {
+    problems.push("마감 임박 턴은 0 이상 정수여야 합니다.");
   }
   if (problems.length) throw new Error(`balance.json: ${problems.join(" ")}`);
 }
@@ -385,13 +385,15 @@ export const elementNames = (list: SlimeElement[]) =>
 export const orderConfig = balanceData.orders as {
   // 동시에 노출하는 주문 수.
   activeOrderCount: number;
-  // 현재 주문 뒤에 미리 보여 줄 다음 레시피 수.
-  previewCount: number;
   // 주문에 없는 음식 처리. reject는 거부하고 음식을 그대로 들려 둔다.
   invalidSubmission: "reject" | "discard";
   // 레시피 목록을 다 처리했을 때 스테이지를 바로 끝낼지.
   endRoundWhenOrdersDone: boolean;
 };
+
+// 현재 주문 뒤에 미리 보여 주는 다음 레시피 수. 밸런스 값이 아니라 카드
+// 자리가 정해진 화면 규칙이라 고정이다.
+export const PREVIEW_COUNT = 1;
 
 // 통과 기준 대비 추가 처리 수별 별 개수. 0개 추가면 별 1개다.
 
@@ -420,7 +422,6 @@ export type Order = {
 // 처리한 주문 수다. 오름차순이며 첫 값이 통과 기준이다.
 export type Stage = {
   id: string;
-  name: string;
   orders: Order[];
   turnLimit: number;
   stars: number[];
@@ -466,7 +467,6 @@ export type GameState = {
   turnsLeft: number;
   filled: number;
   goal: number;
-  gold: number;
   actors: Partial<Record<ActorId, ActorState>>;
   ingredients: Partial<Record<StationInstanceId, { stock: number }>>;
   stoves: Partial<Record<StationInstanceId, ItemId[]>>;
@@ -489,7 +489,7 @@ export type GameState = {
   stages: Stage[];
   stageIndex: number;
   squad: SlimeTypeId[];
-  // 주문에 없는 음식을 제출한 횟수. 표시용이며 골드에는 영향이 없다.
+  // 주문에 없는 음식을 제출한 횟수. 표시용이다.
   misses: number;
   refusal: Refusal | null;
   lastEvent: string;
@@ -499,7 +499,6 @@ export type GameState = {
 export const TILE_SIZE = 60;
 export const MAP_WIDTH = 14;
 export const MAP_HEIGHT = 8;
-export const GOLD_PER_ORDER = balanceData.goldPerOrder;
 export const INGREDIENT_MAX = balanceData.ingredients.max;
 // 남은 턴이 이 이하면 마감이 임박한 것으로 본다. 음악·배너가 함께 쓴다.
 export const RUSH_TURNS_LEFT = balanceData.rushTurnsLeft;
@@ -803,7 +802,7 @@ export const activeOrders = (state: GameState) =>
 export const upcomingOrders = (state: GameState) =>
   pendingOrders(state).slice(
     orderConfig.activeOrderCount,
-    orderConfig.activeOrderCount + orderConfig.previewCount,
+    orderConfig.activeOrderCount + PREVIEW_COUNT,
   );
 
 // 스테이지 통과 판정. 최소 주문 수를 채웠는지만 본다.
@@ -899,7 +898,6 @@ export const defaultStages = (): Stage[] =>
     }
     return {
       id: stage.id,
-      name: stage.name,
       turnLimit: stage.turnLimit,
       stars: [...stars],
       // 적힌 순서 그대로 주문이 된다.
@@ -912,25 +910,37 @@ export const defaultStages = (): Stage[] =>
     };
   });
 
-// 선택 화면에 놓이는 칸. 튜토리얼은 0, 무한은 ∞로 적어 번호와 한 줄에 선다.
-export type StageSlot = {
-  id: string;
-  label: string;
-  kind: "tutorial" | "normal" | "endless";
-  // 별을 매기는 칸만 true. 튜토리얼과 무한은 등수가 없다.
-  ranked: boolean;
-  // 규칙이 아직 없어 열 수 없는 칸.
+// 첫 화면에서 고르는 두 가지. 아르바이트는 스테이지를 처음부터 끝까지
+// 이어서 도는 한 판이고, 무한은 그것을 끝내야 열린다.
+export type GameMode = {
+  id: "shift" | "endless";
+  name: string;
+  detail: string;
+  // 규칙이 아직 없어 열 수 없는 모드.
   ready: boolean;
 };
 
-export const stageSlots: StageSlot[] = [
-  { id: "0", label: "0", kind: "tutorial", ranked: false, ready: true },
-  { id: "1", label: "1", kind: "normal", ranked: true, ready: true },
-  { id: "2", label: "2", kind: "normal", ranked: true, ready: true },
-  { id: "3", label: "3", kind: "normal", ranked: true, ready: true },
-  // ponytail: 무한 모드 규칙(턴 제한·주문 유입·종료 조건)이 정해지면 ready를 켠다.
-  { id: "endless", label: "∞", kind: "endless", ranked: false, ready: false },
+export const gameModes: GameMode[] = [
+  {
+    id: "shift",
+    name: "아르바이트 모드",
+    detail: "튜토리얼부터 마지막 영업까지 이어서 돕니다.",
+    ready: true,
+  },
+  // ponytail: 무한 모드 규칙(주문 유입·종료 조건)이 정해지면 ready를 켠다.
+  {
+    id: "endless",
+    name: "무한 모드",
+    detail: "아르바이트를 끝내면 열립니다.",
+    ready: false,
+  },
 ];
+
+// 아르바이트를 끝까지 깼는지. 마지막 스테이지에서 별을 하나라도 받으면 된다.
+export const shiftCleared = (progress: Record<string, number>) => {
+  const last = defaultStages().at(-1);
+  return Boolean(last && (progress[last.id] ?? 0) > 0);
+};
 
 export const stageIndexOf = (id: string) =>
   defaultStages().findIndex((stage) => stage.id === id);
@@ -943,8 +953,6 @@ function checkStages(stages: Stage[], stageIndex: number): Stage[] {
     stages.some(
       (stage) =>
         !stage.id ||
-        !stage.name ||
-        stage.name.length > 30 ||
         !Number.isSafeInteger(stage.turnLimit) ||
         stage.turnLimit < 1 ||
         !Array.isArray(stage.stars) ||
@@ -1019,7 +1027,6 @@ export function initialState(
     turnsLeft: stage.turnLimit,
     filled: 0,
     goal: passMark(stage),
-    gold: 0,
     actors,
     ...stationState,
     orders: roundOrders,
@@ -1029,19 +1036,16 @@ export function initialState(
     squad: [...squad],
     misses: 0,
     refusal: null,
-    lastEvent: `${stage.id} ${stage.name} — ${stage.turnLimit}턴 안에 음식 주문 ${passMark(stage)}건을 완료하세요.`,
+    lastEvent: `${stage.id} — ${stage.turnLimit}턴 안에 음식 주문 ${passMark(stage)}건을 완료하세요.`,
     history: [`${stage.id} 영업 시작`],
   };
 }
 
-// 스테이지를 깬 뒤 다음 스테이지 상태를 만든다. 골드와 스쿼드는 잇고
-// 설비·소지품은 새로 시작한다.
+// 스테이지를 깬 뒤 다음 스테이지 상태를 만든다. 스쿼드는 잇고 설비·
+// 소지품은 새로 시작한다.
 export function nextStage(state: GameState): GameState {
   if (state.phase !== "won" || isLastStage(state)) return state;
-  return {
-    ...initialState(state.seed, state.squad, state.stages, state.stageIndex + 1),
-    gold: state.gold,
-  };
+  return initialState(state.seed, state.squad, state.stages, state.stageIndex + 1);
 }
 
 function advanceSeed(seed: number) {
@@ -1113,17 +1117,39 @@ export const occupantOf = (
     sameTile(state.actors[id]!, tile),
   ) ?? null;
 
-// 선택한 슬라임이 이번에 갈 수 있는 칸. 벽·설비 칸과 다른 슬라임이 선
-// 칸은 애초에 후보에서 빠지므로 명세 7절 충돌 규칙이 여기서 끝난다.
-export function moveTargets(state: GameState, actorId: ActorId): TilePosition[] {
+// 선택한 슬라임이 이번에 갈 수 있는 칸과 그 비용. 남은 행동력만큼 한 칸씩
+// 상하좌우로 뻗어 나간다. 번개 슬라임은 행동력이 2라 두 칸까지 닿는다.
+// 벽·설비 칸과 다른 슬라임이 선 칸은 지나갈 수도 설 수도 없으므로 명세
+// 7절 충돌 규칙이 여기서 끝난다. 퍼지는 순서가 고정이라 같은 판이면 늘
+// 같은 결과가 나온다.
+export function moveOptions(
+  state: GameState,
+  actorId: ActorId,
+): (TilePosition & { cost: number })[] {
   const actor = state.actors[actorId];
-  if (state.phase !== "playing" || !actor || actor.actionPoints < actionCost.move) {
-    return [];
+  if (state.phase !== "playing" || !actor) return [];
+  const steps = Math.floor(actor.actionPoints / actionCost.move);
+  const seen = new Set([tileKeyOf(actor)]);
+  const found: (TilePosition & { cost: number })[] = [];
+  let edge: TilePosition[] = [actor];
+  for (let step = 1; step <= steps; step += 1) {
+    const next: TilePosition[] = [];
+    for (const tile of edge) {
+      for (const side of neighboursOf(tile)) {
+        const key = tileKeyOf(side);
+        if (seen.has(key) || !isWalkable(side) || occupantOf(state, side)) continue;
+        seen.add(key);
+        next.push(side);
+        found.push({ ...side, cost: step * actionCost.move });
+      }
+    }
+    edge = next;
   }
-  return neighboursOf(actor).filter(
-    (tile) => isWalkable(tile) && !occupantOf(state, tile),
-  );
+  return found;
 }
+
+export const moveTargets = (state: GameState, actorId: ActorId): TilePosition[] =>
+  moveOptions(state, actorId).map(({ col, row }) => ({ col, row }));
 
 // 한 마리가 행동력을 다 쓰면 다음으로 넘길 슬라임. 지금 마리 다음부터
 // 한 바퀴 돌아 행동력이 남은 첫 마리를 고른다. 아무도 없으면 null이다.
@@ -1148,20 +1174,22 @@ export function moveActor(
   if (actor.actionPoints < actionCost.move) {
     return refuse(state, actor, "남은 행동력이 없습니다.");
   }
-  if (!inMap(to) || !neighboursOf(actor).some((tile) => sameTile(tile, to))) {
-    return refuse(state, actor, "상하좌우 한 칸으로만 이동할 수 있습니다.");
-  }
-  if (!isWalkable(to)) {
+  if (!inMap(to) || !isWalkable(to)) {
     return refuse(state, actor, "갈 수 없는 칸입니다.");
   }
   if (occupantOf(state, to)) {
     return refuse(state, actor, "다른 슬라임이 있는 칸입니다.");
   }
+  // 여러 칸을 한 번에 갈 때는 지나온 칸 수만큼 행동력을 쓴다.
+  const option = moveOptions(state, actorId).find((tile) => sameTile(tile, to));
+  if (!option) {
+    return refuse(state, actor, "남은 행동력으로 닿지 않는 칸입니다.");
+  }
   return {
     ...state,
     refusal: null,
     actors: patchActor(state, actorId, {
-      ...spend(actor, actionCost.move, "MOVING"),
+      ...spend(actor, option.cost, "MOVING"),
       col: to.col,
       row: to.row,
     }),
@@ -1858,7 +1886,7 @@ function submitFood(
     carrying: base.carrying.filter((_, index) => index !== carriedIndex),
   });
   if (!target) {
-    // 실수는 횟수만 센다. 골드는 깎지 않는다.
+    // 실수는 횟수만 센다.
     const missed = { ...state, misses: state.misses + 1 };
     if (orderConfig.invalidSubmission === "reject") {
       // 거절이라 행동력을 쓰지 않는다.
@@ -1889,7 +1917,7 @@ function submitFood(
   return event(
     state,
     cleared
-      ? `음식 주문 완료 — ${filled}/${passMark(currentStage(state))} (+${GOLD_PER_ORDER}G)`
+      ? `음식 주문 완료 — ${filled}/${passMark(currentStage(state))}`
       : `${label} 제출 — ${submitted.submittedCount}/${submitted.targetCount}`,
     {
       actors: patchActor(
@@ -1900,7 +1928,6 @@ function submitFood(
       orders,
       filled,
       pendingReturns: [...state.pendingReturns, ...returned],
-      gold: cleared ? state.gold + GOLD_PER_ORDER : state.gold,
       // 레시피 목록을 다 처리하면 남은 턴과 무관하게 끝난다.
       phase:
         allDone && orderConfig.endRoundWhenOrdersDone

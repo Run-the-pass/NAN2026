@@ -1,57 +1,39 @@
 "use client";
 
-import { stageSlots, type StageSlot } from "../game/core";
-import { slotState, type StageProgress } from "./progress";
+import { gameModes, type GameMode } from "../game/core";
+import { endlessUnlocked, shiftStars, type StageProgress } from "./progress";
 import { MusicSettings } from "./Music";
 
-// 칸 하나. 글자 라벨은 두지 않는다. 번호와 별만으로 읽힌다.
-function SlotCard({
-  slot,
+// 모드 하나. 나무 판 그림이 버튼 전체이고 글자는 그 위에 얹는다.
+function ModePlate({
+  mode,
   progress,
   onPick,
 }: {
-  slot: StageSlot;
+  mode: GameMode;
   progress: StageProgress;
-  onPick: (id: string) => void;
+  onPick: (id: GameMode["id"]) => void;
 }) {
-  const { cleared, stars, unlocked } = slotState(slot, progress);
-  const name = slot.kind === "tutorial"
-    ? "튜토리얼"
-    : slot.kind === "endless"
-      ? "무한 모드"
-      : `스테이지 ${slot.label}`;
-  const status = !slot.ready
-    ? "준비 중"
-    : !unlocked
-      ? "잠김"
-      : slot.ranked
-        ? `별 ${stars} / 3`
-        : cleared
-          ? "완료"
-          : "";
+  const stars = shiftStars(progress);
+  const open = mode.ready && (mode.id === "shift" || endlessUnlocked(progress));
+  const note =
+    mode.id === "shift"
+      ? `별 ${stars.have} / ${stars.max}`
+      : open
+        ? "준비 중"
+        : "아르바이트를 끝내면 열립니다";
   return (
     <button
       type="button"
-      className="stage-slot"
-      data-kind={slot.kind}
-      data-locked={unlocked ? undefined : ""}
-      disabled={!unlocked}
-      aria-label={`${name} ${status}`}
-      onClick={() => onPick(slot.id)}
+      className="mode-plate"
+      data-mode={mode.id}
+      data-locked={open ? undefined : ""}
+      disabled={!open}
+      aria-label={`${mode.name} ${note}`}
+      onClick={() => onPick(mode.id)}
     >
-      <b className="stage-slot-label" aria-hidden>
-        {unlocked ? slot.label : "🔒"}
-      </b>
-      {slot.ranked && (
-        <span className="stage-slot-stars" aria-hidden>
-          {[0, 1, 2].map((index) => (
-            <i key={index} data-on={unlocked && index < stars ? "" : undefined} />
-          ))}
-        </span>
-      )}
-      {slot.kind === "tutorial" && cleared && (
-        <span className="stage-slot-mark" aria-hidden>✓</span>
-      )}
+      <b>{mode.name}</b>
+      <small>{note}</small>
     </button>
   );
 }
@@ -62,7 +44,7 @@ export default function StageSelect({
   onBack,
 }: {
   progress: StageProgress;
-  onPick: (id: string) => void;
+  onPick: (id: GameMode["id"]) => void;
   onBack: () => void;
 }) {
   return (
@@ -73,10 +55,10 @@ export default function StageSelect({
         </button>
         <MusicSettings variant="game" />
       </header>
-      <h1>스테이지 선택</h1>
-      <div className="stage-slots">
-        {stageSlots.map((slot) => (
-          <SlotCard key={slot.id} slot={slot} progress={progress} onPick={onPick} />
+      <h1>모드 선택</h1>
+      <div className="mode-plates">
+        {gameModes.map((mode) => (
+          <ModePlate key={mode.id} mode={mode} progress={progress} onPick={onPick} />
         ))}
       </div>
     </main>

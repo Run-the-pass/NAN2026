@@ -31,8 +31,10 @@ button, select { font: inherit; }
 /* 커서는 그려 온 그림을 쓴다. 핫스팟은 화살표 끝과 손가락 끝 좌표다. */
 :root {
   --cursor-arrow: url("/ui/cursor.png") 2 0, auto;
-  --cursor-hand: url("/ui/cursor-click.png") 9 0, pointer;
+  --cursor-hand: url("/ui/cursor-click.png") 6 0, pointer;
   --cursor-deny: url("/ui/cursor.png") 2 0, not-allowed;
+  /* 지금은 쓸 수 없는 것. 금지 표시 대신 "?"를 붙인 화살표를 쓴다. */
+  --cursor-ask: url("/ui/cursor-help.png") 2 0, help;
   /* 나뭇결. 원래보다 대비를 크게 낮춰 배경이 튀지 않게 한다. 산만하면
      두 색을 더 가깝게, 밋밋하면 더 벌리면 된다. 여기 한곳만 만진다. */
   --plank-wall: repeating-linear-gradient(0deg, #33200f 0 58px, #2b1a0c 59px 63px);
@@ -210,25 +212,42 @@ button:disabled { cursor: var(--cursor-arrow); }
 
 .settings-overlay[data-open] { opacity: 1; pointer-events: auto; }
 
+/* 소리 설정은 가로로 긴 나무 액자 그림을 쓴다. 액자 두께가 사방 78/1019로
+   고른 그림이라 9분할이 그대로 먹는다. 창 폭(460)에 맞춰 두께를 35px로 줄여
+   비율을 지킨다. 모서리는 늘어나지 않고 가운데 종이만 늘어난다. */
 .settings-drawer {
+  position: relative;
   display: grid;
-  width: min(420px, calc(100vw - 24px));
+  width: min(460px, calc(100vw - 24px));
   gap: 14px;
-  border: 4px solid #6d421f;
-  border-radius: 4px;
-  padding: 18px;
-  background: linear-gradient(#efd9aa, #cda56d);
+  border: 35px solid transparent;
+  border-image: url("/ui/settings-frame.png") 80 fill / 35px / 0 stretch;
+  padding: 2px 12px 14px;
   color: var(--paper-ink);
-  box-shadow: 0 18px 50px #000a;
+  filter: drop-shadow(0 16px 40px #000b);
   transform: translateY(calc(-50vh - 100%));
   transition: transform 180ms ease;
 }
 
 .settings-overlay[data-open] .settings-drawer { transform: translateY(0); }
-.settings-drawer header { display: flex; align-items: center; justify-content: space-between; }
-.settings-drawer header strong { font-size: 20px; }
+.settings-drawer header { display: grid; place-items: center; }
+.settings-drawer header strong { color: #6b3d1a; font-size: 21px; }
 .settings-drawer button, .settings-home-link { border: 2px solid #8d592c; border-radius: 3px; padding: 8px 12px; background: #4b2b17; color: #fff1d0; cursor: var(--cursor-hand); }
-.settings-drawer header button { border: 0; padding: 0 7px; background: transparent; font-size: 28px; }
+/* 닫기는 액자 오른쪽 위 모서리에 걸치는 X 그림이다. */
+.settings-drawer .settings-close {
+  position: absolute;
+  z-index: 2;
+  top: -44px;
+  right: -44px;
+  width: 52px;
+  height: 52px;
+  border: 0;
+  padding: 0;
+  background: url("/ui/cancel.png") center / contain no-repeat;
+  font-size: 0;
+}
+.settings-drawer .settings-close:hover { transform: scale(1.08); }
+.settings-drawer .settings-close:focus-visible { outline: 3px solid var(--gold); outline-offset: 3px; border-radius: 8px; }
 .settings-drawer label { display: grid; gap: 8px; }
 .settings-drawer input { width: 100%; accent-color: var(--gold); }
 .settings-home-link { text-align: center; text-decoration: none; }
@@ -260,7 +279,8 @@ button:disabled { cursor: var(--cursor-arrow); }
 .sound-row[data-off] label { opacity: 0.45; }
 .sound-row input:disabled { cursor: var(--cursor-deny); }
 
-.music-settings-game { position: absolute; z-index: 12; top: 12px; right: 12px; }
+/* 대사가 화면을 덮고 있어도 설정은 눌러야 한다. 대사(40)보다 위에 둔다. */
+.music-settings-game { position: absolute; z-index: 60; top: 12px; right: 12px; }
 .game-settings-trigger { display: flex; align-items: center; gap: 5px; }
 
 .resume-countdown {
@@ -300,6 +320,10 @@ button:disabled { cursor: var(--cursor-arrow); }
   --game-top-rail: 190px;
   --game-side-rail: 0px;
   --game-info-rail: clamp(240px, 26vw, 370px);
+  /* 우측 정보 창 액자 두께. 그림(329×640)의 액자 비율을 그대로 따른다. */
+  --panel-frame-x: clamp(22px, 3vw, 38px);
+  --panel-frame-top: clamp(28px, 3.87vw, 49px);
+  --panel-frame-bottom: clamp(26px, 3.55vw, 45px);
   --game-bottom-rail: 112px;
   position: relative;
   width: 100%;
@@ -334,95 +358,157 @@ button:disabled { cursor: var(--cursor-arrow); }
 .hud-top { top: 12px; right: 96px; }
 
 .hud-chip {
-  display: flex;
+  display: grid;
   align-items: center;
-  gap: 6px;
-  border: 2px solid #8d592c;
-  border-radius: 3px;
-  padding: 6px 14px;
-  background: linear-gradient(#4b2c19, #28160c);
-  box-shadow: inset 0 0 0 1px #d9a55b33, 0 4px 0 #120904;
-  color: #ffeccd;
-  font-size: 15px;
+  justify-items: center;
+  width: 150px;
+  aspect-ratio: 516 / 192;
+  /* 나무판 그림에 시계가 그려져 있다. 글자는 판의 왼쪽 나무 부분에만 온다. */
+  padding: 0 33% 4px 0;
+  background: url("/ui/turn-plate.png") center / 100% 100% no-repeat;
+  color: #fff3d8;
+  font-size: 13px;
+  line-height: 1.05;
   white-space: nowrap;
+  text-shadow: 0 2px 0 #63340f, 0 0 6px #2a1409;
 }
-
-.hud-chip[data-warn] { border-color: #d07135; background: #6f2316; color: #ffe0bd; }
+.hud-chip b { font-size: 21px; }
+.hud-chip[data-warn] { filter: hue-rotate(-22deg) saturate(1.5) brightness(.95); color: #fff0e0; }
 .hud-goal { color: var(--gold); }
 
 .order-cards {
   position: absolute;
   z-index: 7;
-  top: 12px;
+  top: 10px;
   left: 12px;
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 8px;
-  width: min(64vw, 760px);
+  display: flex;
+  align-items: start;
+  gap: 10px;
   pointer-events: none;
 }
 
+/* 주문 카드는 주문서 그림이 그대로 판형이다. 칸 경계(17.4% / 53.4% / 75.9%)는
+   그림에 그려진 가로줄 자리를 재서 맞췄다. 위 칸에 완성 그림, 가운데에 재료,
+   아래에 조리 방법이 온다. */
 .order-card {
   display: grid;
-  grid-template-rows: 1fr auto;
-  align-content: center;
-  min-width: 0;
-  min-height: 118px;
-  overflow: hidden;
-  position: relative;
-  border: 2px solid #815329;
-  border-radius: 4px;
-  padding: 8px 0;
-  background: linear-gradient(#f0ddb3, #d7b77e);
-  box-shadow: inset 0 0 0 2px #fff3ce66, 0 7px 0 #221208, 0 10px 18px #0006;
+  grid-template-rows: 17.4% 36% 22.5% 24.1%;
+  width: clamp(104px, 10.5vw, 122px);
+  aspect-ratio: 352 / 512;
+  /* 칸 안 그림 크기를 카드 높이(cqh)로 적기 위해 컨테이너로 삼는다.
+     퍼센트 높이는 그리드 칸 안에서 기준이 잡히지 않아 어긋난다. */
+  container-type: size;
+  background: url("/ui/order-ticket.png") center / 100% 100% no-repeat;
   color: #2c1a0e;
+  filter: drop-shadow(0 6px 5px #0007);
+  /* 새 주문은 오른쪽에서 스르륵 밀려 들어온다. */
+  animation: order-slide-in 420ms cubic-bezier(.22, 1, .36, 1) both;
+}
+.order-card-empty { visibility: hidden; }
+
+@keyframes order-slide-in {
+  from { opacity: 0; transform: translateX(230%) rotate(6deg); }
+  to { opacity: 1; transform: none; }
 }
 
-/* 다음에 들어올 레시피. 현재 주문 오른쪽 위에 작게 붙는다. */
+/* 다음 주문은 무엇이 올지만 알린다. 음식 그림 하나만 두고, 마우스를 올리면
+   그때 주문서 전체를 옆에 펼친다. */
 .order-next {
-  align-self: start;
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  border: 2px solid #815329;
-  border-radius: 4px;
-  padding: 5px 8px;
-  background: #4b2b17e0;
-  box-shadow: 0 4px 0 #221208;
-  color: #fff0c8;
-  font-size: 18px;
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: clamp(58px, 5.8vw, 74px);
+  aspect-ratio: 1;
+  margin-top: 10px;
+  border: 3px solid #2b1a0c;
+  border-radius: 14px;
+  background: #241407c9;
+  box-shadow: 0 5px 0 #221208, 0 8px 14px #0006;
+  cursor: var(--cursor-ask);
+  pointer-events: auto;
+  animation: order-slide-in 420ms cubic-bezier(.22, 1, .36, 1) both;
 }
-.order-next b { font-size: 10px; opacity: .85; }
-.order-next-empty { font-size: 13px; opacity: .6; }
-.order-food { display: grid; grid-template-columns: auto 1fr; align-items: center; gap: 7px; padding: 4px 10px; font-size: 15px; }
-.order-food > span { font-size: 34px; }
-.order-food small { color: #8b3f1f; font-size: 13px; }
-/* 완성 음식은 빈 접시 위에 얹어 보여 준다. */
-/* 접시를 바닥에 깔고 음식을 그 위에 얹는다. 그림은 모두 여백을 잘라 둬서
-   접시 테두리와 음식 밑변이 맞물린다. */
-/* 칸 비율을 접시 그림(202×163)에 맞춰 두면 접시가 칸을 그대로 채우고,
-   음식 자리를 접시 그림 좌표로 바로 적을 수 있다. */
-.order-dish { position: relative; width: 48px; height: 39px; flex: none; }
+.order-next > small {
+  position: absolute;
+  z-index: 2;
+  top: 2px;
+  left: 5px;
+  color: #ffd7a0;
+  font-size: 9px;
+  letter-spacing: .08em;
+}
+.order-next:focus-visible { outline: 3px solid var(--gold); outline-offset: 2px; }
+.order-next .order-dish { width: 38px; height: 39px; margin-top: 9px; }
+.order-next .order-card {
+  position: absolute;
+  z-index: 40;
+  top: -10px;
+  left: calc(100% + 9px);
+  animation: none;
+  opacity: 0;
+  transition: opacity .12s ease;
+  pointer-events: none;
+}
+.order-next:hover .order-card,
+.order-next:focus-visible .order-card { opacity: 1; }
+
+/* 각 칸은 흰 접시 같은 원 위에 그림 하나. 원 크기가 정해져 있어 그림이
+   들쭉날쭉해 보이지 않는다. */
+/* 칸 순서는 주문서에 그려진 줄에 맞춰 못 박는다. 자동 배치에 맡기면 재료가
+   맨 윗 띠로 올라간다. 크기는 카드 크기를 따라가도록 모두 비율로 적는다. */
+.order-plate,
+.order-part {
+  display: grid;
+  place-items: center;
+  min-height: 0;
+}
+.order-plate { grid-row: 2; }
+/* 재료와 도구는 그림 옆에 이름을 붙인다. 그림만으로는 감자인지 고구마인지
+   가른다고 장담할 수 없다. */
+.order-part {
+  position: relative;
+  color: #fff4dc;
+}
+.order-part-item { grid-row: 3; }
+.order-method { grid-row: 4; }
+.order-part b {
+  position: absolute;
+  bottom: 8%;
+  border-radius: 6px;
+  padding: 0 5px 1px;
+  background: #1c0f07a8;
+  font-size: 7cqh;
+  font-weight: 400;
+  line-height: 1.3;
+  white-space: nowrap;
+}
+.order-plate .order-dish { width: auto; height: 30cqh; aspect-ratio: 251 / 256; }
+.order-part img { width: auto; height: 17cqh; object-fit: contain; }
+.order-method i { display: flex; align-items: center; gap: 1px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .order-card, .order-next { animation: none; }
+}
+
+/* 완성 음식은 빈 접시 위에 얹어 보여 준다. 접시를 바닥에 깔고 음식을 그
+   위에 얹는다. 칸 비율을 접시 그림(251×256)에 맞춰 두면 접시가 칸을 그대로
+   채우고, 음식 자리를 접시 그림 좌표로 바로 적을 수 있다. */
+.order-dish { position: relative; width: 46px; height: 47px; flex: none; }
 .order-dish img { position: absolute; object-fit: contain; }
 .order-dish img:first-child { inset: 0; width: 100%; height: 100%; }
-/* 접시 안쪽 면(그림 기준 x 45~160, y 33~118). object-position으로 밑변을
-   접시 바닥에 붙여, 납작한 음식도 키 큰 음식도 같은 자리에 앉는다. */
+/* 접시 안쪽 면. 그림에서 안쪽 테두리 자리를 재서 얻은 값이다.
+   object-position으로 밑변을 접시 바닥에 붙여, 납작한 음식도 키 큰 음식도
+   같은 자리에 앉는다. */
 .order-dish img:last-child {
-  top: 20.2%;
-  left: 22.3%;
-  width: 56.9%;
-  height: 52.1%;
+  top: 19.9%;
+  left: 23.1%;
+  width: 53.6%;
+  height: 54.5%;
   object-position: center bottom;
 }
 /* 그릇 없이 내는 음식은 접시가 없다. 컵처럼 키가 큰 그림이 접시에 담긴
    음식과 비슷한 덩치로 보이도록 위로 조금 넘겨 그린다. */
 .order-dish-bare img { top: -28%; right: 0; bottom: 0; left: 0; width: 100%; height: 128%; object-position: center bottom; }
-.order-process { display: flex; align-items: center; justify-content: center; gap: 8px; padding: 4px; color: #3b2415; }
-.order-process span { display: grid; place-items: center; min-width: 30px; min-height: 30px; border: 1px solid #986634; border-radius: 50%; background: #c99f62; }
-.order-process i { color: #7c5128; font-style: normal; }
-/* 조리 흐름은 게임에 쓰는 그림을 그대로 쓴다. 이모지는 그림이 없을 때만이다. */
-.order-process .flow-icon { width: 30px; height: 30px; object-fit: contain; }
-.order-card-empty { visibility: hidden; }
 
 /* 설비가 들고 있는 수량. 캔버스 게이지와 같은 값을 숫자까지 보여 준다. 칸
    나눈 표시는 행동력 게이지(.stat-gauge)와 같은 모양을 쓰고 색만 바꾼다. */
@@ -432,10 +518,115 @@ button:disabled { cursor: var(--cursor-arrow); }
 .station-stock .stat-gauge i[data-on] { background: #8ed07a; border-color: #8ed07a; }
 .station-stock .stat-gauge[data-full] i[data-on] { background: #ffc65c; border-color: #ffc65c; }
 
+/* 인사 대사. 판 위를 덮고 어둡게 깔아 대사에만 눈이 가게 한다.
+   아래에 말상자, 그 위로 초상과 이름표가 걸친다. */
+.dialogue-screen {
+  position: absolute;
+  z-index: 40;
+  inset: 0;
+  display: flex;
+  align-items: end;
+  background: #120a05a8;
+  cursor: var(--cursor-hand);
+}
+
+.dialogue-bar {
+  position: relative;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: end;
+  width: 100%;
+  padding: 0 clamp(14px, 2.5vw, 34px) clamp(12px, 2.2vh, 26px);
+}
+
+/* 말하는 슬라임. 말상자와 이름표보다 앞에 서서 왼쪽 위로 튀어나온다. */
+.dialogue-face {
+  grid-column: 1;
+  grid-row: 1 / span 2;
+  align-self: end;
+  z-index: 2;
+  width: clamp(118px, 16vw, 210px);
+  height: auto;
+  margin-bottom: clamp(28px, 6vh, 64px);
+  object-fit: contain;
+  filter: drop-shadow(0 6px 10px #0009);
+}
+
+/* 이름표는 그려 온 명패 그림을 9분할로 늘린다. 모서리는 그대로 두고 가운데만
+   늘어나므로 이름이 길어져도 테두리가 뭉개지지 않는다. */
+.dialogue-name {
+  grid-column: 2;
+  grid-row: 1;
+  justify-self: start;
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  min-width: clamp(104px, 13vw, 160px);
+  margin: 0 0 -10px -14px;
+  border: 15px solid transparent;
+  border-image: url("/ui/dialogue-nameplate.png") 38 fill / 15px / 0 stretch;
+  padding: 1px 10px 3px;
+  color: #3b2210;
+  font-size: clamp(13px, 1.5vw, 19px);
+  font-weight: 400;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+/* 본문 상자도 같은 방식으로 늘린다. 모서리 그림은 원래 크기 그대로 남는다. */
+.dialogue-text {
+  grid-column: 1 / -1;
+  grid-row: 2;
+  position: relative;
+  min-height: clamp(88px, 15vh, 132px);
+  margin: 0;
+  border: 20px solid transparent;
+  border-image: url("/ui/dialogue-box.png") 44 fill / 20px / 0 stretch;
+  padding: clamp(4px, 1vh, 10px) clamp(10px, 1.4vw, 22px);
+  color: #3a2413;
+  font-size: clamp(14px, 1.7vw, 21px);
+  line-height: 1.55;
+  text-align: left;
+}
+/* 초상이 상자 왼쪽을 가리므로 글은 그만큼 안쪽에서 시작한다. */
+.dialogue-text { padding-left: clamp(96px, 15vw, 200px); }
+
+/* 다 찍히면 "다음" 표시가 깜빡인다. */
+.dialogue-more {
+  position: absolute;
+  right: clamp(22px, 2.6vw, 38px);
+  bottom: clamp(10px, 1.6vh, 18px);
+  color: #b3703a;
+  font-size: 15px;
+  font-style: normal;
+  animation: dialogue-more 900ms ease-in-out infinite;
+}
+@keyframes dialogue-more {
+  0%, 100% { opacity: .25; transform: translateY(0); }
+  50% { opacity: 1; transform: translateY(3px); }
+}
+
+.stage-frame .dialogue-skip {
+  position: absolute;
+  z-index: 60;
+  top: 58px;
+  right: 14px;
+  border: 3px solid #8d592c;
+  border-radius: 8px;
+  padding: 7px 14px;
+  background: #4b2b17e6;
+  color: var(--ink);
+  font-size: 13px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dialogue-more { animation: none; opacity: 1; }
+}
+
 /* 영업 시작·마감 임박 문구. 잠깐 크게 떴다가 사라진다. */
 .stage-banner {
   position: absolute;
-  z-index: 9;
+  z-index: 30;
   top: 34%;
   left: 50%;
   width: min(46vw, 520px);
@@ -456,6 +647,8 @@ button:disabled { cursor: var(--cursor-arrow); }
 }
 
 .result-title-art { width: min(72%, 340px); margin: 0 auto 6px; }
+/* 액자 안에서는 리본 자리에 맞춘 크기를 쓴다. */
+.paper-window .result-title-art { width: 56%; margin: 0; }
 
 /* 하단 선택키 + 최근 상황 */
 .hud-bottom {
@@ -476,33 +669,53 @@ button:disabled { cursor: var(--cursor-arrow); }
 .hud-right { display: grid; justify-items: end; gap: 8px; }
 
 /* 슬라임별 남은 행동력과 턴 종료 */
-.turn-bar { display: flex; align-items: end; gap: clamp(5px, .8vw, 10px); }
+.turn-bar { display: flex; align-items: end; gap: clamp(11px, 1.5vw, 18px); padding-bottom: 18px; }
 /* 슬라임 몸이 버튼 배경이다. 표정 없이 조금 어둡게 깔고, 그 위에 남은
    에너지만 얹는다. */
 .stage-frame .turn-bar button {
   position: relative;
   display: grid;
   place-items: center;
-  width: clamp(54px, 6vw, 78px);
+  width: clamp(56px, 6.2vw, 80px);
   aspect-ratio: 1;
-  overflow: hidden;
   border: 3px solid #ffffff8c;
   border-radius: 50%;
-  padding: 5px;
+  padding: 4px;
   background: #3d67aeec;
   box-shadow: 0 7px 18px #0007;
   transform: none;
 }
 .roster-slime {
-  position: absolute;
-  inset: -6%;
-  width: 112%;
-  height: 112%;
+  width: 100%;
+  height: 100%;
   object-fit: contain;
-  filter: brightness(.62) saturate(.9);
 }
-.stage-frame .turn-bar button[aria-pressed="true"] .roster-slime { filter: none; }
-.turn-bar .energy-row { position: relative; }
+/* 이름표는 동그라미 아래에 걸쳐 놓는다. 안에 넣으면 몸을 가린다. */
+.roster-name {
+  position: absolute;
+  top: 100%;
+  right: -8px;
+  left: -8px;
+  margin-top: -6px;
+  border-radius: 3px;
+  background: #1a0e06d9;
+  color: #ffeecb;
+  font-size: clamp(9px, .92vw, 12px);
+  font-weight: 400;
+  line-height: 1.35;
+  white-space: nowrap;
+}
+/* 남은 에너지는 동그라미 위쪽에 어두운 알약을 깔고 얹어 크게 보인다. */
+.turn-bar .energy-row {
+  position: absolute;
+  top: -7px;
+  gap: 1px;
+  border: 2px solid #1a0e06;
+  border-radius: 999px;
+  padding: 2px 5px;
+  background: #2a1809ee;
+  box-shadow: 0 2px 0 #0007;
+}
 .stage-frame .turn-bar button[data-type="fire"] { background: #a74435ec; }
 .stage-frame .turn-bar button[data-type="lightning"] { background: #9b771fec; }
 .stage-frame .turn-bar button[data-type="earth"] { background: #647832ec; }
@@ -510,9 +723,11 @@ button:disabled { cursor: var(--cursor-arrow); }
 .stage-frame .turn-bar button:hover { border-color: var(--gold); transform: translateY(-2px); }
 /* 행동력을 다 쓴 슬라임은 흐리게 둔다. 고를 수는 있다. */
 .stage-frame .turn-bar button[data-spent] { opacity: .5; }
-.turn-bar b { font-size: clamp(13px, 1.5vw, 18px); }
+.turn-bar .turn-end b { font-size: clamp(13px, 1.5vw, 18px); }
 .turn-bar small { font-size: 10px; opacity: .9; }
 .stage-frame .turn-bar .turn-end {
+  display: grid;
+  place-items: center;
   width: clamp(76px, 8.5vw, 108px);
   aspect-ratio: auto;
   min-height: clamp(54px, 6vw, 78px);
@@ -521,6 +736,54 @@ button:disabled { cursor: var(--cursor-arrow); }
 }
 
 /* 행동력을 쓰지 않고 거절된 이유 */
+/* 튜토리얼 한 줄 안내. 화면을 덮지 않고 슬라임 버튼 바로 위에 붙는다.
+   길게 설명하는 팝업 대신 한 번에 한 가지만 말하는 자리다. */
+.coach-line {
+  position: absolute;
+  z-index: 21;
+  right: calc(var(--game-info-rail) + 12px);
+  /* 실패 안내(action-toast)와 겹치지 않게 한 칸 위에 둔다. */
+  bottom: clamp(146px, 19vh, 202px);
+  left: 12px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: fit-content;
+  max-width: min(560px, 100%);
+  margin: 0 auto;
+  border: 3px solid #8d592c;
+  border-radius: 14px;
+  padding: 8px 16px 8px 10px;
+  background: #2c1a0ef2;
+  box-shadow: 0 8px 22px #0009;
+  color: #ffeec6;
+  font-size: clamp(13px, 1.3vw, 16px);
+  line-height: 1.4;
+  animation: coach-in 260ms ease-out both;
+}
+.coach-line img { width: 38px; height: 38px; flex: none; object-fit: contain; }
+
+@keyframes coach-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: none; }
+}
+
+/* 튜토리얼이 지금 누르라고 짚는 버튼. */
+.stage-frame [data-coach] {
+  border-color: var(--gold);
+  animation: coach-pulse 1.1s ease-in-out infinite;
+}
+
+@keyframes coach-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 #ffd46b00; }
+  50% { box-shadow: 0 0 0 7px #ffd46b55; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .coach-line { animation: none; }
+  .stage-frame [data-coach] { animation: none; box-shadow: 0 0 0 4px #ffd46b66; }
+}
+
 .action-toast {
   position: absolute;
   z-index: 20;
@@ -539,8 +802,22 @@ button:disabled { cursor: var(--cursor-arrow); }
 }
 
 /* 스테이지 랭크 별 */
-.stage-rank { margin: 0 0 4px; color: var(--gold); font-size: 30px; letter-spacing: 4px; }
-.stage-rank span { opacity: .35; }
+.stage-rank { display: flex; justify-content: center; gap: 8px; margin: 0; font-size: clamp(26px, 3.4vw, 40px); }
+.stage-rank i {
+  color: #6b4a1e;
+  font-style: normal;
+  opacity: .4;
+  transform: scale(.6);
+  animation: rank-star 320ms cubic-bezier(.2, 1.5, .4, 1) both;
+}
+.stage-rank i[data-on] { color: var(--gold); opacity: 1; text-shadow: 0 0 12px #ffd46b88; }
+@keyframes rank-star {
+  from { opacity: 0; transform: scale(1.9) rotate(-25deg); }
+  to { transform: scale(1); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .stage-rank i { animation: none; transform: none; }
+}
 
 /* 맵과 겹치지 않는 우측 선택 정보 레일 */
 .info-rail {
@@ -554,36 +831,32 @@ button:disabled { cursor: var(--cursor-arrow); }
   background: linear-gradient(90deg, #0004, transparent 12px), var(--plank-rail), #3f2413;
 }
 
+/* 그림에 그려진 액자 두께(왼 38 / 위 49 / 오른 38 / 아래 45)를 그대로
+   테두리로 잡는다. 액자는 늘어나지 않고 안쪽 종이만 늘어나므로, 글자는
+   테두리 안쪽에서 시작해 액자와 겹치지 않는다.
+   두께는 화면 폭을 따라간다. 패널이 원래 크기(폭 329)일 때 그림 그대로가
+   되고, 좁은 화면에서는 액자도 같은 비율로 줄어 글 자리를 잡아먹지 않는다. */
 .game-inspector {
   position: relative;
   width: 100%;
   height: 100%;
-  overflow-y: auto;
-  border: 7px solid #5f381d;
-  padding: clamp(18px, 3vh, 32px);
-  background: linear-gradient(#efd9aa, #c99c62);
+  overflow: hidden;
+  border-width: var(--panel-frame-top) var(--panel-frame-x) var(--panel-frame-bottom);
+  border-style: solid;
+  border-color: transparent;
+  border-image: url("/ui/info-panel.png") 49 38 45 fill /
+    var(--panel-frame-top) var(--panel-frame-x) var(--panel-frame-bottom) / 0 stretch;
+  padding: 4px 2px;
   color: var(--paper-ink);
-  box-shadow: inset 0 0 0 2px #fff0c366;
   text-align: center;
 }
-.stage-frame .inspector-close {
-  position: absolute;
-  top: 0;
-  right: 0;
-  width: 44px;
-  height: 44px;
-  border: 0;
-  border-radius: 0 0 0 12px;
-  padding: 0;
-  background: #b8223c;
-  font-size: 30px;
-  line-height: 1;
-}
+/* 패널은 스크롤을 두지 않으므로 세로가 짧은 화면에서는 동그라미부터 줄인다.
+   글이 잘리는 것보다 그림이 작아지는 편이 낫다. */
 .inspector-portrait,
 .inspector-station-icon {
-  width: clamp(108px, 12vw, 160px);
-  height: clamp(108px, 12vw, 160px);
-  margin: 10px auto 12px;
+  width: clamp(74px, 13vh, 132px);
+  height: clamp(74px, 13vh, 132px);
+  margin: 2px auto 8px;
   border: 5px solid #fff !important;
   border-radius: 50% !important;
   padding: 0 !important;
@@ -596,24 +869,96 @@ button:disabled { cursor: var(--cursor-arrow); }
 .inspector-station-icon img { display: block; width: 100%; height: 100%; padding: 18%; object-fit: contain; box-sizing: border-box; }
 .inspector-station-icon img[data-wide] { padding: 2%; }
 .game-inspector .eyebrow { margin: 0; color: #7d421d; font-size: 11px; letter-spacing: .14em; }
-.game-inspector h2 { margin: 5px 0 18px; font-size: clamp(26px, 3vw, 38px); }
-.game-inspector h3 { margin: 28px 0 10px; color: #5c3419; font-size: 15px; }
-.inspector-copy { margin: 0; color: #3c2515; font-family: "Apple SD Gothic Neo", sans-serif; font-size: 14px; line-height: 1.55; }
+.game-inspector h2 { margin: 2px 0 10px; font-size: clamp(22px, 2.4vw, 30px); }
+.game-inspector h3 { margin: 14px 0 6px; color: #5c3419; font-size: 14px; }
+.inspector-copy { margin: 0; color: #3c2515; font-size: 13px; line-height: 1.45; }
 .inspector-copy p { margin: 3px 0; }
-.game-inspector .slime-stats { margin-top: 22px; }
+.game-inspector .slime-stats { margin-top: 12px; }
 .game-inspector .slime-stats li { color: #4b2c18; }
 .game-inspector .stat-gauge i { background: #75502a; }
 .inspector-badges,
 .required-slimes { display: flex; flex-wrap: wrap; justify-content: center; gap: 9px; }
 .inspector-badges span,
 .required-slimes > span { border: 2px solid #7b4a24; border-radius: 3px; padding: 8px 12px; background: #4b2b17; color: #fff0c8; }
-.required-slimes > span:not(.any-slime) { display: grid; grid-template-columns: 34px auto; align-items: center; gap: 5px; }
-.required-slimes img { width: 34px; height: 34px; object-fit: contain; }
-.station-workflow { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; }
-.station-workflow span { display: contents; }
-.station-workflow i { align-self: center; color: #805126; font-style: normal; }
-.station-workflow b { border: 1px solid #9b6735; border-radius: 3px; padding: 8px 10px; background: #f2ddb2; font-size: 12px; }
-.inspector-hint { display: block; margin-top: 28px; color: #67401f; line-height: 1.4; }
+.required-slimes > span:not(.any-slime) { display: grid; grid-template-columns: 30px auto; align-items: center; gap: 5px; }
+.required-slimes img { width: 30px; height: 30px; object-fit: contain; }
+.station-workflow { display: grid; gap: 4px; }
+.station-workflow span { display: grid; grid-template-columns: 40px 1fr; align-items: center; gap: 8px; text-align: left; cursor: var(--cursor-ask); }
+/* 좁은 창이라 말풍선을 가운데 정렬하면 옆으로 삐져나간다. 왼쪽에 붙인다. */
+.station-workflow .has-tip::after { left: 0; max-width: 100%; transform: none; }
+/* 동그란 칸이면 그림의 네 귀퉁이가 잘린다. 가로로 긴 설비 그림은 좌우가
+   통째로 날아간다. 모서리만 둥근 네모로 두고 그림을 다 보여 준다.
+   칸을 grid로 두면 안 된다. 칸 높이가 내용에 따라 정해지는 꼴이 되어 그림의
+   height: 100%가 풀리지 않고, 세로로 긴 그림(당근·딸기·믹서기·물)이 제 크기
+   그대로 칸을 넘어간다. 높이가 확실한 block에 얹어야 모두 같은 크기가 된다. */
+.station-workflow i {
+  display: block;
+  width: 40px;
+  height: 40px;
+  border: 2px solid #fff;
+  border-radius: 10px;
+  background: #fff;
+}
+.station-workflow i img { display: block; width: 100%; height: 100%; padding: 10%; object-fit: contain; box-sizing: border-box; }
+.station-workflow b { border: 1px solid #9b6735; border-radius: 3px; padding: 5px 9px; background: #f2ddb2; font-size: 12px; }
+.inspector-badges img { width: 26px; height: 26px; object-fit: contain; }
+.inspector-badges span { display: grid; grid-template-columns: 26px auto; align-items: center; gap: 6px; }
+
+/* 설비에 올라와 있는 물건 */
+.station-holding { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 8px; margin: 8px 0 2px; }
+.station-holding b { font-size: 12px; color: #4a2d17; }
+.station-holding small { font-size: 12px; color: #6c4523; }
+.carried-art { position: relative; display: block; width: 42px; height: 43px; margin: 0 auto; }
+.carried-art img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
+.carried-art img + img { top: 19.9%; left: 23.1%; width: 53.6%; height: 54.5%; object-position: center bottom; }
+
+/* 마우스를 올리거나 키보드로 짚었을 때만 뜨는 설명. title 속성은 뜨는 데
+   시간이 걸리고 터치에서는 아예 안 떠서 직접 그린다. */
+.has-tip { position: relative; }
+.has-tip::after {
+  content: attr(data-tip);
+  position: absolute;
+  z-index: 40;
+  bottom: calc(100% + 8px);
+  left: 50%;
+  width: max-content;
+  max-width: 220px;
+  border: 2px solid #815329;
+  border-radius: 5px;
+  padding: 6px 9px;
+  background: #2c1a0ef2;
+  color: #ffe9b8;
+  font-size: 12px;
+  line-height: 1.4;
+  white-space: normal;
+  text-align: left;
+  opacity: 0;
+  transform: translateX(-50%);
+  transition: opacity .12s ease;
+  pointer-events: none;
+}
+.has-tip:hover::after,
+.has-tip:focus-visible::after { opacity: 1; }
+.inspector-hint { display: block; margin-top: 14px; color: #67401f; font-size: 12px; line-height: 1.35; }
+
+/* 세로가 짧은 화면에서는 패널이 통째로 짧아진다. 스크롤을 두지 않으므로
+   안에 든 것을 같이 줄여 잘리지 않게 한다. */
+@media (max-height: 780px) {
+  .game-inspector h2 { margin: 0 0 6px; font-size: clamp(18px, 2vw, 24px); }
+  .game-inspector h3 { margin: 8px 0 4px; font-size: 12px; }
+  .inspector-portrait, .inspector-station-icon {
+    width: clamp(56px, 10.5vh, 104px);
+    height: clamp(56px, 10.5vh, 104px);
+    margin: 0 auto 4px;
+  }
+  .required-slimes > span:not(.any-slime) { grid-template-columns: 24px auto; padding: 4px 8px; font-size: 12px; }
+  .required-slimes img { width: 24px; height: 24px; }
+  .station-workflow { gap: 3px; }
+  .station-workflow span { grid-template-columns: 32px 1fr; gap: 6px; }
+  .station-workflow i { width: 32px; height: 32px; border-radius: 8px; }
+  .station-workflow b { padding: 3px 7px; font-size: 11px; }
+  .inspector-hint { margin-top: 8px; font-size: 11px; }
+}
 
 
 .feed {
@@ -691,7 +1036,7 @@ button:disabled { cursor: var(--cursor-arrow); }
 /* 행동력은 밝은 번개와 어두운 번개로 보여 준다. 칸 게이지는 쓰지 않는다. */
 .energy-row { display: inline-flex; align-items: center; gap: 3px; }
 .energy-icon { width: 1.05em; height: 1.4em; object-fit: contain; }
-.turn-bar .energy-icon { width: 15px; height: 20px; filter: drop-shadow(0 1px 2px #000a); }
+.turn-bar .energy-icon { width: 13.5px; height: 18px; filter: drop-shadow(0 1px 2px #000a); }
 .game-inspector .energy-icon { width: 22px; height: 29px; }
 .stat-count { color: #6c4523; font-size: 12px; font-variant-numeric: tabular-nums; }
 .stat-gauge { display: inline-flex; gap: 3px; }
@@ -718,19 +1063,52 @@ button:disabled { cursor: var(--cursor-arrow); }
   background: #160c07e8;
 }
 
-.result-overlay > div {
-  width: min(580px, 100%);
-  padding: 42px;
-  border: 8px solid #6f431f;
-  border-radius: 4px;
-  background: linear-gradient(#f2ddb1, #cda46b);
+/* 정산 창과 소리 설정 창은 같은 나무 액자 그림을 쓴다. 그림 비율(1055×1285)을
+   그대로 창 비율로 삼아 통째로 키우니 늘어나는 곳이 없다. 9분할이 필요 없다.
+   글자 자리는 그림에서 잰 종이 영역(가로 8.1~91.8%, 세로 20.9~93.4%)과 위쪽
+   리본(세로 4.2~17.2%, 가로 18~82%) 비율로 잡는다. */
+.paper-window {
+  position: relative;
+  /* 세로가 짧은 화면에서는 높이가 먼저 걸린다. 비율을 지키려면 폭을 줄여야
+     하므로 화면 높이에서 거꾸로 계산한 폭도 후보에 넣는다. */
+  width: min(var(--paper-w, 520px), 100%, calc((100svh - 40px) * 1055 / 1285));
+  aspect-ratio: 1055 / 1285;
+  background: url("/ui/paper-frame.png") center / 100% 100% no-repeat;
   color: var(--paper-ink);
   text-align: center;
-  box-shadow: inset 0 0 0 2px #fff2ca88, 0 18px 50px #000b;
+  filter: drop-shadow(0 16px 40px #000b);
+}
+
+.paper-title {
+  position: absolute;
+  top: 4.2%;
+  left: 18%;
+  display: grid;
+  place-content: center;
+  width: 64%;
+  height: 13%;
+  margin: 0;
+  color: #6b3d1a;
+  font-size: clamp(17px, 2vw, 24px);
+}
+/* 제목이 그림이면 리본 안에 꽉 차지 않게 조금 줄여 앉힌다. */
+img.paper-title { width: 56%; height: 11.4%; top: 4.9%; left: 22%; object-fit: contain; }
+
+.paper-body {
+  position: absolute;
+  top: 20.9%;
+  right: 8.3%;
+  bottom: 6.6%;
+  left: 8.1%;
+  display: grid;
+  align-content: center;
+  gap: clamp(6px, 1.4vh, 14px);
+  overflow: hidden;
+  padding: 4% 5%;
 }
 
 .result-overlay .eyebrow { color: #9b3f21; }
-.result-overlay h2 { margin: 8px 0 28px; font-size: clamp(1.6rem, 5vw, 2.8rem); }
+.result-overlay h2 { margin: 0; font-size: clamp(1rem, 1.7vw, 1.35rem); }
 .result-overlay button { border: 2px solid #7e4d24; border-radius: 3px; padding: 10px 14px; background: var(--gold); color: #21120a; font-weight: 800; cursor: var(--cursor-hand); }
 
 /* 스테이지 시작 전 정보 화면: 제목 / 맵+TIP / 음식 / 다음 순서를 유지한다. */
@@ -933,7 +1311,7 @@ button:disabled { cursor: var(--cursor-arrow); }
 .stage-info-error { place-items: center; color: #ffc0ce; font-size: 22px; }
 
 /* 정산 표: 항목 · 계산식 · 소계 3열. */
-.settle { margin: 0 0 24px; }
+.settle { margin: 0; }
 .settle > div {
   display: grid;
   grid-template-columns: 1fr auto minmax(88px, auto);
@@ -945,9 +1323,7 @@ button:disabled { cursor: var(--cursor-arrow); }
 .settle dt { text-align: left; }
 .settle dd { margin: 0; text-align: right; color: #57351c; }
 .settle dd:last-child { color: #8b3f1f; font-weight: 700; }
-.settle-total { margin-top: 6px; border-top: 2px solid var(--accent) !important; }
-.settle-total dt { font-weight: 700; }
-.settle-total dd:last-child { font-size: 1.5rem; }
+.settle dd:last-child { font-size: 1.2rem; }
 
 .voice-lab {
   min-height: 100svh;
@@ -1152,20 +1528,11 @@ button:disabled { cursor: var(--cursor-arrow); }
   }
   .hud-top { top: 5px; right: 69px; gap: 4px; }
   .hud-chip { padding: 4px 9px; font-size: 12px; }
-  .order-cards { top: 5px; left: 5px; grid-template-columns: 1fr; gap: 4px; width: 150px; }
-  .order-card { min-height: 104px; border-radius: 8px; padding-top: 6px; }
-  .order-card > header { padding: 2px 5px; font-size: 7px; }
-  .order-card > footer { padding: 2px 4px; font-size: 7px; }
-  .order-card > footer span { font-size: 12px; }
-  .order-card { min-height: 84px; }
-  .order-food { gap: 3px; padding: 2px 5px; font-size: 10px; }
-  .order-food > span { font-size: 21px; }
-  .order-food small { font-size: 9px; }
-  .order-process { gap: 3px; padding: 2px; font-size: 10px; }
-  .order-process span { min-width: 20px; min-height: 20px; }
-  .order-process .flow-icon { width: 20px; height: 20px; }
+  /* 낮은 화면에서는 카드를 눕히지 않고 통째로 줄인다. 칸 순서(완성품 →
+     재료 → 조리 방법)는 그대로다. */
+  .order-cards { top: 5px; left: 5px; gap: 5px; transform: scale(.62); transform-origin: top left; }
   .hud-bottom { right: calc(var(--game-info-rail) + 7px); bottom: 7px; left: 167px; }
-  .stage-frame .turn-bar button { width: 44px; border-width: 2px; padding: 3px; }
+  .stage-frame .turn-bar button { width: 44px; border-width: 2px; }
   .stage-frame .turn-bar .turn-end { width: 62px; min-height: 44px; }
   .turn-bar b { font-size: 11px; }
   .turn-bar small, .feed { font-size: 7px; }
@@ -1213,15 +1580,18 @@ button:disabled { cursor: var(--cursor-arrow); }
   .stat-gauge { gap: 1px; }
   .stat-gauge i { width: 7px; height: 6px; }
   
-  .result-overlay { align-items: start; overflow-y: auto; padding: 6px; }
-  .result-overlay > div { width: min(520px, 100%); padding: 12px 20px; border-width: 4px; }
+  /* 액자는 비율대로 통째로 줄어든다. 안에 든 글자만 따로 줄인다. */
+  .result-overlay { padding: 6px; }
+  .paper-body { gap: 4px; padding: 3% 4%; }
   .result-overlay .eyebrow { margin-bottom: 2px; font-size: 9px; }
-  .result-overlay h2 { margin: 2px 0 10px; font-size: 20px; }
-  .result-overlay .settle { margin-bottom: 6px; }
-  .result-overlay .settle > div { gap: 7px; padding: 4px; font-size: 11px; }
-  .result-overlay .settle-total dd:last-child { font-size: 16px; }
-  .result-overlay .mic-state { min-height: 0; margin: 4px 0; font-size: 9px; }
+  .result-overlay h2 { font-size: 12px; }
+  .result-overlay .settle > div { gap: 7px; padding: 3px; font-size: 10px; }
+  .result-overlay .settle dd:last-child { font-size: 13px; }
+  .result-overlay .mic-state { min-height: 0; margin: 0; font-size: 9px; }
   .result-overlay button { padding: 5px 10px; font-size: 10px; }
+  .settings-drawer { border-width: 24px; border-image-width: 24px; gap: 8px; padding: 2px 6px 8px; }
+  .settings-drawer header strong { font-size: 15px; }
+  .settings-drawer .settings-close { top: -30px; right: -30px; width: 38px; height: 38px; }
 }
 
 @media (min-width: 761px) and (max-width: 900px) {
@@ -1235,8 +1605,7 @@ button:disabled { cursor: var(--cursor-arrow); }
   .home-cauldron, .home-cauldron-bubble { animation: none; }
 }
 
-/* 스테이지 선택: 0 · 1 · 2 · 3 · ∞ 다섯 칸을 한 줄에 놓는다.
-   글자 라벨은 두지 않는다. 번호와 별만으로 읽힌다. */
+/* 모드 선택: 아르바이트와 무한, 두 판만 놓는다. 나무 판 그림이 버튼이다. */
 .stage-select {
   position: relative;
   display: grid;
@@ -1279,60 +1648,29 @@ button:disabled { cursor: var(--cursor-arrow); }
 .stage-select-back:hover { border-color: var(--gold); }
 .stage-select-bar .music-settings-game { position: static; }
 
-.stage-slots {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: center;
-  gap: clamp(10px, 2vw, 22px);
-}
+.mode-plates { display: grid; gap: clamp(14px, 3vh, 28px); justify-items: center; }
 
-.stage-slot {
-  position: relative;
+/* 나무 판 그림 하나가 버튼 전체다. 테두리·배경은 그림에 이미 있다. */
+.mode-plate {
   display: grid;
-  place-content: center;
+  align-content: center;
   justify-items: center;
-  gap: 8px;
-  width: clamp(96px, 13vw, 150px);
-  aspect-ratio: 3 / 4;
-  border: 4px solid #8d592c;
-  border-radius: 10px;
-  padding: 10px;
-  background: linear-gradient(#efd9aa, #cda56d);
-  box-shadow: 0 8px 0 #2b1608, 0 14px 30px #0007;
-  color: var(--paper-ink);
-  cursor: var(--cursor-hand);
-  transition: transform 120ms ease, box-shadow 120ms ease;
+  gap: 2px;
+  width: clamp(300px, 44vw, 520px);
+  aspect-ratio: 639 / 256;
+  border: 0;
+  padding: 0 12% 2%;
+  background: url("/ui/mode-plate.png") center / 100% 100% no-repeat;
+  color: #ffeec4;
+  filter: drop-shadow(0 8px 0 #1b0d05aa) drop-shadow(0 14px 22px #0008);
+  transition: transform 120ms ease, filter 120ms ease;
 }
-.stage-slot:hover:not(:disabled) { transform: translateY(-4px); box-shadow: 0 12px 0 #2b1608, 0 18px 34px #0008; }
-.stage-slot:focus-visible { outline: 4px solid var(--gold); outline-offset: 3px; }
-
-/* 튜토리얼과 무한만 색을 달리해 번호 스테이지와 구분한다. */
-.stage-slot[data-kind="tutorial"] { background: linear-gradient(#cfe6bf, #9dc487); border-color: #5d7f45; }
-.stage-slot[data-kind="endless"] { background: linear-gradient(#d9cdec, #a894c9); border-color: #6b5590; }
-
-.stage-slot[data-locked] { filter: grayscale(.7) brightness(.75); cursor: var(--cursor-deny); box-shadow: 0 6px 0 #2b1608; }
-.stage-slot[data-locked]:hover { transform: none; }
-
-.stage-slot-label { font-size: clamp(38px, 6vw, 64px); line-height: 1; }
-
-.stage-slot-stars { display: flex; gap: 5px; }
-.stage-slot-stars i {
-  width: 17px;
-  height: 17px;
-  background: #7a5a33;
-  opacity: .35;
-  /* 별 모양은 이미지 없이 clip-path로 낸다. */
-  clip-path: polygon(50% 0, 61% 35%, 98% 35%, 68% 57%, 79% 91%, 50% 70%, 21% 91%, 32% 57%, 2% 35%, 39% 35%);
-}
-.stage-slot-stars i[data-on] { background: #e8a41d; opacity: 1; }
-
-.stage-slot-mark { position: absolute; top: 7px; right: 10px; color: #3d6b2a; font-size: 20px; }
-
-@media (max-width: 620px) {
-  .stage-slot { width: clamp(78px, 26vw, 120px); }
-  .stage-slot-stars i { width: 13px; height: 13px; }
-}
+.mode-plate b { font-size: clamp(20px, 2.8vw, 34px); text-shadow: 0 3px 0 #4a2411, 0 0 12px #00000088; }
+.mode-plate small { color: #ffdca6; font-size: clamp(11px, 1.2vw, 15px); text-shadow: 0 2px 0 #3a1c0b; }
+.mode-plate:hover:not(:disabled) { transform: translateY(-4px) scale(1.02); filter: drop-shadow(0 12px 0 #1b0d05aa) brightness(1.06); }
+.mode-plate:focus-visible { outline: 4px solid var(--gold); outline-offset: 6px; border-radius: 20px; }
+.mode-plate[data-locked] { filter: grayscale(.75) brightness(.6); cursor: var(--cursor-deny); }
+.mode-plate[data-locked]:hover { transform: none; }
 
 /* 행동력 한 줄. 스탯이 여러 개이던 시절의 3열 배치는 한 줄에는 벌어져
    보여서, 아이콘·이름·칸을 가운데로 모은다. */
@@ -1346,13 +1684,5 @@ button:disabled { cursor: var(--cursor-arrow); }
 .game-inspector .stat-gauge { gap: 5px; }
 .game-inspector .stat-gauge i { width: 20px; height: 14px; border-radius: 3px; }
 
-.inspector-badges img,
-.station-workflow img { width: 22px; height: 22px; object-fit: contain; vertical-align: -5px; }
-.inspector-badges span { cursor: help; }
-/* 특징 배지 안의 아이콘을 글자에서 떼어 둔다. */
-.inspector-badges span { display: inline-flex; align-items: center; gap: 6px; }
-.inspector-badges i { font-style: normal; font-size: 16px; }
-
-/* 다음 주문 카드는 같은 판형에 흐리게. 아직 받은 주문이 아니다. */
-.order-card-next { opacity: .62; }
+.inspector-badges span { cursor: var(--cursor-ask); }
 

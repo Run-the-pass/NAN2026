@@ -27,19 +27,18 @@
   },
   "dish": {
     "initialCount": 3,
-    "rackCapacity": 3,
+    "rackCapacity": 5,
     "washerCapacity": 1,
-    "tableCapacity": 1
+    "tableCapacity": 1,
+    "returnCapacity": 5
   },
   "incinerator": {
     "capacity": 5
   },
   "orders": {
     "activeOrderCount": 2,
-    "previewCount": 2,
     "invalidSubmission": "reject",
     "endRoundWhenOrdersDone": true
   },
-  "rushTurnsLeft": 10,
-  "goldPerOrder": 100
+  "rushTurnsLeft": 10
 }
