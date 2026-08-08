@@ -236,76 +236,91 @@ type InspectorTarget =
   | { kind: "actor"; id: ActorId }
   | { kind: "station"; id: StationInstanceId };
 
+// 설비 패널에 뜨는 "가능한 작업". 짧은 이름만 늘어놓고, 자세한 규칙은 마우스를
+// 올렸을 때만 말풍선으로 보여 준다. 위에 설명을 또 적으면 같은 말을 두 번 읽게
+// 되고 패널이 길어져 아래가 잘린다.
 const stationPanelInfo: Record<
   StationId,
-  { description: string[]; steps: { art: string; text: string }[] }
+  { steps: { art: string; text: string; tip: string }[] }
 > = {
   "potato-box": {
-    description: ["턴이 끝날 때마다 감자가 한 개 찹니다.", "빈손이나 깨끗한 그릇으로 꺼냅니다. (행동력 1)"],
-    steps: [{ art: "/food/potato.png", text: "감자 받기" }],
+    steps: [{ art: "/food/potato.png", text: "감자 받기", tip: `턴이 끝날 때마다 한 개씩 차고 최대 ${INGREDIENT_MAX}개입니다. 빈손이나 깨끗한 그릇으로 꺼냅니다. (행동력 1)` }],
   },
   "carrot-box": {
-    description: ["턴이 끝날 때마다 당근이 한 개 찹니다.", "빈손이나 깨끗한 그릇으로 꺼냅니다. (행동력 1)"],
-    steps: [{ art: "/food/carrot.png", text: "당근 받기" }],
+    steps: [{ art: "/food/carrot.png", text: "당근 받기", tip: `턴이 끝날 때마다 한 개씩 차고 최대 ${INGREDIENT_MAX}개입니다. 빈손이나 깨끗한 그릇으로 꺼냅니다. (행동력 1)` }],
   },
   "cabbage-box": {
-    description: ["턴이 끝날 때마다 양배추가 한 개 찹니다.", "빈손이나 깨끗한 그릇으로 꺼냅니다. (행동력 1)"],
-    steps: [{ art: "/food/cabbage.png", text: "양배추 받기" }],
+    steps: [{ art: "/food/cabbage.png", text: "양배추 받기", tip: `턴이 끝날 때마다 한 개씩 차고 최대 ${INGREDIENT_MAX}개입니다. 빈손이나 깨끗한 그릇으로 꺼냅니다. (행동력 1)` }],
   },
   "banana-box": {
-    description: ["바나나를 꺼냅니다. (행동력 1)", "빈손이나 깨끗한 그릇으로 꺼냅니다."],
-    steps: [{ art: "/food/banana.png", text: "바나나 받기" }],
+    steps: [{ art: "/food/banana.png", text: "바나나 받기", tip: "빈손이나 깨끗한 그릇으로 꺼냅니다. (행동력 1)" }],
   },
   "strawberry-box": {
-    description: ["딸기를 꺼냅니다. (행동력 1)", "빈손이나 깨끗한 그릇으로 꺼냅니다."],
-    steps: [{ art: "/food/strawberry.png", text: "딸기 받기" }],
+    steps: [{ art: "/food/strawberry.png", text: "딸기 받기", tip: "빈손이나 깨끗한 그릇으로 꺼냅니다. (행동력 1)" }],
   },
   "mushroom-box": {
-    description: ["버섯을 꺼냅니다. (행동력 1)", "빈손이나 깨끗한 그릇으로 꺼냅니다."],
-    steps: [{ art: "/food/mushroom.png", text: "버섯 받기" }],
+    steps: [{ art: "/food/mushroom.png", text: "버섯 받기", tip: "빈손이나 깨끗한 그릇으로 꺼냅니다. (행동력 1)" }],
   },
   oven: {
-    description: ["불 슬라임만 구울 수 있습니다. (행동력 1)", "재료를 올리고 꺼내는 것은 누구나 합니다."],
-    steps: [{ art: "/food/mushroom.png", text: "버섯" }, { art: "/stations/oven.png", text: "불 슬라임이 굽기" }, { art: "/food/plate.png", text: "그릇에 담기" }],
+    steps: [
+      { art: "/food/mushroom.png", text: "버섯", tip: "화로에 올릴 수 있는 재료입니다. 올리고 꺼내는 것은 누구나 합니다." },
+      { art: "/stations/oven.png", text: "불 슬라임이 굽기", tip: "불 슬라임만 구울 수 있습니다. (행동력 1)" },
+      { art: "/food/plate.png", text: "그릇에 담기", tip: "깨끗한 그릇을 들고 오면 다 구운 음식이 담깁니다." },
+    ],
   },
   "dish-return": {
-    description: ["제출한 그릇이 한 턴 뒤 더러운 채로 나옵니다.", "집어서 세척대로 옮깁니다. (행동력 1)"],
-    steps: [{ art: "/food/dirty-plate.png", text: "더러운 그릇 회수" }, { art: "/stations/washer.png", text: "세척대로" }],
+    steps: [
+      { art: "/food/dirty-plate.png", text: "더러운 그릇 회수", tip: "제출한 그릇이 한 턴 뒤 더러운 채로 나옵니다. (행동력 1)" },
+      { art: "/stations/washer.png", text: "세척대로", tip: "세척대에 맡겨 씻어야 다시 쓸 수 있습니다." },
+    ],
   },
   fryer: {
-    description: ["번개 슬라임만 튀길 수 있습니다. (행동력 1)", "감자와 버섯을 튀깁니다."],
-    steps: [{ art: "/food/potato.png", text: "감자·버섯" }, { art: "/stations/fryer.png", text: "번개 슬라임이 튀기기" }, { art: "/food/plate.png", text: "그릇에 담기" }],
+    steps: [
+      { art: "/food/potato.png", text: "감자·버섯", tip: "튀김기에 넣을 수 있는 재료입니다. 넣고 꺼내는 것은 누구나 합니다." },
+      { art: "/stations/fryer.png", text: "번개 슬라임이 튀기기", tip: "번개 슬라임만 튀길 수 있습니다. (행동력 1)" },
+      { art: "/food/plate.png", text: "그릇에 담기", tip: "깨끗한 그릇을 들고 오면 다 튀긴 음식이 담깁니다." },
+    ],
   },
   blender: {
-    description: [
-      "과일 → 물 → 가동 순서로 스무디를 만듭니다.",
-      "넣은 과일은 뺄 수 없고, 물을 먼저 채울 수도 없습니다.",
+    steps: [
+      { art: "/food/banana.png", text: "과일 넣기", tip: "과일을 먼저 넣어야 합니다. 한 번 넣은 과일은 다시 뺄 수 없습니다. (행동력 1)" },
+      { art: "/ui/water.png", text: "물 슬라임이 물", tip: "과일이 든 뒤에만 채울 수 있습니다. 물 슬라임만 합니다. (행동력 1)" },
+      { art: "/stations/blender-full.png", text: "번개 슬라임이 가동", tip: "번개 슬라임만 돌릴 수 있습니다. 스무디는 그릇 없이 컵째 나갑니다. (행동력 1)" },
     ],
-    steps: [{ art: "/food/banana.png", text: "과일 넣기" }, { art: "/ui/water.png", text: "물 슬라임이 물" }, { art: "/stations/blender-full.png", text: "번개 슬라임이 가동" }],
   },
   stove: {
-    description: ["땅 슬라임만 재료를 썰 수 있습니다. (행동력 1)", "감자·당근·양배추를 채썹니다."],
-    steps: [{ art: "/food/potato.png", text: "감자·당근·양배추" }, { art: KNIFE_ART, text: "땅 슬라임이 썰기" }, { art: "/food/plate.png", text: "그릇에 담기" }],
+    steps: [
+      { art: "/food/potato.png", text: "감자·당근·양배추", tip: "도마에서 썰 수 있는 재료입니다. 올리고 꺼내는 것은 누구나 합니다." },
+      { art: KNIFE_ART, text: "땅 슬라임이 썰기", tip: `땅 슬라임만 썰 수 있고 ${actionCost.chop}번 썰어야 다 됩니다.` },
+      { art: "/food/plate.png", text: "그릇에 담기", tip: "깨끗한 그릇을 들고 오면 다 썬 재료가 담깁니다." },
+    ],
   },
   submission: {
-    description: ["주문 음식이 담긴 그릇을 제출합니다. (행동력 1)", "그릇은 한 턴 뒤 반납대로 갑니다."],
-    steps: [{ art: "/food/plate.png", text: "완성 음식" }, { art: "/stations/submission.png", text: "제출" }],
+    steps: [
+      { art: "/food/plate.png", text: "완성 음식", tip: "지금 주문에 있는 음식만 낼 수 있습니다." },
+      { art: "/stations/submission.png", text: "제출", tip: "낸 그릇은 한 턴 뒤 반납대로 돌아옵니다. (행동력 1)" },
+    ],
   },
   trash: {
-    description: [`쓰레기를 최대 ${incineratorConfig.capacity}개까지 보관합니다. (버리기 행동력 1)`, "불 슬라임이 소각해 비웁니다. (행동력 1)"],
-    steps: [{ art: "/stations/trash-full.png", text: "쓰레기 투입" }, { art: "/stations/trash.png", text: "불 슬라임이 소각" }],
+    steps: [
+      { art: "/stations/trash-full.png", text: "쓰레기 투입", tip: `최대 ${incineratorConfig.capacity}개까지 넣습니다. 빈 그릇은 버릴 수 없습니다. (행동력 1)` },
+      { art: "/stations/trash.png", text: "불 슬라임이 소각", tip: "불 슬라임만 태워 비울 수 있습니다. (행동력 1)" },
+    ],
   },
   "dish-rack": {
-    description: ["깨끗한 그릇을 꺼냅니다. (행동력 1)", `상자에는 그릇이 최대 ${dishConfig.rackCapacity}개고 새로 생기지 않습니다.`],
-    steps: [{ art: "/food/plate.png", text: "깨끗한 그릇 받기" }],
+    steps: [{ art: "/food/plate.png", text: "깨끗한 그릇 받기", tip: `그릇은 최대 ${dishConfig.rackCapacity}개고 새로 생기지 않습니다. (행동력 1)` }],
   },
   washer: {
-    description: ["더러운 그릇을 맡깁니다. (행동력 1)", "물 슬라임만 세척할 수 있습니다. (행동력 1)"],
-    steps: [{ art: "/food/dirty-plate.png", text: "더러운 그릇 넣기" }, { art: "/stations/washer-water.png", text: "물 슬라임이 세척" }],
+    steps: [
+      { art: "/food/dirty-plate.png", text: "더러운 그릇 넣기", tip: "더러운 그릇을 맡깁니다. 누구나 넣을 수 있습니다. (행동력 1)" },
+      { art: "/stations/washer-water.png", text: "물 슬라임이 세척", tip: `물 슬라임만 씻을 수 있고 ${actionCost.wash}번 씻어야 다 됩니다.` },
+    ],
   },
   table: {
-    description: ["재료나 그릇을 한 칸 보관합니다.", "다른 슬라임에게 물건을 인계할 수 있습니다."],
-    steps: [{ art: "/stations/table.png", text: "잠깐 올려 두기" }, { art: "/food/plate.png", text: "다시 집기" }],
+    steps: [
+      { art: "/stations/table.png", text: "잠깐 올려 두기", tip: "재료나 그릇을 한 칸 보관합니다. (행동력 1)" },
+      { art: "/food/plate.png", text: "다시 집기", tip: "다른 슬라임에게 물건을 넘길 때 씁니다. (행동력 1)" },
+    ],
   },
 };
 
@@ -633,9 +648,6 @@ function GameInspector({
         <StationIcon id={type} />
       </span>
       <h2>{stationLabels[type]}</h2>
-      <div className="inspector-copy">
-        {info.description.map((line) => <p key={line}>{line}</p>)}
-      </div>
       <StationStock state={state} id={target.id} />
       <StationHolding state={state} id={target.id} />
       <h3>필요 슬라임</h3>
@@ -650,8 +662,10 @@ function GameInspector({
       </div>
       <h3>가능한 작업</h3>
       <div className="station-workflow">
+        {/* 자세한 규칙은 마우스를 올리거나 키보드로 짚었을 때만 말풍선으로
+            보여 준다. 항상 펼쳐 두면 패널이 길어져 아래가 잘린다. */}
         {info.steps.map((step) => (
-          <span key={step.text}>
+          <span key={step.text} className="has-tip" data-tip={step.tip} tabIndex={0}>
             <i aria-hidden>
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img src={step.art} alt="" style={anchorStyle(step.art)} />

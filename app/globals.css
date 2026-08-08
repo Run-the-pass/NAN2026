@@ -233,23 +233,21 @@ button:disabled { cursor: var(--cursor-arrow); }
 .settings-drawer header { display: grid; place-items: center; }
 .settings-drawer header strong { color: #6b3d1a; font-size: 21px; }
 .settings-drawer button, .settings-home-link { border: 2px solid #8d592c; border-radius: 3px; padding: 8px 12px; background: #4b2b17; color: #fff1d0; cursor: var(--cursor-hand); }
-/* 닫기는 액자 오른쪽 위 모서리에 걸치는 빨간 동전이다. */
+/* 닫기는 액자 오른쪽 위 모서리에 걸치는 X 그림이다. */
 .settings-drawer .settings-close {
   position: absolute;
   z-index: 2;
-  top: -46px;
-  right: -46px;
+  top: -44px;
+  right: -44px;
   width: 52px;
   height: 52px;
-  border: 3px solid #4a1a24;
-  border-radius: 50%;
+  border: 0;
   padding: 0;
-  background: #b8223c;
-  color: #fff1d0;
-  font-size: 28px;
-  line-height: 1;
+  background: url("/ui/cancel.png") center / contain no-repeat;
+  font-size: 0;
 }
-.settings-drawer .settings-close:hover { background: #d1294a; transform: none; }
+.settings-drawer .settings-close:hover { transform: scale(1.08); }
+.settings-drawer .settings-close:focus-visible { outline: 3px solid var(--gold); outline-offset: 3px; border-radius: 8px; }
 .settings-drawer label { display: grid; gap: 8px; }
 .settings-drawer input { width: 100%; accent-color: var(--gold); }
 .settings-home-link { text-align: center; text-decoration: none; }
@@ -804,10 +802,12 @@ button:disabled { cursor: var(--cursor-arrow); }
   color: var(--paper-ink);
   text-align: center;
 }
+/* 패널은 스크롤을 두지 않으므로 세로가 짧은 화면에서는 동그라미부터 줄인다.
+   글이 잘리는 것보다 그림이 작아지는 편이 낫다. */
 .inspector-portrait,
 .inspector-station-icon {
-  width: clamp(96px, 10vw, 132px);
-  height: clamp(96px, 10vw, 132px);
+  width: clamp(74px, 13vh, 132px);
+  height: clamp(74px, 13vh, 132px);
   margin: 2px auto 8px;
   border: 5px solid #fff !important;
   border-radius: 50% !important;
@@ -835,7 +835,9 @@ button:disabled { cursor: var(--cursor-arrow); }
 .required-slimes > span:not(.any-slime) { display: grid; grid-template-columns: 30px auto; align-items: center; gap: 5px; }
 .required-slimes img { width: 30px; height: 30px; object-fit: contain; }
 .station-workflow { display: grid; gap: 4px; }
-.station-workflow span { display: grid; grid-template-columns: 40px 1fr; align-items: center; gap: 8px; text-align: left; }
+.station-workflow span { display: grid; grid-template-columns: 40px 1fr; align-items: center; gap: 8px; text-align: left; cursor: var(--cursor-ask); }
+/* 좁은 창이라 말풍선을 가운데 정렬하면 옆으로 삐져나간다. 왼쪽에 붙인다. */
+.station-workflow .has-tip::after { left: 0; max-width: 100%; transform: none; }
 /* 동그란 칸이면 그림의 네 귀퉁이가 잘린다. 가로로 긴 설비 그림은 좌우가
    통째로 날아간다. 모서리만 둥근 네모로 두고 그림을 다 보여 준다.
    칸을 grid로 두면 안 된다. 칸 높이가 내용에 따라 정해지는 꼴이 되어 그림의
@@ -890,6 +892,25 @@ button:disabled { cursor: var(--cursor-arrow); }
 .has-tip:hover::after,
 .has-tip:focus-visible::after { opacity: 1; }
 .inspector-hint { display: block; margin-top: 14px; color: #67401f; font-size: 12px; line-height: 1.35; }
+
+/* 세로가 짧은 화면에서는 패널이 통째로 짧아진다. 스크롤을 두지 않으므로
+   안에 든 것을 같이 줄여 잘리지 않게 한다. */
+@media (max-height: 780px) {
+  .game-inspector h2 { margin: 0 0 6px; font-size: clamp(18px, 2vw, 24px); }
+  .game-inspector h3 { margin: 8px 0 4px; font-size: 12px; }
+  .inspector-portrait, .inspector-station-icon {
+    width: clamp(56px, 10.5vh, 104px);
+    height: clamp(56px, 10.5vh, 104px);
+    margin: 0 auto 4px;
+  }
+  .required-slimes > span:not(.any-slime) { grid-template-columns: 24px auto; padding: 4px 8px; font-size: 12px; }
+  .required-slimes img { width: 24px; height: 24px; }
+  .station-workflow { gap: 3px; }
+  .station-workflow span { grid-template-columns: 32px 1fr; gap: 6px; }
+  .station-workflow i { width: 32px; height: 32px; border-radius: 8px; }
+  .station-workflow b { padding: 3px 7px; font-size: 11px; }
+  .inspector-hint { margin-top: 8px; font-size: 11px; }
+}
 
 
 .feed {
@@ -1522,7 +1543,7 @@ img.paper-title { width: 56%; height: 11.4%; top: 4.9%; left: 22%; object-fit: c
   .result-overlay button { padding: 5px 10px; font-size: 10px; }
   .settings-drawer { border-width: 24px; border-image-width: 24px; gap: 8px; padding: 2px 6px 8px; }
   .settings-drawer header strong { font-size: 15px; }
-  .settings-drawer .settings-close { top: -32px; right: -32px; width: 38px; height: 38px; font-size: 21px; }
+  .settings-drawer .settings-close { top: -30px; right: -30px; width: 38px; height: 38px; }
 }
 
 @media (min-width: 761px) and (max-width: 900px) {
