@@ -353,21 +353,13 @@ button:disabled { cursor: var(--cursor-arrow); }
 }
 .coach-map-arrow {
   position: absolute;
-  width: clamp(52px, 6vw, 82px);
-  translate: -50% -115%;
+  width: clamp(42px, 4.4vw, 58px);
+  translate: -50% -50%;
   filter: drop-shadow(0 4px 0 #3c260d) drop-shadow(0 7px 8px #0008);
-  animation: coach-arrow-down 650ms ease-in-out infinite alternate;
+  animation: coach-arrow 650ms ease-in-out infinite alternate;
 }
-.coach-map-arrow[data-up] {
-  translate: -50% 18%;
-  rotate: 180deg;
-  animation-name: coach-arrow-up;
-}
-@keyframes coach-arrow-down {
-  to { translate: -50% -95%; }
-}
-@keyframes coach-arrow-up {
-  to { translate: -50% -2%; }
+@keyframes coach-arrow {
+  to { translate: calc(-50% + var(--arrow-x)) calc(-50% + var(--arrow-y)); }
 }
 
 /* 상단 주문 3장 + 라운드 요약 */
@@ -599,7 +591,7 @@ button:disabled { cursor: var(--cursor-arrow); }
 
 /* 설비가 들고 있는 수량. 캔버스 게이지와 같은 값을 숫자까지 보여 준다. 칸
    나눈 표시는 행동력 게이지(.stat-gauge)와 같은 모양을 쓰고 색만 바꾼다. */
-.station-stock { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 8px; margin: 8px 0 2px; }
+.station-stock { display: grid; grid-template-columns: repeat(3, max-content); justify-content: center; align-items: center; gap: 6px; margin: 8px 0 2px; }
 .station-stock b { font-size: 12px; color: #4a2d17; }
 .station-stock small { font-size: 12px; color: #6c4523; font-variant-numeric: tabular-nums; }
 .station-stock .stat-gauge i[data-on] { background: #8ed07a; border-color: #8ed07a; }
@@ -609,58 +601,28 @@ button:disabled { cursor: var(--cursor-arrow); }
    아래에 말상자, 그 위로 초상과 이름표가 걸친다. */
 .dialogue-screen {
   position: absolute;
-  z-index: 40;
   inset: 0;
   display: flex;
   align-items: end;
-  background: #120a05a8;
   cursor: var(--cursor-hand);
+}
+.dialogue-screen::before {
+  position: absolute;
+  z-index: 40;
+  inset: 0;
+  background: #120a05a8;
+  content: "";
 }
 
 /* PDF처럼 현재 설명하는 대상을 큰 화살표로 짚는다. */
 .dialogue-arrow {
   position: absolute;
-  z-index: 4;
-  width: clamp(62px, 7.5vw, 104px);
+  z-index: 42;
+  width: clamp(58px, 6vw, 86px);
   height: auto;
   filter: drop-shadow(0 5px 0 #3c260d) drop-shadow(0 9px 10px #0009);
   animation: dialogue-arrow 700ms ease-in-out infinite alternate;
   pointer-events: none;
-}
-.dialogue-arrow-orders {
-  --arrow-x: 0;
-  --arrow-y: -12px;
-  top: clamp(164px, 23vh, 188px);
-  left: clamp(78px, 7.5vw, 96px);
-  rotate: 180deg;
-}
-.dialogue-arrow-next-order {
-  --arrow-x: 0;
-  --arrow-y: -12px;
-  top: clamp(82px, 13vh, 96px);
-  left: clamp(217px, 20.4vw, 261px);
-  rotate: 180deg;
-}
-.dialogue-arrow-earth {
-  --arrow-x: -12px;
-  --arrow-y: 0;
-  top: 37%;
-  left: 24.5%;
-  rotate: 90deg;
-}
-.dialogue-arrow-inspector {
-  --arrow-x: 12px;
-  --arrow-y: 0;
-  top: 38%;
-  right: calc(var(--game-info-rail) + 2%);
-  rotate: -90deg;
-}
-.dialogue-arrow-clock {
-  --arrow-x: -12px;
-  --arrow-y: 0;
-  top: 13%;
-  right: 6%;
-  rotate: 90deg;
 }
 @keyframes dialogue-arrow {
   from { translate: 0 0; }
@@ -678,7 +640,7 @@ button:disabled { cursor: var(--cursor-arrow); }
 .stage-frame:has(> .dialogue-screen[data-focus="next-order"]) .order-cards > .order-card {
   filter: brightness(.22) drop-shadow(0 6px 5px #0007);
 }
-.dialogue-screen[data-focus="earth"] {
+.dialogue-screen[data-focus="earth"]::before {
   background:
     linear-gradient(#120a05a8, #120a05a8) top / 100% var(--game-top-rail) no-repeat,
     linear-gradient(#120a05a8, #120a05a8) bottom / 100% var(--game-bottom-rail) no-repeat,
@@ -691,10 +653,10 @@ button:disabled { cursor: var(--cursor-arrow); }
    않도록 검은 막과 입력 차단만 뺀다. */
 .dialogue-screen[data-passive] {
   z-index: 21;
-  background: transparent;
   cursor: default;
   pointer-events: none;
 }
+.dialogue-screen[data-passive]::before { content: none; }
 .dialogue-screen[data-passive] .dialogue-bar {
   padding-right: calc(var(--game-info-rail) + clamp(14px, 2.5vw, 34px));
 }
@@ -707,6 +669,7 @@ button:disabled { cursor: var(--cursor-arrow); }
 
 .dialogue-bar {
   position: relative;
+  z-index: 42;
   display: grid;
   grid-template-columns: auto 1fr;
   align-items: end;
@@ -1821,19 +1784,17 @@ img.paper-title { width: 56%; height: 11.4%; top: 4.9%; left: 22%; object-fit: c
   border: 0;
   border-radius: 0;
   background: url("/ui/button.png") center / 100% 100% no-repeat;
-  color: var(--ink);
+  /* 버튼 그림이 밝은 나무라 글자는 늘 어두워야 읽힌다. */
+  color: #26160b;
   cursor: var(--cursor-hand);
 }
-.stage-frame button.dialogue-skip { color: #26160b; }
 .stage-frame .game-settings-trigger { padding: 3px; }
-.stage-select-back.art-button { color: #26160b; }
 .settings-home-link.art-button {
   display: grid;
   place-items: center;
   width: 120px;
   aspect-ratio: 758 / 339;
   padding: 0;
-  color: #26160b;
 }
 .result-overlay button.result-art-button {
   width: 128px;
@@ -1842,6 +1803,7 @@ img.paper-title { width: 56%; height: 11.4%; top: 4.9%; left: 22%; object-fit: c
   border-radius: 0;
   padding: 0 10px;
   background: url("/ui/button.png") center / 100% 100% no-repeat;
+  /* 위의 `.result-overlay button`이 더 세서 .art-button 글자색을 덮는다. */
   color: #26160b;
 }
 .art-button:hover,
@@ -1878,6 +1840,27 @@ img.paper-title { width: 56%; height: 11.4%; top: 4.9%; left: 22%; object-fit: c
 .mode-plate[data-locked] { filter: grayscale(.75) brightness(.6); cursor: var(--cursor-deny); }
 .mode-plate[data-locked]:hover { transform: none; }
 
+.resume-dialog {
+  position: fixed;
+  z-index: 210;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: #160c07d9;
+}
+.resume-dialog .paper-window { --paper-w: 430px; }
+/* 제목이 리본 위쪽에 붙어 보여서 한 칸 내려 앉힌다. */
+.resume-dialog .paper-title { top: 6.2%; }
+.resume-dialog .paper-body { gap: 18px; }
+.resume-dialog p { margin: 0; font-size: clamp(14px, 2vw, 18px); }
+.resume-actions { display: grid; justify-items: center; gap: 8px; }
+.resume-actions .art-button {
+  width: 128px;
+  aspect-ratio: 758 / 339;
+  padding: 0 10px;
+}
+
 /* 행동력 한 줄. 스탯이 여러 개이던 시절의 3열 배치는 한 줄에는 벌어져
    보여서, 아이콘·이름·칸을 가운데로 모은다. */
 .game-inspector .slime-stats li {
@@ -1887,7 +1870,5 @@ img.paper-title { width: 56%; height: 11.4%; top: 4.9%; left: 22%; object-fit: c
   font-size: 15px;
 }
 .game-inspector .slime-stats li > span:first-child { font-size: 19px; }
-.game-inspector .stat-gauge { gap: 5px; }
-.game-inspector .stat-gauge i { width: 20px; height: 14px; border-radius: 3px; }
 
 .inspector-badges span { cursor: var(--cursor-ask); }

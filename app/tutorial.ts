@@ -145,6 +145,18 @@ const waitForTurn = (
 ): TutorialCue => {
   const actor = state.actors[actorId];
   if (!actor || actor.actionPoints > 0) return cue;
+  const ready = activeActorIds(state).find(
+    (id) => id !== actorId && (state.actors[id]?.actionPoints ?? 0) > 0,
+  );
+  if (ready) {
+    const next = state.actors[ready]!;
+    return {
+      id: `USE_${ready}_${cue.id}`,
+      speaker: next.typeId,
+      text: `${next.name}의 행동력이 남아 있어요. 움직이거나 Space로 쉬게 해주세요.`,
+      actor: ready,
+    };
+  }
   return {
     id: `END_TURN_${cue.id}`,
     speaker: actor.typeId,

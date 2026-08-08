@@ -9,6 +9,8 @@ import stageData from "../game/stages.json" with { type: "json" };
 import { authoredFaceLayout, facingFromDelta, slimeSvg, type Facing } from "../app/slime-art.js";
 import { gameMusicSource } from "../app/music-source.js";
 import { gameSoundCues } from "../app/sound-events.js";
+import { sanitizeProgress } from "../app/progress.js";
+import { arrowLayoutFor } from "../app/tutorial-arrow-layout.js";
 import {
   INGREDIENT_MAX,
   INGREDIENT_PER_TURN,
@@ -1334,6 +1336,17 @@ test("튜토리얼은 첫 양배추 제출까지 한 번에 한 가지만 시킨
     }
   }
   assert.deepEqual([...pointedWhileWalking], [pointed]);
+  // 다른 슬라임의 행동력이 남았으면 턴 종료를 재촉하지 않는다.
+  const waterOnly = {
+    ...state,
+    actors: {
+      ...state.actors,
+      "earth-1": { ...state.actors["earth-1"]!, actionPoints: 0 },
+    },
+  };
+  const handoff = tutorialCue(waterOnly, "earth-1", limit)!;
+  assert.equal(handoff.endTurn, undefined);
+  assert.equal(handoff.actor, "water-1");
   state = actAt(state, "earth-1", tableId);
   state = nextTurn(state);
   assert.equal(step(state, "water-1"), "TAKE_CLEAN_DISH");
@@ -1371,4 +1384,25 @@ test("다이얼로그는 확정된 음식·도구·슬라임 이름만 구분한
   assert.match(stageOpeningLines("2")[1]!.text, /화덕과 튀김기/);
   assert.match(stageOpeningLines("3")[1]!.text, /과일.*물.*전기/);
   assert.match(finalLines.at(-1)!.text, /무한 모드/);
+});
+
+test("튜토리얼 화살표와 쿠키 진행도는 조절·검증된 값만 쓴다", () => {
+  // 푸름이를 가리키는 화살표는 같은 줄 왼쪽에서 오른쪽을 본다. 줄이 어긋나면
+  // 슬라임이 아니라 윗줄 도마를 가리킨다.
+  const selectEarth = arrowLayoutFor("SELECT_EARTH")!;
+  assert.equal(selectEarth.side, "left");
+  assert.equal(selectEarth.offsetRow, 0);
+  assert.equal(selectEarth.bobY, 0);
+  assert.equal(arrowLayoutFor("PICK_CABBAGE")!.bobX > 0, true);
+  assert.deepEqual(
+    sanitizeProgress({
+      stars: { "0": 3, "1": 7, nope: 2 },
+      resumeStageId: "2",
+    }),
+    { stars: { "0": 3 }, resumeStageId: "2" },
+  );
+  assert.deepEqual(
+    sanitizeProgress({ stars: { "1": 2 }, resumeStageId: "nope" }),
+    { stars: { "1": 2 }, resumeStageId: null },
+  );
 });

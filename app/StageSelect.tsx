@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { gameModes, type GameMode } from "../game/core";
 import { endlessUnlocked, shiftStars, type StageProgress } from "./progress";
 import { MusicSettings } from "./Music";
@@ -40,13 +41,16 @@ function ModePlate({
 
 export default function StageSelect({
   progress,
+  resumeStageId,
   onPick,
   onBack,
 }: {
   progress: StageProgress;
-  onPick: (id: GameMode["id"]) => void;
+  resumeStageId: string | null;
+  onPick: (stageId: string) => void;
   onBack: () => void;
 }) {
+  const [resumeOpen, setResumeOpen] = useState(false);
   return (
     <main className="stage-select">
       <header className="stage-select-bar">
@@ -58,9 +62,33 @@ export default function StageSelect({
       <h1>모드 선택</h1>
       <div className="mode-plates">
         {gameModes.map((mode) => (
-          <ModePlate key={mode.id} mode={mode} progress={progress} onPick={onPick} />
+          <ModePlate
+            key={mode.id}
+            mode={mode}
+            progress={progress}
+            onPick={() => {
+              if (mode.id !== "shift") return;
+              if (resumeStageId) setResumeOpen(true);
+              else onPick("0");
+            }}
+          />
         ))}
       </div>
+      {resumeOpen && (
+        <section className="resume-dialog" role="dialog" aria-modal="true" aria-labelledby="resume-title">
+          <div className="paper-window">
+            <h2 className="paper-title" id="resume-title">하던 영업이 있어요</h2>
+            <div className="paper-body">
+              <p>저장된 스테이지부터 다시 시작합니다.</p>
+              <div className="resume-actions">
+                <button className="art-button" onClick={() => onPick(resumeStageId!)} autoFocus>이어하기</button>
+                <button className="art-button" onClick={() => onPick("0")}>처음부터</button>
+                <button className="art-button" onClick={() => setResumeOpen(false)}>취소</button>
+              </div>
+            </div>
+          </div>
+        </section>
+      )}
     </main>
   );
 }

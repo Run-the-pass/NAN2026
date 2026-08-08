@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { slimeTypes, type SlimeTypeId } from "../game/core";
 import { dialogueParts, type DialogueFocus, type DialogueLine } from "./dialogue-script";
+import { dialogueArrowLayout } from "./tutorial-arrow-layout";
 
 // 한 글자씩 찍는 속도(ms). 다 찍히기 전에 누르면 남은 글자가 한 번에 나온다.
 const LETTER_MS = 28;
@@ -82,7 +83,13 @@ export default function Dialogue({
       )}
       {line.focus && (
         // eslint-disable-next-line @next/next/no-img-element
-        <img className={`dialogue-arrow dialogue-arrow-${line.focus}`} src="/ui/tutorial-arrow.png" alt="" aria-hidden />
+        <img
+          className={`dialogue-arrow dialogue-arrow-${line.focus}`}
+          src="/ui/tutorial-arrow.png"
+          alt=""
+          aria-hidden
+          style={dialogueArrowLayout[line.focus]}
+        />
       )}
       <div className="dialogue-bar">
         {!passive && !narration && (

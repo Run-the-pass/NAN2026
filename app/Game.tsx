@@ -68,7 +68,8 @@ import StageSelect from "./StageSelect";
 import Dialogue from "./Dialogue";
 import { actionPointLines, earthInfoLines, finalLines, openingLines, platedFoodLines, stageOpeningLines, tutorialCompleteLines, waterArrivalLines, type DialogueFocus } from "./dialogue-script";
 import { activeActorIds, finishTutorial, onTutorialStage, platedIntroReady, prepareTutorialState, roundRank, tutorialCue, tutorialDone, waterIntroReady } from "./tutorial";
-import { readProgress, withResult, writeProgress, type StageProgress } from "./progress";
+import { arrowLayoutFor } from "./tutorial-arrow-layout";
+import { emptyProgress, readProgress, withResult, writeProgress, type ProgressData } from "./progress";
 
 type View = {
   sync: (state: GameState) => void;
@@ -107,6 +108,30 @@ const CURSOR_ARROW = 'url("/ui/cursor.png") 2 0, auto';
 const CURSOR_HAND = 'url("/ui/cursor-click.png") 6 0, pointer';
 // 지금은 쓸 수 없는 설비. 금지 표시 대신 "?"를 붙인 화살표로 알린다.
 const CURSOR_ASK = 'url("/ui/cursor-help.png") 2 0, help';
+
+function coachArrowStyle(cueId: string, tiles: { col: number; row: number }[]): CSSProperties {
+  const layout = arrowLayoutFor(cueId);
+  if (!layout || tiles.length === 0) return {};
+  const cols = tiles.map(({ col }) => col);
+  const rows = tiles.map(({ row }) => row);
+  const minCol = Math.min(...cols);
+  const maxCol = Math.max(...cols);
+  const minRow = Math.min(...rows);
+  const maxRow = Math.max(...rows);
+  let col = (minCol + maxCol + 1) / 2;
+  let row = (minRow + maxRow + 1) / 2;
+  if (layout.side === "top") row = minRow - .75;
+  if (layout.side === "right") col = maxCol + 1.75;
+  if (layout.side === "bottom") row = maxRow + 1.75;
+  if (layout.side === "left") col = minCol - .75;
+  return {
+    left: `${((col + layout.offsetCol) / MAP_WIDTH) * 100}%`,
+    top: `${((row + layout.offsetRow) / MAP_HEIGHT) * 100}%`,
+    rotate: `${layout.rotate}deg`,
+    "--arrow-x": `${layout.bobX}px`,
+    "--arrow-y": `${layout.bobY}px`,
+  } as CSSProperties;
+}
 const workStatusLabels = {
   IDLE: "대기",
   MISSING_MATERIAL: "식재료 부족",
@@ -537,6 +562,9 @@ function stationStock(state: GameState, id: StationInstanceId) {
   if (type === "dish-return") {
     return { label: "반납된 그릇", have: state.dishReturns[id]!.length, max: dishConfig.returnCapacity };
   }
+  if (type === "washer") {
+    return { label: "세척 중인 그릇", have: state.washers[id]!.dishes.length, max: dishConfig.washerCapacity };
+  }
   return null;
 }
 
@@ -688,7 +716,7 @@ function GameInspector({
 
 export default function Game() {
   const [squad, setSquad] = useState<SlimeTypeId[] | null>(null);
-  const [progress, setProgress] = useState<StageProgress>({});
+  const [progress, setProgress] = useState<ProgressData>(emptyProgress());
   const [stageId, setStageId] = useState<string | null>(null);
   const [state, setState] = useState<GameState | null>(null);
   // 턴제는 한 마리씩 조작한다. 선택은 늘 0마리 아니면 1마리다.
@@ -755,6 +783,20 @@ export default function Game() {
       (!platedIntroReady(state) || platedIntroComplete)
       ? tutorialCue(state, selectedActor, currentStage(state).turnLimit)
       : null;
+  // 대사가 조작을 막고 있는 동안에는 턴도 멈춰야 한다. 대사 플래그는 상태가
+  // 바뀐 다음 렌더에야 켜지므로, 대사를 띄우는 조건을 상태에서 그대로 다시
+  // 잰다. 자동 넘김 쪽에 조건을 따로 적어 두면 대사가 늘 때마다 하나씩 빠져
+  // 대사 뒤에서 턴이 넘어간다.
+  const narrationHolds = Boolean(
+    state && onTutorialStage(state) && (
+      (selectedActor === "earth-1" && !earthInfoComplete) ||
+      (!actionPointInfoComplete &&
+        state.actors["earth-1"]?.actionPoints === 0 &&
+        state.turnsLeft === currentStage(state).turnLimit) ||
+      (waterIntroReady(state) && !waterIntroComplete) ||
+      (platedIntroReady(state) && !platedIntroComplete)
+    ),
+  );
   const cueStation = cue?.station ?? null;
   useEffect(() => {
     coachRef.current = cueStation;
@@ -855,11 +897,17 @@ export default function Game() {
     savedRef.current = true;
     // 최고 별만 남긴다. 못 깬 판도 0으로 적어야 다음 칸이 열리지 않는다.
     setProgress((current) => {
-      const kept = withResult(
-        current,
+      const stars = withResult(
+        current.stars,
         currentStage(state).id,
         roundRank(state),
       );
+      const resumeStageId = state.phase === "lost"
+        ? currentStage(state).id
+        : isLastStage(state)
+          ? null
+          : state.stages[state.stageIndex + 1]!.id;
+      const kept = { stars, resumeStageId };
       writeProgress(kept);
       return kept;
     });
@@ -1420,14 +1468,8 @@ export default function Game() {
                 setInspected({ kind: "station", id });
                 const actorId = selectedActorRef.current;
                 if (!actorId) return;
-                // 닿지도 않는 설비를 누른 것은 "이게 뭔지 보자"는 뜻이다.
-                // 그럴 때만 조용히 슬라임 선택을 놓는다.
-                if (this.usable[id] === undefined) {
-                  setSelectedActor(null);
-                  return;
-                }
-                // 옆에 서 있는데 안 되는 것은 왜 안 되는지 알아야 한다.
-                // 코어를 그대로 돌려 거절 이유를 토스트로 띄운다.
+                // 선택한 슬라임이 있으면 거리와 무관하게 상호작용 시도다.
+                // 멀면 코어의 기존 거절 이유를 띄우고 선택은 유지한다.
                 metrics.current.buttonCommands += 1;
                 setState((value) =>
                   value ? interactActor(value, actorId, id) : value,
@@ -1994,23 +2036,14 @@ export default function Game() {
   // 튜토리얼과 일반 게임 모두 기다리지 않고 다음 턴을 시작한다.
   useEffect(() => {
     if (!state || state.phase !== "playing" || !squad || !selectedActor) return;
+    if (tutorialDone(state)) return;
+    // 대사가 붙잡고 있는 동안에는 handedOff도 건드리지 않는다. 여기서 지우면
+    // 대사가 끝난 뒤에 넘길 차례를 잃어버려 턴이 멈춰 선다.
+    if (narrationHolds) return;
     const left = state.actors[selectedActor]?.actionPoints ?? 0;
     const had = handedOff.current;
     handedOff.current = left > 0 ? selectedActor : null;
     if (left > 0 || had !== selectedActor) return;
-    if (tutorialDone(state)) return;
-    if (
-      onTutorialStage(state) && !actionPointInfoComplete &&
-      state.actors["earth-1"]?.actionPoints === 0 &&
-      state.turnsLeft === currentStage(state).turnLimit
-    ) return;
-    if (
-      onTutorialStage(state) &&
-      tutorialCue(state, selectedActor, currentStage(state).turnLimit)?.endTurn
-    ) {
-      finishTurn();
-      return;
-    }
     const next = nextReadyActor(
       state,
       activeActorIds(state),
@@ -2019,7 +2052,7 @@ export default function Game() {
     );
     if (next) setSelectedActor(next);
     else finishTurn();
-  }, [state, selectedActor, squad, finishTurn, actionPointInfoComplete]);
+  }, [state, selectedActor, squad, finishTurn, narrationHolds]);
 
   useEffect(() => {
     if (!squad) return;
@@ -2078,11 +2111,16 @@ export default function Game() {
       <>
         <Music src="/music/home.mp3" />
         <StageSelect
-          progress={progress}
+          progress={progress.stars}
+          resumeStageId={progress.resumeStageId}
           // 아르바이트는 첫 스테이지부터 끝까지 이어서 돈다.
-          onPick={() => {
-            setIntro(true);
-            startRound(allTypeIds, "0");
+          onPick={(id) => {
+            const resumed = { ...progress, resumeStageId: id };
+            setProgress(resumed);
+            writeProgress(resumed);
+            setIntro(id === "0");
+            startRound(allTypeIds, id);
+            if (id !== "0") setStageIntro(true);
           }}
           onBack={() => window.location.assign("/")}
         />
@@ -2111,7 +2149,7 @@ export default function Game() {
   const coachedStation = cue?.station
     ? stationInstances.find((one) => one.id === cue.station || one.type === cue.station)
     : null;
-  const coachTarget = coachedStation?.tiles[0] ?? (cue?.actor ? state.actors[cue.actor] : null);
+  const coachTiles = coachedStation?.tiles ?? (cue?.actor && state.actors[cue.actor] ? [state.actors[cue.actor]!] : []);
 
   return (
     <main className="stage">
@@ -2189,6 +2227,7 @@ export default function Game() {
             onDone={() => {
               setWaterIntro(false);
               setWaterIntroComplete(true);
+              finishTurn();
             }}
           />
         )}
@@ -2278,19 +2317,17 @@ export default function Game() {
           />
         )}
 
-        {cue && coachTarget && !cue.endTurn && (
+        {/* 자리를 못 찾으면 아예 그리지 않는다. 빈 style로 그리면 화살표가
+            지도 왼쪽 위 구석에 붙는다. */}
+        {cue && coachTiles.length > 0 && !cue.endTurn && arrowLayoutFor(cue.id) && (
           <span className="coach-map" aria-hidden>
             <i className="coach-map-stage">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 className="coach-map-arrow"
-                data-up={coachTarget.row <= 1 ? "" : undefined}
                 src="/ui/tutorial-arrow.png"
                 alt=""
-                style={{
-                  left: `${((coachTarget.col + .5) / MAP_WIDTH) * 100}%`,
-                  top: `${((coachTarget.row + .5) / MAP_HEIGHT) * 100}%`,
-                }}
+                style={coachArrowStyle(cue.id, coachTiles)}
               />
             </i>
           </span>
@@ -2438,7 +2475,7 @@ export default function Game() {
                   setStageId(null);
                 }}
               >
-                모드 선택
+                나가기
               </button>
             </div>
             </div>

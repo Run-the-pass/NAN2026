@@ -1,14 +1,15 @@
 import { defaultStages, shiftCleared } from "../game/core.js";
 
-// 스테이지별 최고 별. 계정이 없어 기기에 남긴다.
 export type StageProgress = Record<string, number>;
+export type ProgressData = { stars: StageProgress; resumeStageId: string | null };
 
-const KEY = "nan2026.progress.v1";
+const COOKIE_KEY = "nan2026.progress.v2";
+const OLD_KEY = "nan2026.progress.v1";
 
-// 스테이지를 다 깨야 무한 모드가 열린다.
+export const emptyProgress = (): ProgressData => ({ stars: {}, resumeStageId: null });
+
 export const endlessUnlocked = (progress: StageProgress) => shiftCleared(progress);
 
-// 아르바이트 한 판에서 모은 별과 받을 수 있는 별.
 export function shiftStars(progress: StageProgress) {
   const stages = defaultStages();
   return {
@@ -17,43 +18,51 @@ export function shiftStars(progress: StageProgress) {
   };
 }
 
-// 최고 성적만 남긴다. 못 깬 판도 0으로 기록해 어디까지 갔는지 남긴다.
-export function withResult(
-  progress: StageProgress,
-  id: string,
-  stars: number,
-): StageProgress {
+export function withResult(progress: StageProgress, id: string, stars: number): StageProgress {
   if (id in progress && progress[id] >= stars) return progress;
   return { ...progress, [id]: stars };
 }
 
-export function readProgress(): StageProgress {
-  if (typeof localStorage === "undefined") return {};
-  try {
-    const raw = JSON.parse(localStorage.getItem(KEY) ?? "{}") as unknown;
-    if (!raw || typeof raw !== "object") return {};
-    const stages = defaultStages();
-    // 저장값은 사용자가 고칠 수 있으므로 들일 때 거른다.
-    return Object.fromEntries(
-      Object.entries(raw as Record<string, unknown>).filter(
-        ([id, stars]) =>
-          stages.some((stage) => stage.id === id) &&
-          typeof stars === "number" &&
-          Number.isInteger(stars) &&
-          stars >= 0 &&
-          stars <= 3,
-      ),
-    ) as StageProgress;
-  } catch {
-    return {};
-  }
+// 쿠키는 사용자가 바꿀 수 있으므로 현재 스테이지와 별 범위만 받는다.
+export function sanitizeProgress(raw: unknown): ProgressData {
+  if (!raw || typeof raw !== "object") return emptyProgress();
+  const ids = new Set(defaultStages().map(({ id }) => id));
+  const value = raw as { stars?: unknown; resumeStageId?: unknown };
+  const source = value.stars && typeof value.stars === "object" ? value.stars : {};
+  const stars = Object.fromEntries(
+    Object.entries(source as Record<string, unknown>).filter(
+      ([id, count]) => ids.has(id) && Number.isInteger(count) && (count as number) >= 0 && (count as number) <= 3,
+    ),
+  ) as StageProgress;
+  return {
+    stars,
+    resumeStageId: typeof value.resumeStageId === "string" && ids.has(value.resumeStageId)
+      ? value.resumeStageId
+      : null,
+  };
 }
 
-export function writeProgress(progress: StageProgress) {
-  if (typeof localStorage === "undefined") return;
+export function writeProgress(progress: ProgressData) {
+  if (typeof document === "undefined") return;
+  document.cookie = `${COOKIE_KEY}=${encodeURIComponent(JSON.stringify(sanitizeProgress(progress)))}; Path=/; SameSite=Lax; Max-Age=31536000`;
+}
+
+export function readProgress(): ProgressData {
+  if (typeof document === "undefined") return emptyProgress();
   try {
-    localStorage.setItem(KEY, JSON.stringify(progress));
+    const cookie = document.cookie
+      .split("; ")
+      .find((part) => part.startsWith(`${COOKIE_KEY}=`))
+      ?.slice(COOKIE_KEY.length + 1);
+    if (cookie) return sanitizeProgress(JSON.parse(decodeURIComponent(cookie)));
+
+    // 기존 로컬 저장값은 쿠키가 없을 때만 한 번 옮긴다.
+    const legacy = localStorage.getItem(OLD_KEY);
+    if (!legacy) return emptyProgress();
+    const migrated = sanitizeProgress({ stars: JSON.parse(legacy), resumeStageId: null });
+    writeProgress(migrated);
+    return migrated;
   } catch {
-    // 저장 공간이 막혀 있어도 게임은 계속된다.
+    return emptyProgress();
   }
 }
