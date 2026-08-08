@@ -51,7 +51,9 @@ export default function StageSelect({
     <main className="stage-select">
       <header className="stage-select-bar">
         <button type="button" className="stage-select-back" onClick={onBack}>
-          ← 뒤로
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/ui/back.png" alt="" aria-hidden />
+          뒤로
         </button>
         <MusicSettings variant="game" />
       </header>

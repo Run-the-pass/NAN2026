@@ -23,7 +23,8 @@ export type ItemId =
   | "strawberry-smoothie"
   | "fried-potato"
   | "fried-mushroom"
-  | "grilled-mushroom";
+  | "grilled-mushroom"
+  | "grilled-potato";
 export type DishStatus = "clean" | "filled" | "dirty";
 export type Dish = { id: string; status: DishStatus; content: ItemId | null };
 export type Carried = ItemId | Dish;
@@ -76,6 +77,7 @@ export const itemLabels: Record<ItemId, string> = {
   "fried-potato": "감자 튀김",
   "fried-mushroom": "버섯 튀김",
   "grilled-mushroom": "버섯 구이",
+  "grilled-potato": "감자 구이",
 };
 
 export const itemLabel = (item: ItemId) => itemLabels[item];
@@ -131,6 +133,7 @@ export const allItems: ItemId[] = [
   "fried-potato",
   "fried-mushroom",
   "grilled-mushroom",
+  "grilled-potato",
 ];
 export const allElements: SlimeElement[] = ["water", "fire", "lightning", "earth"];
 export const allStations: StationId[] = [

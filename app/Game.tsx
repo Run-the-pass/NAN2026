@@ -210,6 +210,7 @@ const foodImages: Record<ItemId, string> = {
   "fried-potato": "/food/fried-potato.png",
   "fried-mushroom": "/food/fried-mushroom.png",
   "grilled-mushroom": "/food/grilled-mushroom.png",
+  "grilled-potato": "/food/roasted-potato.png",
 };
 
 // 손에 든 것은 실제 게임 그림으로 "?" 왼쪽에 보여 준다. 그릇은 접시 그림
@@ -264,7 +265,7 @@ const stationPanelInfo: Record<
   },
   oven: {
     steps: [
-      { art: "/food/mushroom.png", text: "버섯", tip: "화로에 올릴 수 있는 재료입니다. 올리고 꺼내는 것은 누구나 합니다." },
+      { art: "/food/mushroom.png", text: "버섯·감자", tip: "화로에 올릴 수 있는 재료입니다. 올리고 꺼내는 것은 누구나 합니다." },
       { art: "/stations/oven.png", text: "불 슬라임이 굽기", tip: "불 슬라임만 구울 수 있습니다. (행동력 1)" },
       { art: "/food/plate.png", text: "그릇에 담기", tip: "깨끗한 그릇을 들고 오면 다 구운 음식이 담깁니다." },
     ],

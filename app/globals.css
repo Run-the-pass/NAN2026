@@ -1108,7 +1108,7 @@ button:disabled { cursor: var(--cursor-arrow); }
   font-size: clamp(17px, 2vw, 24px);
 }
 /* 제목이 그림이면 리본 안에 꽉 차지 않게 조금 줄여 앉힌다. */
-img.paper-title { width: 56%; height: 11.4%; top: 4.9%; left: 22%; object-fit: contain; }
+img.paper-title { width: 56%; height: 11.4%; top: 6.3%; left: 22%; object-fit: contain; }
 
 .paper-body {
   position: absolute;
@@ -1654,12 +1654,22 @@ img.paper-title { width: 56%; height: 11.4%; top: 4.9%; left: 22%; object-fit: c
 }
 
 .stage-select-back {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   border: 3px solid #8d592c;
   border-radius: 8px;
-  padding: 9px 16px;
+  padding: 9px 16px 9px 12px;
   background: #4b2b17e6;
   color: var(--ink);
   cursor: var(--cursor-hand);
+}
+/* 화살표는 검은 그림이라 어두운 판 위에서 묻힌다. 글자 색으로 칠해 쓴다. */
+.stage-select-back img {
+  width: 19px;
+  height: 17px;
+  object-fit: contain;
+  filter: brightness(0) invert(1) drop-shadow(0 1px 1px #0009);
 }
 .stage-select-back:hover { border-color: var(--gold); }
 .stage-select-bar .music-settings-game { position: static; }

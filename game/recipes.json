@@ -66,6 +66,14 @@
       "workers": [
         "fire"
       ]
+    },
+    {
+      "foodId": "grilled-potato",
+      "ingredient": "potato",
+      "station": "oven",
+      "workers": [
+        "fire"
+      ]
     }
   ]
 }
