@@ -1,7 +1,7 @@
 "use client";
 
 import * as Phaser from "phaser";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   TILE_SIZE,
   MAP_WIDTH,
@@ -68,7 +68,7 @@ import { GameSoundEffects } from "./SoundEffects";
 import StageSelect from "./StageSelect";
 import Dialogue from "./Dialogue";
 import { openingLines } from "./dialogue-script";
-import { activeActorIds, onTutorialStage, tutorialCue } from "./tutorial";
+import { activeActorIds, tutorialCue, type TutorialView } from "./tutorial";
 import { readProgress, withResult, writeProgress, type StageProgress } from "./progress";
 
 type View = {
@@ -699,6 +699,8 @@ export default function Game() {
   const paused = settingsOpen || resumeCount !== null;
 
   const [saved, setSaved] = useState("");
+  // 눌러서 넘긴 튜토리얼 알림. 한 번 넘긴 것은 다시 뜨지 않는다.
+  const [acked, setAcked] = useState<ReadonlySet<string>>(() => new Set());
   const stateRef = useRef(state);
   const selectedActorRef = useRef(selectedActor);
   // 캔버스가 이름표를 띄울지 판단하는 데 쓴다.
@@ -707,6 +709,13 @@ export default function Game() {
   const handedOff = useRef<ActorId | null>(null);
   // 튜토리얼이 지금 짚는 설비. 캔버스가 그 자리에 표시를 그린다.
   const coachRef = useRef<StationId | null>(null);
+  // 튜토리얼이 게임 상태 말고 화면에서 읽어야 하는 것들. 캔버스와 콜백에서도
+  // 봐야 해서 ref로 둔다.
+  const tutorialViewRef = useRef<TutorialView>({
+    selected: null,
+    acked: new Set<string>(),
+    turnLimit: 0,
+  });
   const view = useRef<View | null>(null);
   const metrics = useRef<Metrics>(emptyMetrics());
   const savedRef = useRef(false);
@@ -726,10 +735,29 @@ export default function Game() {
   }, [inspected]);
 
   // 튜토리얼이 지금 짚어야 할 자리. 지도에 표시를 그려야 해서 ref로도 둔다.
+  const tutorialView: TutorialView = useMemo(
+    () => ({
+      selected: selectedActor,
+      acked,
+      turnLimit: state ? currentStage(state).turnLimit : 0,
+    }),
+    [selectedActor, acked, state],
+  );
+  tutorialViewRef.current = tutorialView;
   const cue =
-    state && state.phase === "playing" && !intro && onTutorialStage(state)
-      ? tutorialCue(state, selectedActor, currentStage(state).turnLimit)
+    state && state.phase === "playing" && !intro
+      ? tutorialCue(state, tutorialView)
       : null;
+  // 읽고 넘기는 대목인지는 대본에 또 적지 않는다. "넘겼다고 치면 끝나는가"를
+  // 조건에 직접 물어보면 알 수 있다.
+  const needsAck =
+    cue !== null &&
+    state !== null &&
+    (cue.kind === "notice" ||
+      cue.when(state, {
+        ...tutorialView,
+        acked: new Set(tutorialView.acked).add(cue.id),
+      }));
   const cueStation = cue?.station ?? null;
   useEffect(() => {
     coachRef.current = cueStation;
@@ -1558,7 +1586,7 @@ export default function Game() {
           sync: (current) => {
             const shown = inspectedRef.current;
             // 튜토리얼이 아직 소개하지 않은 슬라임은 지도에서도 감춘다.
-            const revealed = activeActorIds(current);
+            const revealed = activeActorIds(current, tutorialViewRef.current);
             for (const actorId of roster) {
               const actor = current.actors[actorId];
               const sprite = this.slimes[actorId];
@@ -1884,7 +1912,7 @@ export default function Game() {
     const had = handedOff.current;
     handedOff.current = left > 0 ? selectedActor : null;
     if (left > 0 || had !== selectedActor) return;
-    const next = nextReadyActor(state, activeActorIds(state), selectedActor);
+    const next = nextReadyActor(state, activeActorIds(state, tutorialViewRef.current), selectedActor);
     if (next) setSelectedActor(next);
   }, [state, selectedActor, squad]);
 
@@ -1898,6 +1926,7 @@ export default function Game() {
     setSaved("");
     setSelectedActor(null);
     setInspected(null);
+    setAcked(new Set());
     setSettingsOpen(false);
     setResumeCount(null);
     setState(next);
@@ -1910,7 +1939,7 @@ export default function Game() {
       const next = endTurn(value);
       // 턴을 넘긴 뒤 아무도 골라져 있지 않으면 손이 멈춘다. 첫 마리를
       // 자동으로 골라 바로 이어서 시킬 수 있게 한다.
-      const first = activeActorIds(next).find(
+      const first = activeActorIds(next, tutorialViewRef.current).find(
         (id) => (next.actors[id]?.actionPoints ?? 0) > 0,
       );
       setSelectedActor(first ?? null);
@@ -1947,7 +1976,7 @@ export default function Game() {
         if (active instanceof HTMLElement && active.tagName === "BUTTON") {
           active.blur();
         }
-        const roster = activeActorIds(current);
+        const roster = activeActorIds(current, tutorialViewRef.current);
         const ready = roster.filter((id) => (current.actors[id]?.actionPoints ?? 0) > 0);
         if (ready.length === 0) {
           finishTurn();
@@ -1991,7 +2020,7 @@ export default function Game() {
         : `${currentStage(state).id} 스테이지 클리어!`;
   // 튜토리얼 중에는 아직 소개하지 않은 슬라임을 버튼에서도 지도에서도 뺀다.
   // 한 번에 하나씩 알려 주기 위해서다.
-  const roster = activeActorIds(state);
+  const roster = activeActorIds(state, tutorialView);
   // 아직 행동력이 남은 슬라임. 턴 종료 버튼이 이걸 알려 준다.
   const readyCount = roster.filter(
     (actorId) => (state.actors[actorId]?.actionPoints ?? 0) > 0,
@@ -2058,10 +2087,26 @@ export default function Game() {
 
         {cue && (
           // 화면을 덮지 않는 한 줄짜리 안내. 한 번에 한 가지만 말한다.
-          <p className="coach-line" role="status" aria-live="polite" key={cue.id}>
+          // 읽고 넘기는 대목은 눌러서 넘긴다. 할 일이 있는 대목은 그 일을
+          // 하면 저절로 넘어가므로 버튼을 두지 않는다.
+          // 같은 안내가 오래 떠 있으면 흐려지고, 턴이 넘어가면 다시 또렷해진다.
+          <p
+            className="coach-line"
+            role="status"
+            aria-live="polite"
+            key={`${cue.id}:${state.turnsLeft}`}
+          >
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src={slimePortrait(cue.speaker)} alt="" aria-hidden />
             <span>{cue.text}</span>
+            {needsAck && (
+              <button
+                type="button"
+                onClick={() => setAcked((seen) => new Set(seen).add(cue.id))}
+              >
+                알겠어요
+              </button>
+            )}
           </p>
         )}
 

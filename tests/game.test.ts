@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { simulate, actAt } from "../game/cli.js";
-import { activeActorIds, tutorialCue } from "../app/tutorial.js";
+import { activeActorIds, tutorialCue, tutorialDone } from "../app/tutorial.js";
 import { parseSession } from "../game/session.js";
 import recipeData from "../game/recipes.json" with { type: "json" };
 import stageData from "../game/stages.json" with { type: "json" };
@@ -1195,28 +1195,32 @@ test("옆에 선 슬라임이 쓸 수 없는 설비는 반드시 이유를 남�
   }
 });
 
-test("튜토리얼은 첫 주문을 끝낼 때까지 한 번에 한 가지만 시킨다", () => {
+test("튜토리얼 엔진은 대본을 순서대로 풀고 지나친 대목은 건너뛴다", () => {
   const cabbageBoxId = stationInstancesByType["cabbage-box"][0].id;
   const rackId = stationInstancesByType["dish-rack"][0].id;
   const submissionId = stationInstancesByType.submission[0].id;
   const limit = defaultStages()[0]!.turnLimit;
-  const step = (value: GameState, selected: ActorId | null) =>
-    tutorialCue(value, selected, limit)?.id ?? null;
+  const view = (selected: ActorId | null, acked: string[] = []) => ({
+    selected,
+    acked: new Set(acked),
+    turnLimit: limit,
+  });
+  const step = (value: GameState, selected: ActorId | null, acked: string[] = []) =>
+    tutorialCue(value, view(selected, acked))?.id ?? null;
 
   let state = initialState(7, ["earth", "water", "fire", "lightning"]);
-  // 처음에는 땅 슬라임만 나온다. 나머지는 아직 소개하지 않는다.
-  assert.deepEqual(activeActorIds(state), ["earth-1"]);
+  // 대본 첫 대목의 배역만 무대에 선다.
+  assert.deepEqual(activeActorIds(state, view(null)), ["earth-1"]);
   assert.equal(step(state, null), "SELECT_EARTH");
   assert.equal(step(state, "earth-1"), "MOVE_TO_CABBAGE");
 
   state = actAt(state, "earth-1", cabbageBoxId);
-  assert.ok(state.actors["earth-1"]!.carrying.includes("cabbage"));
+  // 재료를 이미 들었으므로 이동·집기 대목은 저절로 끝난다.
   assert.equal(step(state, "earth-1"), "USE_CUTTING_BOARD");
 
   state = actAt(state, "earth-1", stoveId);
   state = actAt(state, "earth-1", stoveId);
-  // 음식이 완성되면 물 슬라임이 나오고 안내가 그릇으로 넘어간다.
-  assert.deepEqual(activeActorIds(state).sort(), ["earth-1", "water-1"]);
+  assert.deepEqual(activeActorIds(state, view("earth-1")).sort(), ["earth-1", "water-1"]);
   assert.equal(step(state, "earth-1"), "PLATE_FOOD");
 
   state = actAt(state, "water-1", rackId);
@@ -1224,8 +1228,31 @@ test("튜토리얼은 첫 주문을 끝낼 때까지 한 번에 한 가지만 �
   assert.equal(step(state, "water-1"), "SUBMIT_ORDER");
 
   state = actAt(state, "water-1", submissionId);
-  // 첫 주문을 끝내면 안내가 사라지고 나머지 슬라임이 모두 나온다.
   assert.equal(state.filled, 1);
-  assert.equal(step(state, "water-1"), null);
-  assert.equal(activeActorIds(state).length, 4);
+  // 첫 주문 뒤에는 읽고 넘기는 대목이 이어지고, 넘겨야 다음으로 간다.
+  assert.equal(step(state, "water-1"), "REVEAL_OTHERS");
+  assert.equal(activeActorIds(state, view("water-1")).length, 4);
+  assert.equal(step(state, "water-1", ["REVEAL_OTHERS"]), "NEXT_ORDER");
+  // 대본을 다 풀면 안내가 사라진다.
+  const finished = view("water-1", ["REVEAL_OTHERS", "NEXT_ORDER"]);
+  assert.equal(tutorialCue(state, finished), null);
+  assert.equal(tutorialDone(state, finished), true);
+});
+
+test("알림은 조건이 맞을 때 끼어들고 한 번 넘기면 다시 뜨지 않는다", () => {
+  const limit = defaultStages()[0]!.turnLimit;
+  const view = (acked: string[] = []) => ({
+    selected: "earth-1" as ActorId,
+    acked: new Set(acked),
+    turnLimit: limit,
+  });
+  let state = initialState(7, ["earth", "water", "fire", "lightning"]);
+  // 첫 턴에 행동력을 다 쓰면 할 일 안내를 제치고 행동력 알림이 먼저 뜬다.
+  state = moveActor(state, "earth-1", moveTargets(state, "earth-1")[0]!);
+  assert.equal(state.actors["earth-1"]!.actionPoints, 0);
+  assert.equal(tutorialCue(state, view())?.id, "EXPLAIN_AP");
+  // 넘기면 원래 하던 대목으로 돌아간다.
+  assert.notEqual(tutorialCue(state, view(["EXPLAIN_AP"]))?.id, "EXPLAIN_AP");
+  // 턴이 넘어가면 조건이 사라져 알림도 사라진다.
+  assert.notEqual(tutorialCue(endTurn(state), view())?.id, "EXPLAIN_AP");
 });

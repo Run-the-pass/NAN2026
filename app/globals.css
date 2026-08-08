@@ -759,13 +759,29 @@ button:disabled { cursor: var(--cursor-arrow); }
   color: #ffeec6;
   font-size: clamp(13px, 1.3vw, 16px);
   line-height: 1.4;
-  animation: coach-in 260ms ease-out both;
+  /* 같은 안내가 오래 떠 있으면 흐려진다. 턴이 넘어가거나 안내가 바뀌면
+     처음부터 다시 재생돼 또렷해진다. 마우스를 올려도 또렷해진다. */
+  animation: coach-in 260ms ease-out both, coach-rest 800ms ease 11s both;
 }
+.coach-line:hover { animation: coach-in 260ms ease-out both; }
 .coach-line img { width: 38px; height: 38px; flex: none; object-fit: contain; }
+.stage-frame .coach-line button {
+  flex: none;
+  margin-left: 4px;
+  border-radius: 8px;
+  padding: 5px 11px;
+  background: var(--gold);
+  color: #2c1a0e;
+  font-size: 13px;
+}
 
 @keyframes coach-in {
   from { opacity: 0; transform: translateY(8px); }
   to { opacity: 1; transform: none; }
+}
+
+@keyframes coach-rest {
+  to { opacity: .5; }
 }
 
 /* 튜토리얼이 지금 누르라고 짚는 버튼. */
