@@ -50,7 +50,7 @@ export default function StageSelect({
   return (
     <main className="stage-select">
       <header className="stage-select-bar">
-        <button type="button" className="stage-select-back" onClick={onBack}>
+        <button type="button" className="stage-select-back art-button" onClick={onBack}>
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src="/ui/back.png" alt="" aria-hidden />
           뒤로

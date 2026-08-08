@@ -141,7 +141,7 @@ export function MusicSettings({
   return (
     <div className={`music-settings music-settings-${variant}`}>
       <button
-        className={variant === "home" ? "home-menu-button settings-trigger" : "game-settings-trigger"}
+        className={variant === "home" ? "home-menu-button settings-trigger" : "game-settings-trigger art-button"}
         type="button"
         aria-expanded={open}
         aria-controls={`${variant}-music-settings`}
@@ -151,7 +151,11 @@ export function MusicSettings({
           // eslint-disable-next-line @next/next/no-img-element
           <img src="/home/setting.svg" width={964} height={574} alt="설정" />
         ) : (
-          <><span aria-hidden>⚙️</span> 설정</>
+          <>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img className="settings-icon" src="/ui/settings-icon.png" alt="" aria-hidden />
+            <span className="sr-only">설정</span>
+          </>
         )}
       </button>
       <div
@@ -196,8 +200,8 @@ export function MusicSettings({
             onVolume={(sfxVolume) => saveSettings({ ...settings, sfxVolume })}
           />
           {variant === "game" && (
-            <Link className="settings-home-link" href="/">
-              ← 홈 화면으로
+            <Link className="settings-home-link art-button" href="/">
+              홈
             </Link>
           )}
         </section>

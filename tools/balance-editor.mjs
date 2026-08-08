@@ -43,7 +43,7 @@ async function catalog() {
     itemLabels: labelsFrom(source, "itemLabels"),
     stationLabels: labelsFrom(source, "stationLabels"),
     // 조리 기구만 레시피의 대상이 된다.
-    cooktops: listFrom(source, "cooktopStations").concat("blender"),
+    cooktops: listFrom(source, "cooktopStations").concat("blender", "table"),
   };
 }
 
@@ -91,8 +91,14 @@ function validate({ balance, recipes, stages }, list) {
   say(Array.isArray(recipes) && recipes.length > 0, "레시피가 하나도 없습니다.");
   for (const recipe of recipes ?? []) {
     const where = recipe?.foodId ?? "(이름 없음)";
+    const ingredients = Array.isArray(recipe?.ingredient)
+      ? recipe.ingredient
+      : [recipe?.ingredient];
     say(list.items.includes(recipe?.foodId), `${where}: 완성품이 목록에 없습니다.`);
-    say(list.items.includes(recipe?.ingredient), `${where}: 재료가 목록에 없습니다.`);
+    say(
+      ingredients.length > 0 && ingredients.every((item) => list.items.includes(item)),
+      `${where}: 재료가 목록에 없습니다.`,
+    );
     say(list.stations.includes(recipe?.station), `${where}: 기구가 목록에 없습니다.`);
     say(
       Array.isArray(recipe?.workers) && recipe.workers.length > 0 &&
@@ -100,7 +106,7 @@ function validate({ balance, recipes, stages }, list) {
       `${where}: 담당 속성을 하나 이상 골라야 합니다.`,
     );
     say(!foods.has(recipe?.foodId), `${where}: 같은 완성품이 두 번 있습니다.`);
-    const pair = `${recipe?.station}/${recipe?.ingredient}`;
+    const pair = `${recipe?.station}/${ingredients.join("+")}`;
     say(!perStation.has(pair), `${where}: 같은 기구에서 같은 재료를 두 번 씁니다.`);
     foods.add(recipe?.foodId);
     perStation.add(pair);

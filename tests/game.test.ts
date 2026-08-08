@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { simulate, actAt } from "../game/cli.js";
-import { activeActorIds, tutorialCue, tutorialDone } from "../app/tutorial.js";
+import { activeActorIds, finishTutorial, prepareTutorialState, tutorialCue, tutorialDone } from "../app/tutorial.js";
 import { parseSession } from "../game/session.js";
 import recipeData from "../game/recipes.json" with { type: "json" };
 import stageData from "../game/stages.json" with { type: "json" };
@@ -101,7 +101,7 @@ function cookAndSubmit(start: GameState, actorId: ActorId = "earth-1") {
 test("레시피는 recipes.json을 그대로 읽어 온다", () => {
   assert.deepEqual(recipes["shredded-potato"], {
     foodId: "shredded-potato",
-    ingredient: { itemId: "potato", count: 1 },
+    ingredients: [{ itemId: "potato", count: 1 }],
     station: "stove",
     workers: ["earth"],
     requiresCleanDish: true,
@@ -109,7 +109,7 @@ test("레시피는 recipes.json을 그대로 읽어 온다", () => {
   });
   assert.deepEqual(recipes["banana-smoothie"], {
     foodId: "banana-smoothie",
-    ingredient: { itemId: "banana", count: 1 },
+    ingredients: [{ itemId: "banana", count: 1 }],
     station: "blender",
     workers: ["lightning"],
     // 스무디는 컵째 나간다.
@@ -120,10 +120,18 @@ test("레시피는 recipes.json을 그대로 읽어 온다", () => {
   // 한 기구 안에서 같은 재료가 두 결과를 내지 않는다. recipeAt이 이걸 믿는다.
   // 기구가 다르면 같은 재료를 써도 된다(감자는 도마와 튀김기 둘 다).
   assert.equal(
-    new Set(allRecipes.map((recipe) => `${recipe.station}/${recipe.ingredient.itemId}`)).size,
+    new Set(allRecipes.map((recipe) =>
+      `${recipe.station}/${recipe.ingredients.map(({ itemId }) => itemId).join("+")}`
+    )).size,
     allRecipes.length,
   );
-  assert.ok(allRecipes.filter((recipe) => recipe.ingredient.itemId === "potato").length > 1);
+  assert.ok(allRecipes.filter((recipe) =>
+    recipe.ingredients.some(({ itemId }) => itemId === "potato")
+  ).length > 1);
+  assert.deepEqual(
+    recipes.salad!.ingredients.map(({ itemId }) => itemId),
+    ["shredded-carrot", "shredded-cabbage"],
+  );
 });
 
 test("스테이지는 stages.json에 적힌 순서 그대로 주문을 낸다", () => {
@@ -538,6 +546,16 @@ test("행동력을 다 쓰면 다음으로 넘길 슬라임을 고른다", () =>
   state = spent("fire-1");
   assert.equal(nextReadyActor(state, roster, "water-1"), "lightning-1");
 
+  // Space로 쉬겠다고 한 마리도 이번 턴에는 다시 고르지 않는다.
+  assert.equal(
+    nextReadyActor(state, roster, "water-1", new Set(["lightning-1"])),
+    "earth-1",
+  );
+  assert.equal(
+    nextReadyActor(state, roster, "water-1", new Set(["lightning-1", "earth-1"])),
+    null,
+  );
+
   // 아무도 안 남으면 null이라 선택이 풀린다.
   const empty: GameState = {
     ...state,
@@ -615,6 +633,30 @@ test("테이블의 감자와 빈 접시는 순서와 무관하게 테이블 위�
   assert.deepEqual(dishFirst.actors["lightning-1"]!.carrying, []);
   const stayed = dishFirst.tables[tableId]![0];
   assert.ok(isDish(stayed) && stayed.status === "filled" && stayed.content === "potato");
+});
+
+test("썬 당근과 썬 양배추를 한 접시에 올리면 샐러드가 된다", () => {
+  const base = initialState(1, ["water"], oneStage([
+    { id: "salad", foodId: "salad", targetCount: 1, submittedCount: 0 },
+  ]));
+  const dish = base.dishRacks[dishRackId]![0]!;
+  const state: GameState = {
+    ...base,
+    actors: {
+      ...base.actors,
+      "water-1": {
+        ...base.actors["water-1"]!,
+        carrying: [{ ...dish, status: "filled", content: "shredded-carrot" }],
+      },
+    },
+    tables: { ...base.tables, [tableId]: ["shredded-cabbage"] },
+  };
+  const mixed = actAt(state, "water-1", tableId);
+  const salad = mixed.tables[tableId]![0];
+  assert.ok(isDish(salad) && salad.content === "salad");
+  const picked = actAt(mixed, "water-1", tableId);
+  const submitted = actAt(picked, "water-1", stationInstancesByType.submission[0].id);
+  assert.equal(submitted.filled, 1);
 });
 
 test("남은 턴이 얼마 없으면 러쉬 음악을 사용한다", () => {
@@ -1195,64 +1237,69 @@ test("옆에 선 슬라임이 쓸 수 없는 설비는 반드시 이유를 남�
   }
 });
 
-test("튜토리얼 엔진은 대본을 순서대로 풀고 지나친 대목은 건너뛴다", () => {
+test("튜토리얼은 첫 양배추 제출까지 한 번에 한 가지만 시킨다", () => {
   const cabbageBoxId = stationInstancesByType["cabbage-box"][0].id;
   const rackId = stationInstancesByType["dish-rack"][0].id;
+  const tableId = stationInstancesByType.table[0].id;
   const submissionId = stationInstancesByType.submission[0].id;
   const limit = defaultStages()[0]!.turnLimit;
-  const view = (selected: ActorId | null, acked: string[] = []) => ({
-    selected,
-    acked: new Set(acked),
-    turnLimit: limit,
-  });
-  const step = (value: GameState, selected: ActorId | null, acked: string[] = []) =>
-    tutorialCue(value, view(selected, acked))?.id ?? null;
+  const step = (value: GameState, selected: ActorId | null) =>
+    tutorialCue(value, selected, limit)?.id ?? null;
+  const nextTurn = (value: GameState) => endTurn(value);
 
-  let state = initialState(7, ["earth", "water", "fire", "lightning"]);
-  // 대본 첫 대목의 배역만 무대에 선다.
-  assert.deepEqual(activeActorIds(state, view(null)), ["earth-1"]);
+  let state = prepareTutorialState(initialState(7, ["earth", "water", "fire", "lightning"]));
+  assert.deepEqual(
+    { col: state.actors["water-1"]!.col, row: state.actors["water-1"]!.row },
+    {
+      col: stationInstancesByType["dish-rack"][0].tiles[0].col,
+      row: stationInstancesByType["dish-rack"][0].tiles[0].row - 1,
+    },
+  );
+  // 처음에는 땅 슬라임만 나온다. 나머지는 아직 소개하지 않는다.
+  assert.deepEqual(activeActorIds(state), ["earth-1"]);
   assert.equal(step(state, null), "SELECT_EARTH");
   assert.equal(step(state, "earth-1"), "MOVE_TO_CABBAGE");
+  const firstMove = moveOptions(state, "earth-1").find(({ col, row }) => col === 3 && row === 3)!;
+  const afterFirstMove = moveActor(state, "earth-1", firstMove);
+  assert.equal(step(afterFirstMove, "earth-1"), "EXPLAIN_AP");
+  const secondTurn = nextTurn(afterFirstMove);
+  const secondMove = moveOptions(secondTurn, "earth-1").find(({ col, row }) => col === 3 && row === 4)!;
+  assert.equal(step(moveActor(secondTurn, "earth-1", secondMove), "earth-1"), "END_TURN_PICK_CABBAGE");
 
   state = actAt(state, "earth-1", cabbageBoxId);
-  // 재료를 이미 들었으므로 이동·집기 대목은 저절로 끝난다.
+  assert.ok(state.actors["earth-1"]!.carrying.includes("cabbage"));
+  state = nextTurn(state);
   assert.equal(step(state, "earth-1"), "USE_CUTTING_BOARD");
 
   state = actAt(state, "earth-1", stoveId);
   state = actAt(state, "earth-1", stoveId);
-  assert.deepEqual(activeActorIds(state, view("earth-1")).sort(), ["earth-1", "water-1"]);
-  assert.equal(step(state, "earth-1"), "PLATE_FOOD");
+  state = nextTurn(state);
+  // 음식이 완성되면 물 슬라임이 나오고 테이블 전달을 시작한다.
+  assert.deepEqual(activeActorIds(state).sort(), ["earth-1", "water-1"]);
+  assert.equal(step(state, "earth-1"), "TAKE_FINISHED_FOOD");
 
+  state = actAt(state, "earth-1", stoveId);
+  state = nextTurn(state);
+  assert.equal(step(state, "earth-1"), "PUT_FOOD_ON_TABLE");
+  state = actAt(state, "earth-1", tableId);
+  state = nextTurn(state);
+  assert.equal(step(state, "water-1"), "TAKE_CLEAN_DISH");
+  assert.match(tutorialCue(state, "water-1", limit)!.text, /물 슬라임.*그릇 상자/);
   state = actAt(state, "water-1", rackId);
-  state = actAt(state, "water-1", stoveId);
+  state = nextTurn(state);
+  assert.equal(step(state, "water-1"), "PLATE_AT_TABLE");
+  state = actAt(state, "water-1", tableId);
+  state = nextTurn(state);
+  assert.equal(step(state, "water-1"), "TAKE_PLATED_FOOD");
+  state = actAt(state, "water-1", tableId);
+  state = nextTurn(state);
   assert.equal(step(state, "water-1"), "SUBMIT_ORDER");
 
   state = actAt(state, "water-1", submissionId);
   assert.equal(state.filled, 1);
-  // 첫 주문 뒤에는 읽고 넘기는 대목이 이어지고, 넘겨야 다음으로 간다.
-  assert.equal(step(state, "water-1"), "REVEAL_OTHERS");
-  assert.equal(activeActorIds(state, view("water-1")).length, 4);
-  assert.equal(step(state, "water-1", ["REVEAL_OTHERS"]), "NEXT_ORDER");
-  // 대본을 다 풀면 안내가 사라진다.
-  const finished = view("water-1", ["REVEAL_OTHERS", "NEXT_ORDER"]);
-  assert.equal(tutorialCue(state, finished), null);
-  assert.equal(tutorialDone(state, finished), true);
-});
-
-test("알림은 조건이 맞을 때 끼어들고 한 번 넘기면 다시 뜨지 않는다", () => {
-  const limit = defaultStages()[0]!.turnLimit;
-  const view = (acked: string[] = []) => ({
-    selected: "earth-1" as ActorId,
-    acked: new Set(acked),
-    turnLimit: limit,
-  });
-  let state = initialState(7, ["earth", "water", "fire", "lightning"]);
-  // 첫 턴에 행동력을 다 쓰면 할 일 안내를 제치고 행동력 알림이 먼저 뜬다.
-  state = moveActor(state, "earth-1", moveTargets(state, "earth-1")[0]!);
-  assert.equal(state.actors["earth-1"]!.actionPoints, 0);
-  assert.equal(tutorialCue(state, view())?.id, "EXPLAIN_AP");
-  // 넘기면 원래 하던 대목으로 돌아간다.
-  assert.notEqual(tutorialCue(state, view(["EXPLAIN_AP"]))?.id, "EXPLAIN_AP");
-  // 턴이 넘어가면 조건이 사라져 알림도 사라진다.
-  assert.notEqual(tutorialCue(endTurn(state), view())?.id, "EXPLAIN_AP");
+  assert.equal(tutorialDone(state), true);
+  assert.equal(finishTutorial(state).phase, "won");
+  assert.equal(step(state, "water-1"), null);
+  // 첫 주문을 내면 나머지 슬라임도 공개되고 일반 플레이로 넘어간다.
+  assert.equal(activeActorIds(state).length, 4);
 });
