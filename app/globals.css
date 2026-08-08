@@ -329,6 +329,47 @@ button:disabled { cursor: var(--cursor-arrow); }
   display: block;
 }
 
+/* 행동 안내도 PDF처럼 실제 대상에 화살표를 붙인다. 캔버스와 같은 영역을
+   덮는 좌표계라 화면 크기가 달라져도 타일 중심을 그대로 따른다. */
+.coach-map {
+  position: absolute;
+  z-index: 22;
+  top: var(--game-top-rail);
+  right: var(--game-info-rail);
+  bottom: var(--game-bottom-rail);
+  left: var(--game-side-rail);
+  display: flex;
+  justify-content: center;
+  align-items: start;
+  overflow: hidden;
+  pointer-events: none;
+}
+.coach-map-stage {
+  position: relative;
+  display: block;
+  width: 100%;
+  max-width: calc((100svh - var(--game-top-rail) - var(--game-bottom-rail)) * 1.75);
+  aspect-ratio: 14 / 8;
+}
+.coach-map-arrow {
+  position: absolute;
+  width: clamp(52px, 6vw, 82px);
+  translate: -50% -115%;
+  filter: drop-shadow(0 4px 0 #3c260d) drop-shadow(0 7px 8px #0008);
+  animation: coach-arrow-down 650ms ease-in-out infinite alternate;
+}
+.coach-map-arrow[data-up] {
+  translate: -50% 18%;
+  rotate: 180deg;
+  animation-name: coach-arrow-up;
+}
+@keyframes coach-arrow-down {
+  to { translate: -50% -95%; }
+}
+@keyframes coach-arrow-up {
+  to { translate: -50% -2%; }
+}
+
 /* 상단 주문 3장 + 라운드 요약 */
 .hud-top {
   position: absolute;
@@ -587,32 +628,39 @@ button:disabled { cursor: var(--cursor-arrow); }
   pointer-events: none;
 }
 .dialogue-arrow-orders {
-  --arrow-x: 12px;
-  --arrow-y: 0;
+  --arrow-x: 0;
+  --arrow-y: -12px;
   top: clamp(164px, 23vh, 188px);
   left: clamp(78px, 7.5vw, 96px);
   rotate: 180deg;
 }
 .dialogue-arrow-next-order {
-  --arrow-x: 12px;
-  --arrow-y: 0;
+  --arrow-x: 0;
+  --arrow-y: -12px;
   top: clamp(82px, 13vh, 96px);
   left: clamp(217px, 20.4vw, 261px);
   rotate: 180deg;
 }
 .dialogue-arrow-earth {
-  --arrow-x: 0;
-  --arrow-y: -12px;
+  --arrow-x: -12px;
+  --arrow-y: 0;
   top: 37%;
   left: 24.5%;
   rotate: 90deg;
 }
 .dialogue-arrow-inspector {
-  --arrow-x: 0;
-  --arrow-y: 12px;
+  --arrow-x: 12px;
+  --arrow-y: 0;
   top: 38%;
   right: calc(var(--game-info-rail) + 2%);
   rotate: -90deg;
+}
+.dialogue-arrow-clock {
+  --arrow-x: -12px;
+  --arrow-y: 0;
+  top: 13%;
+  right: 6%;
+  rotate: 90deg;
 }
 @keyframes dialogue-arrow {
   from { translate: 0 0; }
@@ -623,7 +671,8 @@ button:disabled { cursor: var(--cursor-arrow); }
    같은 방식으로 꺼낼 수 없어 해당 위치만 투명하게 비춘다. */
 .stage-frame:has(> .dialogue-screen[data-focus="orders"]) .order-cards,
 .stage-frame:has(> .dialogue-screen[data-focus="next-order"]) .order-cards,
-.stage-frame:has(> .dialogue-screen[data-focus="inspector"]) .info-rail {
+.stage-frame:has(> .dialogue-screen[data-focus="inspector"]) .info-rail,
+.stage-frame:has(> .dialogue-screen[data-focus="clock"]) .hud-top {
   z-index: 41;
 }
 .stage-frame:has(> .dialogue-screen[data-focus="next-order"]) .order-cards > .order-card {
@@ -642,13 +691,18 @@ button:disabled { cursor: var(--cursor-arrow); }
    않도록 검은 막과 입력 차단만 뺀다. */
 .dialogue-screen[data-passive] {
   z-index: 21;
-  padding-left: clamp(180px, 18vw, 250px);
   background: transparent;
   cursor: default;
   pointer-events: none;
 }
 .dialogue-screen[data-passive] .dialogue-bar {
   padding-right: calc(var(--game-info-rail) + clamp(14px, 2.5vw, 34px));
+}
+.dialogue-screen[data-passive] .dialogue-text {
+  padding-left: clamp(10px, 1.4vw, 22px);
+}
+.dialogue-screen[data-narration] .dialogue-text {
+  padding-left: clamp(10px, 1.4vw, 22px);
 }
 
 .dialogue-bar {
@@ -670,6 +724,25 @@ button:disabled { cursor: var(--cursor-arrow); }
   height: auto;
   margin-bottom: clamp(28px, 6vh, 64px);
   object-fit: contain;
+  filter: drop-shadow(0 6px 10px #0009);
+  transform-origin: 50% 100%;
+  animation: cauldron-breathe 2.8s ease-in-out infinite;
+}
+
+/* 새 친구를 소개하는 줄에서만 기존 슬라임 초상을 오른쪽에 함께 세운다. */
+.dialogue-companions {
+  position: absolute;
+  z-index: 3;
+  right: clamp(28px, 5vw, 76px);
+  bottom: clamp(104px, 17vh, 154px);
+  display: flex;
+  align-items: end;
+  gap: clamp(4px, .8vw, 12px);
+  pointer-events: none;
+}
+.dialogue-companions img {
+  width: clamp(92px, 12vw, 158px);
+  height: auto;
   filter: drop-shadow(0 6px 10px #0009);
   transform-origin: 50% 100%;
   animation: cauldron-breathe 2.8s ease-in-out infinite;
@@ -747,7 +820,7 @@ button:disabled { cursor: var(--cursor-arrow); }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .dialogue-face, .dialogue-more, .dialogue-arrow { animation: none; opacity: 1; }
+  .dialogue-face, .dialogue-companions img, .dialogue-more, .dialogue-arrow, .coach-map-arrow { animation: none; opacity: 1; }
 }
 
 /* 영업 시작·마감 임박 문구. 잠깐 크게 떴다가 사라진다. */
@@ -1773,7 +1846,12 @@ img.paper-title { width: 56%; height: 11.4%; top: 4.9%; left: 22%; object-fit: c
 }
 .art-button:hover,
 .stage-frame button.art-button:hover { border-color: transparent; filter: brightness(1.08); transform: none; }
-.art-button:focus-visible { outline: 3px solid var(--gold); outline-offset: 2px; }
+/* 버튼은 모서리가 둥근 그림이라 네모난 outline이 그림 밖에 겉돈다. 그림의
+   알파를 따라가는 그림자로 초점을 알린다. */
+.art-button:focus-visible {
+  outline: none;
+  filter: drop-shadow(0 0 1px var(--gold)) drop-shadow(0 0 4px var(--gold));
+}
 .stage-select-bar .music-settings-game { position: static; }
 
 .mode-plates { display: grid; gap: clamp(14px, 3vh, 28px); justify-items: center; }

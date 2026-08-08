@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { simulate, actAt } from "../game/cli.js";
-import { activeActorIds, finishTutorial, prepareTutorialState, tutorialCue, tutorialDone } from "../app/tutorial.js";
-import { dialogueParts } from "../app/dialogue-script.js";
+import { activeActorIds, finishTutorial, prepareTutorialState, roundRank, tutorialCue, tutorialDone } from "../app/tutorial.js";
+import { dialogueParts, finalLines, stageOpeningLines } from "../app/dialogue-script.js";
 import { parseSession } from "../game/session.js";
 import recipeData from "../game/recipes.json" with { type: "json" };
 import stageData from "../game/stages.json" with { type: "json" };
@@ -817,6 +817,40 @@ test("소각은 한 턴에 끝나고 불 슬라임만 할 수 있다", () => {
   assert.equal(state.incinerators[incineratorId]!.count, 0);
 });
 
+test("세척대는 용량만큼 그릇을 받고 앞의 것부터 씻는다", () => {
+  const base = initialState(1, ["earth", "water"]);
+  const dirty = base.dishRacks[dishRackId]!
+    .slice(0, dishConfig.washerCapacity + 1)
+    .map((dish) => ({ ...dish, status: "dirty" as const }));
+  let state: GameState = {
+    ...base,
+    washers: { ...base.washers, [washerId]: { dishes: dirty.slice(0, -1), progress: 0 } },
+    actors: {
+      ...base.actors,
+      "earth-1": { ...base.actors["earth-1"]!, carrying: [dirty.at(-1)!] },
+    },
+  };
+
+  // 가득 찬 세척대에는 더 못 넣는다.
+  assert.ok(actAt(state, "earth-1", washerId).refusal?.message.includes("가득"));
+
+  // 물 슬라임은 줄 선 순서대로 하나씩 씻는다.
+  for (let washed = 1; washed <= dishConfig.washerCapacity; washed += 1) {
+    state = actAt(state, "water-1", washerId);
+    assert.deepEqual(
+      state.washers[washerId]!.dishes.map((dish) => dish.status),
+      dirty.slice(0, -1).map((_, index) => (index < washed ? "clean" : "dirty")),
+    );
+  }
+  // 다 씻어도 자리가 나기 전에는 여전히 못 넣는다.
+  assert.ok(actAt(state, "earth-1", washerId).refusal?.message.includes("가득"));
+  state = actAt(state, "water-1", washerId);
+  assert.equal(state.washers[washerId]!.dishes.length, dishConfig.washerCapacity - 1);
+  state = actAt(state, "earth-1", washerId);
+  assert.deepEqual(state.actors["earth-1"]!.carrying, []);
+  assert.equal(state.washers[washerId]!.dishes.length, dishConfig.washerCapacity);
+});
+
 test("세척은 물 슬라임만 하고 넣기는 누구나 한다", () => {
   let state = cookAndSubmit(
     initialState(1, ["earth", "water"], oneStage([
@@ -832,7 +866,7 @@ test("세척은 물 슬라임만 하고 넣기는 누구나 한다", () => {
   ));
   // 더러운 그릇 넣기는 땅 슬라임도 할 수 있다.
   state = actAt(state, "earth-1", washerId);
-  assert.equal(state.washers[washerId]!.dish?.status, "dirty");
+  assert.equal(state.washers[washerId]!.dishes[0]?.status, "dirty");
   assert.deepEqual(state.actors["earth-1"]!.carrying, []);
 
   // 땅 슬라임은 세척을 못 한다.
@@ -842,7 +876,7 @@ test("세척은 물 슬라임만 하고 넣기는 누구나 한다", () => {
   // 물 슬라임이 한 턴에 씻는다.
   assert.equal(actionCost.wash, 1);
   state = actAt(state, "water-1", washerId);
-  assert.equal(state.washers[washerId]!.dish?.status, "clean");
+  assert.equal(state.washers[washerId]!.dishes[0]?.status, "clean");
   state = actAt(state, "water-1", washerId);
   assert.ok(state.actors["water-1"]!.carrying.some(
     (carried) => isDish(carried) && carried.status === "clean",
@@ -907,10 +941,12 @@ test("같은 seed와 입력은 같은 식당 상태를 만든다", () => {
 });
 
 test("CLI는 식당 상호작용을 결정론적으로 재현한다", () => {
+  // 양배추를 쓴다. 튜토리얼 스테이지의 주문은 tutorial.ts의 TUTORIAL_FOOD에
+  // 묶여 있어 밸런스를 만져도 안 바뀐다.
   const args = [
     "--seed=7",
     "--slimes=earth",
-    "earth:potato-box",
+    "earth:cabbage-box",
     "earth:stove",
     "earth:stove",
     "earth:stove",
@@ -1013,8 +1049,8 @@ test("그릇은 조리·제출·오염·세척 동안 ID를 보존한다", () =>
   state = actAt(state, "earth-1", washerId);
   // 세척도 한 턴이라 물 슬라임이 한 번 쓰면 끝난다.
   state = actAt(state, "water-1", washerId);
-  assert.equal(state.washers[washerId]!.dish?.id, id);
-  assert.equal(state.washers[washerId]!.dish?.status, "clean");
+  assert.equal(state.washers[washerId]!.dishes[0]?.id, id);
+  assert.equal(state.washers[washerId]!.dishes[0]?.status, "clean");
 });
 
 test("라운드 주문 목록을 주입하고 제출마다 진행도가 오른다", () => {
@@ -1270,9 +1306,10 @@ test("튜토리얼은 첫 양배추 제출까지 한 번에 한 가지만 시킨
   state = actAt(state, "earth-1", cabbageBoxId);
   assert.ok(state.actors["earth-1"]!.carrying.includes("cabbage"));
   state = nextTurn(state);
-  assert.equal(step(state, "earth-1"), "USE_CUTTING_BOARD");
+  assert.equal(step(state, "earth-1"), "MOVE_TO_CUTTING_BOARD");
 
   state = actAt(state, "earth-1", stoveId);
+  assert.equal(step(state, "earth-1"), "END_TURN_CHOP_CABBAGE");
   state = actAt(state, "earth-1", stoveId);
   state = nextTurn(state);
   // 음식이 완성되면 물 슬라임이 나오고 테이블 전달을 시작한다.
@@ -1282,10 +1319,25 @@ test("튜토리얼은 첫 양배추 제출까지 한 번에 한 가지만 시킨
   state = actAt(state, "earth-1", stoveId);
   state = nextTurn(state);
   assert.equal(step(state, "earth-1"), "PUT_FOOD_ON_TABLE");
+  // 짚어 준 테이블은 걸어가는 동안 바뀌면 안 된다. 슬라임의 지금 위치로
+  // 고르면 한 칸 옮길 때마다 하이라이트가 딴 데로 뛴다.
+  const pointed = tutorialCue(state, "earth-1", limit)!.station!;
+  const target = stationInstances.find((one) => one.id === pointed)!;
+  assert.equal(target.type, "table");
+  // 행동력을 다 쓰면 "턴을 넘기라"는 안내로 바뀌어 짚는 자리가 없어진다.
+  // 자리를 짚는 동안에는 언제나 같은 테이블이어야 한다.
+  const pointedWhileWalking = new Set<string>();
+  for (const who of ["earth-1", "water-1"] as const) {
+    for (const tile of moveOptions(state, who)) {
+      const cue = tutorialCue(moveActor(state, who, tile), "earth-1", limit);
+      if (cue?.station) pointedWhileWalking.add(cue.station);
+    }
+  }
+  assert.deepEqual([...pointedWhileWalking], [pointed]);
   state = actAt(state, "earth-1", tableId);
   state = nextTurn(state);
   assert.equal(step(state, "water-1"), "TAKE_CLEAN_DISH");
-  assert.match(tutorialCue(state, "water-1", limit)!.text, /물 슬라임.*그릇 상자/);
+  assert.match(tutorialCue(state, "water-1", limit)!.text, /그릇 상자.*물 슬라임/);
   state = actAt(state, "water-1", rackId);
   state = nextTurn(state);
   assert.equal(step(state, "water-1"), "PLATE_AT_TABLE");
@@ -1300,9 +1352,12 @@ test("튜토리얼은 첫 양배추 제출까지 한 번에 한 가지만 시킨
   assert.equal(state.filled, 1);
   assert.equal(tutorialDone(state), true);
   assert.equal(finishTutorial(state).phase, "won");
+  // 주문 하나만 채웠어도 튜토리얼을 깼으면 별 3개다.
+  assert.equal(stageRank(finishTutorial(state)), 1);
+  assert.equal(roundRank(finishTutorial(state)), 3);
   assert.equal(step(state, "water-1"), null);
-  // 첫 주문을 내면 나머지 슬라임도 공개되고 일반 플레이로 넘어간다.
-  assert.equal(activeActorIds(state).length, 4);
+  // 이글이와 번쩍이는 다음 스테이지 소개 전까지 먼저 나오지 않는다.
+  assert.deepEqual(activeActorIds(state).sort(), ["earth-1", "water-1"]);
 });
 
 test("다이얼로그는 확정된 음식·도구·슬라임 이름만 구분한다", () => {
@@ -1312,4 +1367,8 @@ test("다이얼로그는 확정된 음식·도구·슬라임 이름만 구분한
       .map(({ text, tone }) => [text, tone]),
     [["푸름이", "slime"], ["양배추", "food"], ["도마", "tool"]],
   );
+  assert.equal(stageOpeningLines("1").length, 7);
+  assert.match(stageOpeningLines("2")[1]!.text, /화덕과 튀김기/);
+  assert.match(stageOpeningLines("3")[1]!.text, /과일.*물.*전기/);
+  assert.match(finalLines.at(-1)!.text, /무한 모드/);
 });

@@ -68,6 +68,14 @@
       ]
     },
     {
+      "foodId": "roasted-potato",
+      "ingredient": "potato",
+      "station": "oven",
+      "workers": [
+        "fire"
+      ]
+    },
+    {
       "foodId": "salad",
       "ingredient": [
         "shredded-carrot",

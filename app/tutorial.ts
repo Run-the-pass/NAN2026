@@ -4,6 +4,7 @@ import {
   isBesideStation,
   isDish,
   squadActorIds,
+  stageRank,
   stationInstancesByType,
   type ActorId,
   type Carried,
@@ -44,18 +45,28 @@ const actorWith = (state: GameState, predicate: (carried: Carried) => boolean) =
   Object.entries(state.actors).find(([, actor]) => actor?.carrying.some(predicate))?.[0] ?? null;
 const tableWith = (state: GameState, predicate: (carried: Carried) => boolean) =>
   Object.entries(state.tables).find(([, items]) => items?.some(predicate))?.[0] as StationInstanceId | undefined;
+// 넘겨줄 자리는 슬라임이 지금 어디 있든 같아야 한다. 서 있는 위치로 재면
+// 짚어 준 테이블로 걸어가는 동안 답이 바뀌어 하이라이트가 옮겨 다닌다.
+// 푸름이는 도마에서, 퐁당이는 그릇 상자에서 오므로 그 두 곳을 기준으로 삼는다.
+const HANDOFF_ENDS: StationId[] = ["stove", "dish-rack"];
 const emptyTable = (state: GameState) =>
   stationInstancesByType.table
     .filter(({ id }) => state.tables[id]?.length === 0)
     .sort((a, b) => {
       const score = ({ tiles }: typeof a) => {
-        const distances = [EARTH, WATER].map((id) => {
-          const actor = state.actors[id];
-          return actor ? Math.abs(actor.col - tiles[0].col) + Math.abs(actor.row - tiles[0].row) : 0;
+        const distances = HANDOFF_ENDS.map((type) => {
+          const from = stationInstancesByType[type][0]!.tiles[0];
+          return Math.abs(from.col - tiles[0].col) + Math.abs(from.row - tiles[0].row);
         });
         return Math.max(...distances) * 100 + distances[0] + distances[1];
       };
-      return score(a) - score(b);
+      // 점수가 같으면 왼쪽·위쪽을 고른다. 배열 순서로 갈리면 같은 값인데도
+      // 멀리 있는 테이블이 뽑힌다.
+      return (
+        score(a) - score(b) ||
+        a.tiles[0].col - b.tiles[0].col ||
+        a.tiles[0].row - b.tiles[0].row
+      );
     })[0]?.id ?? stationIdOf("table");
 const cooktopWithFood = (state: GameState) =>
   Object.entries(state.stoves).find(([, items]) => items?.includes(TUTORIAL_FOOD))?.[0] as StationInstanceId | undefined;
@@ -73,6 +84,12 @@ const choppedExists = (state: GameState) =>
     (carried) => carriedItem(carried) === TUTORIAL_FOOD,
   )) ||
   state.filled > 0;
+
+export const waterIntroReady = (state: GameState) =>
+  onTutorialStage(state) && choppedExists(state) && !tutorialDone(state);
+
+export const platedIntroReady = (state: GameState) =>
+  onTutorialStage(state) && Boolean(tableWith(state, filledTutorialDish));
 
 export const onTutorialStage = (state: GameState) =>
   currentStage(state).id === TUTORIAL_STAGE;
@@ -100,10 +117,19 @@ export const tutorialDone = (state: GameState) =>
 export const finishTutorial = (state: GameState): GameState =>
   tutorialDone(state) ? { ...state, phase: "won" } : state;
 
+// 튜토리얼은 첫 주문 하나로 끝난다. 별 기준을 그대로 재면 1개밖에 못 주므로
+// 깨면 무조건 전부 준다.
+export const roundRank = (state: GameState) =>
+  state.phase !== "won" ? 0
+    : onTutorialStage(state) ? currentStage(state).stars.length
+      : stageRank(state);
+
 // 땅 → 물 → 나머지 둘 순서로 공개한다.
 export function revealedTypes(state: GameState): SlimeTypeId[] {
-  if (!onTutorialStage(state) || tutorialDone(state)) return state.squad;
-  if (choppedExists(state)) return state.squad.filter((id) => id === "earth" || id === "water");
+  if (!onTutorialStage(state)) return state.squad;
+  if (tutorialDone(state) || choppedExists(state)) {
+    return state.squad.filter((id) => id === "earth" || id === "water");
+  }
   return state.squad.filter((id) => id === "earth");
 }
 
@@ -149,7 +175,7 @@ export function tutorialCue(
       return waitForTurn(state, platedHolder, {
         id: "SUBMIT_ORDER",
         speaker: "water",
-        text: "완성된 음식은 제출대에 가져가면 주문이 끝나요.",
+        text: "이제 퐁당이를 움직여 음식을 제출해주세요!",
         station: stationIdOf("submission"),
         actor: platedHolder,
       });
@@ -158,7 +184,7 @@ export function tutorialCue(
       return waitForTurn(state, WATER, {
         id: "TAKE_PLATED_FOOD",
         speaker: "water",
-        text: "완성된 양배추 접시를 테이블에서 다시 집어주세요.",
+        text: "퐁당이를 누르고, 썰은 양배추를 클릭하세요.",
         station: platedTable,
         actor: WATER,
       });
@@ -176,7 +202,7 @@ export function tutorialCue(
       return waitForTurn(state, WATER, {
         id: "TAKE_CLEAN_DISH",
         speaker: "water",
-        text: "물 슬라임 퐁당이는 그릇과 세척 담당이에요. 바로 앞 그릇 상자에서 깨끗한 접시를 집어주세요.",
+        text: "퐁당이를 클릭하고, 그릇 상자를 눌러 그릇을 꺼내주세요. 물 슬라임 퐁당이는 그릇과 세척을 맡아요.",
         station: stationIdOf("dish-rack"),
         actor: WATER,
       });
@@ -185,7 +211,7 @@ export function tutorialCue(
       return waitForTurn(state, looseHolder, {
         id: "PUT_FOOD_ON_TABLE",
         speaker: state.actors[looseHolder]!.typeId,
-        text: "완성된 양배추를 빈 테이블에 놓아 퐁당이에게 넘겨주세요.",
+        text: "푸름이는 썰은 양배추를 노란색 화살표가 가리키는 테이블에 올려주세요.",
         station: emptyTable(state),
         actor: looseHolder,
       });
@@ -206,7 +232,7 @@ export function tutorialCue(
     return {
       id: "SELECT_EARTH",
       speaker: "earth",
-      text: "지금 쉬고 있는 푸름이를 불렀어요. 먼저 이 친구를 선택해보세요.",
+      text: "푸름이를 클릭해보시겠어요?",
       actor: EARTH,
     };
   }
@@ -214,7 +240,7 @@ export function tutorialCue(
     return {
       id: "EXPLAIN_AP",
       speaker: "earth",
-      text: "슬라임은 한 턴에 행동할 수 있는 횟수가 정해져 있어요. 턴을 넘겨주세요.",
+      text: "슬라임은 행동력이 있고, 이동이나 상호 작용 시 소모돼요. 매 턴 시작 시 리셋되며 남은 행동력은 추가되지 않아요. 턴 종료를 눌러 다음 턴으로 넘어가주세요.",
       endTurn: true,
     };
   }
@@ -223,21 +249,37 @@ export function tutorialCue(
       return waitForTurn(state, EARTH, {
         id: "MOVE_TO_CABBAGE",
         speaker: "earth",
-        text: "갈 수 있는 칸이 표시돼요. 양배추 쪽으로 가볼까요?",
+        text: "푸름이를 움직여서 양배추 재료 상자로 옮겨주세요.",
         station: stationIdOf("cabbage-box"),
       });
     }
     return waitForTurn(state, EARTH, {
       id: "PICK_CABBAGE",
       speaker: "earth",
-      text: "재료나 도구 앞에서는 눌러서 일을 시킬 수 있어요.",
+      text: "이제 상자를 클릭해 양배추를 집어보세요.",
       station: stationIdOf("cabbage-box"),
     });
   }
+  if (carries(state, EARTH, "cabbage")) {
+    if (!beside(state, EARTH, "stove")) {
+      return waitForTurn(state, EARTH, {
+        id: "MOVE_TO_CUTTING_BOARD",
+        speaker: "earth",
+        text: "푸름이를 다시 도마로 옮겨주세요.",
+        station: stationIdOf("stove"),
+      });
+    }
+    return waitForTurn(state, EARTH, {
+      id: "PLACE_CABBAGE",
+      speaker: "earth",
+      text: "도마를 클릭해 양배추를 내려놓으세요.",
+      station: stationIdOf("stove"),
+    });
+  }
   return waitForTurn(state, EARTH, {
-    id: "USE_CUTTING_BOARD",
+    id: "CHOP_CABBAGE",
     speaker: "earth",
-    text: "푸름이는 재료 손질을 잘해요. 양배추를 도마에서 썰어볼까요?",
+    text: "도마를 다시 한 번 클릭해 양배추를 썰어보세요.",
     station: stationIdOf("stove"),
   });
 }

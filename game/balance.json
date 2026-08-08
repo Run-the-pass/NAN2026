@@ -28,7 +28,7 @@
   "dish": {
     "initialCount": 5,
     "rackCapacity": 5,
-    "washerCapacity": 1,
+    "washerCapacity": 3,
     "tableCapacity": 1,
     "returnCapacity": 5
   },

@@ -68,10 +68,12 @@ export function gameSoundCues(
   ) cues.push("chop");
   if (
     progressed(previous.washers, next.washers) ||
-    Object.entries(next.washers).some(([id, washer]) =>
-      previous.washers[id as keyof GameState["washers"]]?.dish?.status === "dirty" &&
-      washer?.dish?.status === "clean"
-    )
+    Object.entries(next.washers).some(([id, washer]) => {
+      const before = previous.washers[id as keyof GameState["washers"]];
+      const clean = (state?: { dishes: { status: string }[] }) =>
+        state?.dishes.filter((dish) => dish.status === "clean").length ?? 0;
+      return clean(washer) > clean(before);
+    })
   ) cues.push("wash");
   if (
     Object.keys(next.actors).some((id) => {

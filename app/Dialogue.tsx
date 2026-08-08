@@ -13,12 +13,14 @@ export default function Dialogue({
   onDone,
   onFocusChange,
   passive = false,
+  narration = false,
 }: {
   lines: DialogueLine[];
   portrait: (typeId: SlimeTypeId) => string;
   onDone?: () => void;
   onFocusChange?: (focus: DialogueFocus | undefined) => void;
   passive?: boolean;
+  narration?: boolean;
 }) {
   const [at, setAt] = useState(0);
   const [shown, setShown] = useState(0);
@@ -67,6 +69,7 @@ export default function Dialogue({
       className="dialogue-screen"
       data-focus={line.focus}
       data-passive={passive ? "" : undefined}
+      data-narration={narration ? "" : undefined}
       role={passive ? "status" : "dialog"}
       aria-live="polite"
       aria-label={`${name}: ${full}`}
@@ -82,9 +85,19 @@ export default function Dialogue({
         <img className={`dialogue-arrow dialogue-arrow-${line.focus}`} src="/ui/tutorial-arrow.png" alt="" aria-hidden />
       )}
       <div className="dialogue-bar">
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img className="dialogue-face" src={line.portrait ?? portrait(line.speaker)} alt="" aria-hidden />
-        <b className="dialogue-name">{name}</b>
+        {!passive && !narration && (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img className="dialogue-face" src={line.portrait ?? portrait(line.speaker)} alt="" aria-hidden />
+        )}
+        {!passive && !narration && line.companions?.length ? (
+          <span className="dialogue-companions" aria-hidden>
+            {line.companions.map((typeId) => (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img key={typeId} src={portrait(typeId)} alt="" />
+            ))}
+          </span>
+        ) : null}
+        {!passive && !narration && <b className="dialogue-name">{name}</b>}
         <p className="dialogue-text">
           {dialogueParts(full.slice(0, visible)).map((part, index) =>
             part.tone ? (

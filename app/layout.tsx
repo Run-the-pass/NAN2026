@@ -3,7 +3,10 @@ import "./globals.css";
 import { GlobalSoundEffects } from "./SoundEffects";
 
 export const metadata: Metadata = {
-  metadataBase: new URL("https://nan2026-slime-shift.silver-bat-5647.chatgpt.site"),
+  metadataBase: new URL(
+    process.env.NEXT_PUBLIC_SITE_URL ??
+      "https://nan2026-slime-shift.silver-bat-5647.chatgpt.site",
+  ),
   title: "슬라임 레스토랑",
   description: "NAN 2026 판타지 슬라임 레스토랑 운영 게임",
   openGraph: {

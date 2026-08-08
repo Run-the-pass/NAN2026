@@ -3,7 +3,7 @@
   "stages": [
     {
       "id": "0",
-      "turnLimit": 55,
+      "turnLimit": 100,
       "stars": [
         1,
         2,
@@ -11,67 +11,54 @@
       ],
       "orders": [
         "shredded-cabbage",
-        "shredded-potato",
-        "shredded-potato"
+        "shredded-cabbage",
+        "shredded-cabbage"
       ]
     },
     {
       "id": "1",
-      "turnLimit": 60,
+      "turnLimit": 40,
       "stars": [
+        2,
         3,
-        5,
-        6
+        4
       ],
       "orders": [
-        "shredded-potato",
+        "shredded-cabbage",
         "shredded-carrot",
-        "shredded-potato",
-        "shredded-carrot",
-        "shredded-potato",
+        "salad",
         "salad"
       ]
     },
     {
       "id": "2",
-      "turnLimit": 70,
+      "turnLimit": 40,
       "stars": [
-        5,
-        7,
-        8
+        2,
+        3,
+        4
       ],
       "orders": [
-        "shredded-potato",
-        "shredded-carrot",
-        "banana-smoothie",
-        "fried-potato",
-        "shredded-potato",
-        "shredded-carrot",
-        "banana-smoothie",
-        "fried-potato",
-        "shredded-potato"
+        "roasted-potato",
+        "fried-mushroom",
+        "grilled-mushroom",
+        "salad"
       ]
     },
     {
       "id": "3",
-      "turnLimit": 80,
+      "turnLimit": 45,
       "stars": [
-        7,
-        9,
-        10
+        3,
+        4,
+        5
       ],
       "orders": [
-        "shredded-potato",
-        "shredded-cabbage",
-        "strawberry-smoothie",
-        "fried-mushroom",
+        "salad",
         "grilled-mushroom",
         "fried-potato",
-        "shredded-potato",
-        "shredded-cabbage",
         "strawberry-smoothie",
-        "fried-mushroom",
-        "grilled-mushroom"
+        "banana-smoothie"
       ]
     }
   ]

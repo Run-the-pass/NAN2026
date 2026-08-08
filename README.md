@@ -2,6 +2,8 @@
 
 NAN 2026 해커톤용 Phaser 3 판타지 식당 운영 게임.
 
+**플레이:** https://run-the-pass.github.io/NAN2026/
+
 ## 실행
 
 ```bash

@@ -24,6 +24,7 @@ export type ItemId =
   | "fried-potato"
   | "fried-mushroom"
   | "grilled-mushroom"
+  | "roasted-potato"
   | "salad";
 export type DishStatus = "clean" | "filled" | "dirty";
 export type Dish = { id: string; status: DishStatus; content: ItemId | null };
@@ -77,6 +78,7 @@ export const itemLabels: Record<ItemId, string> = {
   "fried-potato": "감자 튀김",
   "fried-mushroom": "버섯 튀김",
   "grilled-mushroom": "버섯 구이",
+  "roasted-potato": "구운 감자",
   salad: "샐러드",
 };
 
@@ -133,6 +135,7 @@ export const allItems: ItemId[] = [
   "fried-potato",
   "fried-mushroom",
   "grilled-mushroom",
+  "roasted-potato",
   "salad",
 ];
 export const allElements: SlimeElement[] = ["water", "fire", "lightning", "earth"];
@@ -485,7 +488,9 @@ export type GameState = {
   pendingReturns: Dish[];
   tables: Partial<Record<StationInstanceId, Carried[]>>;
   incinerators: Partial<Record<StationInstanceId, { count: number; progress: number }>>;
-  washers: Partial<Record<StationInstanceId, { dish: Dish | null; progress: number }>>;
+  // 세척대. dishConfig.washerCapacity만큼 그릇이 들어가고, progress는 맨 앞
+  // 더러운 그릇 하나에만 붙는다.
+  washers: Partial<Record<StationInstanceId, { dishes: Dish[]; progress: number }>>;
   workstations: Partial<Record<StationInstanceId, {
     status: WorkstationStatus;
     progress: number;
@@ -871,7 +876,7 @@ const initialStationState = () => ({
     stationInstancesByType.trash.map(({ id }) => [id, { count: 0, progress: 0 }]),
   ),
   washers: Object.fromEntries(
-    stationInstancesByType.washer.map(({ id }) => [id, { dish: null, progress: 0 }]),
+    stationInstancesByType.washer.map(({ id }) => [id, { dishes: [] as Dish[], progress: 0 }]),
   ),
   workstations: Object.fromEntries(
     cooktopInstances.map(({ id }) => [
@@ -1591,28 +1596,16 @@ function atWasher(
   station: StationInstanceId,
 ): GameState {
   const washer = state.washers[station]!;
-  // 더러운 그릇 넣기. 모든 슬라임이 할 수 있다.
-  if (!washer.dish) {
-    const dirty = dishIndex(actor, (dish) => dish.status === "dirty");
-    if (dirty < 0) return refuse(state, actor, "세척할 더러운 그릇이 없습니다.");
-    const dish = actor.carrying[dirty] as Dish;
-    return event(state, `${actor.name}이(가) 더러운 그릇을 세척기에 놓았습니다.`, {
-      actors: patchActor(state, actorId, {
-        ...spend(actor, actionCost.carry, "CARRYING"),
-        carrying: actor.carrying.filter((_, index) => index !== dirty),
-      }),
-      washers: { ...state.washers, [station]: { dish, progress: 0 } },
-    });
-  }
-  // 세척. 물 슬라임만 할 수 있다.
-  if (washer.dish.status === "dirty") {
-    if (!stationElements.wash.includes(actor.typeId)) {
-      return refuse(
-        state,
-        actor,
-        `${elementNames(stationElements.wash)} 슬라임만 그릇을 씻을 수 있습니다.`,
-      );
-    }
+  const put = (dishes: Dish[], progress: number) => ({
+    ...state.washers,
+    [station]: { dishes, progress },
+  });
+  // 맨 앞 더러운 그릇 하나만 씻는다. 나머지는 줄을 서서 기다린다.
+  const washing = washer.dishes.findIndex((dish) => dish.status === "dirty");
+  const washed = washer.dishes.findIndex((dish) => dish.status === "clean");
+
+  // 세척. 물 슬라임만 할 수 있고, 씻을 것이 있으면 다른 일보다 먼저 한다.
+  if (washing >= 0 && stationElements.wash.includes(actor.typeId)) {
     const step = progressStep(actor, actionCost.wash, washer.progress);
     const next = spend(actor, step.spent, "WORKING");
     if (!step.done) {
@@ -1621,32 +1614,55 @@ function atWasher(
         `${actor.name}이(가) 그릇을 씻고 있습니다. (${step.progress}/${actionCost.wash})`,
         {
           actors: patchActor(state, actorId, next),
-          washers: { ...state.washers, [station]: { ...washer, progress: step.progress } },
+          washers: put(washer.dishes, step.progress),
         },
       );
     }
     return event(state, `${actor.name}이(가) 그릇을 깨끗이 씻었습니다.`, {
       actors: patchActor(state, actorId, next),
-      washers: {
-        ...state.washers,
-        [station]: {
-          dish: { ...washer.dish, status: "clean", content: null },
-          progress: 0,
-        },
-      },
+      washers: put(
+        washer.dishes.map((dish, index) =>
+          index === washing ? { ...dish, status: "clean" as DishStatus, content: null } : dish,
+        ),
+        0,
+      ),
     });
   }
-  // 씻은 그릇 꺼내기.
-  if (!canCarry(actor)) {
-    return refuse(state, actor, "씻은 그릇을 들 수 없습니다.");
+
+  // 더러운 그릇 넣기. 모든 슬라임이 할 수 있다.
+  const dirty = dishIndex(actor, (dish) => dish.status === "dirty");
+  if (dirty >= 0 && washer.dishes.length < dishConfig.washerCapacity) {
+    return event(state, `${actor.name}이(가) 더러운 그릇을 세척기에 놓았습니다.`, {
+      actors: patchActor(state, actorId, {
+        ...spend(actor, actionCost.carry, "CARRYING"),
+        carrying: actor.carrying.filter((_, index) => index !== dirty),
+      }),
+      washers: put([...washer.dishes, actor.carrying[dirty] as Dish], washer.progress),
+    });
   }
-  return event(state, `${actor.name}이(가) 씻은 그릇을 꺼냈습니다.`, {
-    actors: patchActor(state, actorId, {
-      ...spend(actor, actionCost.carry, "CARRYING"),
-      carrying: [...actor.carrying, washer.dish],
-    }),
-    washers: { ...state.washers, [station]: { dish: null, progress: 0 } },
-  });
+
+  // 씻은 그릇 꺼내기.
+  if (washed >= 0 && canCarry(actor)) {
+    return event(state, `${actor.name}이(가) 씻은 그릇을 꺼냈습니다.`, {
+      actors: patchActor(state, actorId, {
+        ...spend(actor, actionCost.carry, "CARRYING"),
+        carrying: [...actor.carrying, washer.dishes[washed]],
+      }),
+      washers: put(washer.dishes.filter((_, index) => index !== washed), washer.progress),
+    });
+  }
+
+  // 손에 든 그릇을 넣으러 온 쪽이 먼저다. 자리가 없다는 말이 더 쓸모 있다.
+  if (dirty >= 0) return refuse(state, actor, "세척대가 가득 찼습니다.");
+  if (washing >= 0) {
+    return refuse(
+      state,
+      actor,
+      `${elementNames(stationElements.wash)} 슬라임만 그릇을 씻을 수 있습니다.`,
+    );
+  }
+  if (washed >= 0) return refuse(state, actor, "씻은 그릇을 들 수 없습니다.");
+  return refuse(state, actor, "세척할 더러운 그릇이 없습니다.");
 }
 
 function atIncinerator(

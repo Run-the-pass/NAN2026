@@ -19,7 +19,6 @@ import {
   tileCenter,
   actionCost,
   maxActionPoints,
-  stageRank,
   upcomingOrders,
   RUSH_TURNS_LEFT,
   INGREDIENT_MAX,
@@ -67,8 +66,8 @@ import { gameMusicSource } from "./music-source";
 import { GameSoundEffects } from "./SoundEffects";
 import StageSelect from "./StageSelect";
 import Dialogue from "./Dialogue";
-import { openingLines, stageOpeningLine, tutorialCompleteLines, type DialogueFocus } from "./dialogue-script";
-import { activeActorIds, finishTutorial, onTutorialStage, prepareTutorialState, tutorialCue, tutorialDone } from "./tutorial";
+import { actionPointLines, earthInfoLines, finalLines, openingLines, platedFoodLines, stageOpeningLines, tutorialCompleteLines, waterArrivalLines, type DialogueFocus } from "./dialogue-script";
+import { activeActorIds, finishTutorial, onTutorialStage, platedIntroReady, prepareTutorialState, roundRank, tutorialCue, tutorialDone, waterIntroReady } from "./tutorial";
 import { readProgress, withResult, writeProgress, type StageProgress } from "./progress";
 
 type View = {
@@ -210,6 +209,7 @@ const foodImages: Record<ItemId, string> = {
   "fried-potato": "/food/fried-potato.png",
   "fried-mushroom": "/food/fried-mushroom.png",
   "grilled-mushroom": "/food/grilled-mushroom.png",
+  "roasted-potato": "/food/roasted-potato.png",
   salad: "/food/salad.png",
 };
 
@@ -567,7 +567,7 @@ function stationHolding(state: GameState, id: StationInstanceId): Carried | null
   const type = stationType(id);
   if (type === "table") return state.tables[id]![0] ?? null;
   if (isCooktop(type)) return state.stoves[id]![0] ?? null;
-  if (type === "washer") return state.washers[id]!.dish;
+  if (type === "washer") return state.washers[id]!.dishes[0] ?? null;
   if (type === "blender") {
     const blender = state.blenders[id]!;
     return blender.food ?? blender.fruit;
@@ -698,9 +698,19 @@ export default function Game() {
   const [banner, setBanner] = useState<keyof typeof bannerImages | null>(null);
   // 아르바이트를 시작할 때 한 번 나오는 인사. 이게 떠 있는 동안은 조작을 막는다.
   const [intro, setIntro] = useState(false);
+  const [earthInfo, setEarthInfo] = useState(false);
+  const [earthInfoComplete, setEarthInfoComplete] = useState(false);
+  const [actionPointInfo, setActionPointInfo] = useState(false);
+  const [actionPointInfoComplete, setActionPointInfoComplete] = useState(false);
+  const [waterIntro, setWaterIntro] = useState(false);
+  const [waterIntroComplete, setWaterIntroComplete] = useState(false);
+  const [platedIntro, setPlatedIntro] = useState(false);
+  const [platedIntroComplete, setPlatedIntroComplete] = useState(false);
   const [tutorialOutro, setTutorialOutro] = useState(false);
   const [tutorialComplete, setTutorialComplete] = useState(false);
   const [stageIntro, setStageIntro] = useState(false);
+  const [finalOutro, setFinalOutro] = useState(false);
+  const [finalComplete, setFinalComplete] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   // 대사 중에는 장면을 멈추지 않는다. 멈추면 뒤에 보여야 할 주방이 검게
   // 남는다. 조작은 대사 화면이 덮고 있어 어차피 닿지 않는다.
@@ -738,7 +748,11 @@ export default function Game() {
 
   // 튜토리얼이 지금 짚어야 할 자리. 지도에 표시를 그려야 해서 ref로도 둔다.
   const cue =
-    state && state.phase === "playing" && !intro && !tutorialOutro && onTutorialStage(state)
+    state && state.phase === "playing" && !intro && !earthInfo && !actionPointInfo && !waterIntro &&
+      !platedIntro && !tutorialOutro && onTutorialStage(state) &&
+      (selectedActor !== "earth-1" || earthInfoComplete) &&
+      (!waterIntroReady(state) || waterIntroComplete) &&
+      (!platedIntroReady(state) || platedIntroComplete)
       ? tutorialCue(state, selectedActor, currentStage(state).turnLimit)
       : null;
   const cueStation = cue?.station ?? null;
@@ -752,6 +766,35 @@ export default function Game() {
     setTutorialOutro(true);
     if (state.phase === "playing") setState(finishTutorial(state));
   }, [state, tutorialComplete]);
+
+  useEffect(() => {
+    if (!state || !onTutorialStage(state) || selectedActor !== "earth-1" || earthInfoComplete) return;
+    setEarthInfo(true);
+  }, [state, selectedActor, earthInfoComplete]);
+
+  useEffect(() => {
+    if (
+      !state || !onTutorialStage(state) || actionPointInfoComplete ||
+      state.actors["earth-1"]?.actionPoints !== 0 ||
+      state.turnsLeft !== currentStage(state).turnLimit
+    ) return;
+    setActionPointInfo(true);
+  }, [state, actionPointInfoComplete]);
+
+  useEffect(() => {
+    if (!state || !waterIntroReady(state) || waterIntroComplete) return;
+    setWaterIntro(true);
+  }, [state, waterIntroComplete]);
+
+  useEffect(() => {
+    if (!state || !platedIntroReady(state) || platedIntroComplete) return;
+    setPlatedIntro(true);
+  }, [state, platedIntroComplete]);
+
+  useEffect(() => {
+    if (!state || state.phase !== "won" || !isLastStage(state) || finalComplete) return;
+    setFinalOutro(true);
+  }, [state, finalComplete]);
 
   const showDialogueFocus = useCallback((focus: DialogueFocus | undefined) => {
     dialogueActorRef.current = focus === "earth" ? "earth-1" : null;
@@ -771,8 +814,8 @@ export default function Game() {
   const closingSoon = state?.phase === "playing" && state.turnsLeft <= RUSH_TURNS_LEFT;
   // 인사가 끝난 뒤에 "영업 시작"을 띄운다. 대사 위에 겹쳐 뜨면 둘 다 묻힌다.
   useEffect(() => {
-    if (startedStageId && !intro) setBanner("start");
-  }, [startedStageId, intro]);
+    if (startedStageId && !intro && !stageIntro) setBanner("start");
+  }, [startedStageId, intro, stageIntro]);
   useEffect(() => {
     if (closingSoon) setBanner("closing");
   }, [closingSoon]);
@@ -815,28 +858,30 @@ export default function Game() {
       const kept = withResult(
         current,
         currentStage(state).id,
-        state.phase === "won" ? stageRank(state) : 0,
+        roundRank(state),
       );
       writeProgress(kept);
       return kept;
     });
     const counts = metrics.current;
-    fetch("/api/sessions", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        seed: roundSeed.current,
-        result: state.phase,
-        booksSubmitted: state.filled,
-        goal: state.goal,
-        // 턴제라 벽시계 시간이 없다. 소모한 턴 수를 그대로 보낸다.
-        elapsedMs: currentStage(state).turnLimit - state.turnsLeft,
-        voiceCommands: 0,
-        buttonCommands: counts.buttonCommands,
-        voiceFailures: 0,
-        avgConfidence: null,
-      }),
-    }).catch(() => {});
+    if (process.env.NEXT_PUBLIC_STATIC_EXPORT !== "true") {
+      fetch("/api/sessions", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          seed: roundSeed.current,
+          result: state.phase,
+          booksSubmitted: state.filled,
+          goal: state.goal,
+          // 턴제라 벽시계 시간이 없다. 소모한 턴 수를 그대로 보낸다.
+          elapsedMs: currentStage(state).turnLimit - state.turnsLeft,
+          voiceCommands: 0,
+          buttonCommands: counts.buttonCommands,
+          voiceFailures: 0,
+          avgConfidence: null,
+        }),
+      }).catch(() => {});
+    }
   }, [state]);
 
   useEffect(() => {
@@ -1541,11 +1586,18 @@ export default function Game() {
           setInspected(null);
         });
 
-        // 선택한 슬라임이 갈 수 있는 칸 표시. 클릭 판정은 바닥 핸들러가 한다.
-        const moveMarks = this.add.graphics().setDepth(3);
-        // 설비 상호작용 표시는 설비 그림 위에 그린다. 바닥에 깔면 도마처럼
-        // 칸을 덮는 기구에서는 테두리가 그림에 가려 보이지 않는다.
-        const hitMarks = this.add.graphics().setDepth(700);
+        // 이동·상호작용 표시도 다른 그림들과 같은 y 순서를 탄다. 한 그래픽에
+        // 몰아 그리면 깊이가 하나뿐이라 아래쪽 슬라임·설비를 덮어 버린다.
+        // 칸 줄(y)마다 따로 두고, 같은 줄에서는 설비 그림(최대 y+6)보다
+        // 앞에 오도록 y+7에 놓는다.
+        const marks = new Map<number, Phaser.GameObjects.Graphics>();
+        const markAt = (y: number) => {
+          const found = marks.get(y);
+          if (found) return found;
+          const made = this.add.graphics().setDepth(y + 7);
+          marks.set(y, made);
+          return made;
+        };
         // 튜토리얼이 짚는 자리. 깜박여서 눈에 먼저 들어오게 한다.
         const coachMarks = this.add.graphics().setDepth(710);
         this.tweens.add({
@@ -1663,8 +1715,7 @@ export default function Game() {
                   selectedActorRef.current !== actorId,
               );
             }
-            moveMarks.clear();
-            hitMarks.clear();
+            for (const layer of marks.values()) layer.clear();
             coachMarks.clear();
             const coached = coachRef.current
               ? stationInstances.find(
@@ -1696,7 +1747,7 @@ export default function Game() {
               for (const tile of moveOptions(current, selected)) {
                 const { x, y } = tileCenter(tile);
                 const far = tile.cost > actionCost.move;
-                moveMarks
+                markAt(y)
                   .fillStyle(0xffe9b8, far ? 0.12 : 0.22)
                   .fillRect(x - 24, y - 24, 48, 48)
                   .lineStyle(2, 0xffe9b8, far ? 0.5 : 0.85)
@@ -1714,7 +1765,8 @@ export default function Game() {
                 const y = (first.y + last.y) / 2;
                 const width = Math.abs(last.x - first.x) + TILE_SIZE - 8;
                 const height = Math.abs(last.y - first.y) + TILE_SIZE - 8;
-                hitMarks
+                // 여러 칸을 차지하는 기구는 제일 아래 칸을 기준으로 삼는다.
+                markAt(Math.max(first.y, last.y))
                   .lineStyle(3, ok ? 0x8ed07a : 0xd75f4c, 0.95)
                   .strokeRect(x - width / 2, y - height / 2, width, height)
                   .lineStyle(1, 0x1c0f07, 0.5)
@@ -1739,14 +1791,12 @@ export default function Game() {
                   : type === "washer"
                     ? washer!.progress > 0
                       ? `세척 ${washer!.progress}/${actionCost.wash}`
-                      : washer!.dish
-                        ? washer!.dish.status === "clean" ? "세척 완료" : "세척 대기"
-                        : ""
-                    : type === "dish-return"
-                      ? current.dishReturns[id]!.length
-                        ? `${current.dishReturns[id]!.length}개`
-                        : ""
-                      : "";
+                      : washer!.dishes.some((dish) => dish.status === "clean")
+                        ? "세척 완료"
+                        : washer!.dishes.length
+                          ? "세척 대기"
+                          : ""
+                    : "";
               this.stations[id].setText(label);
               // 재고가 있는 설비만 게이지를 띄운다.
               const stock = isBoxStation(type)
@@ -1755,7 +1805,11 @@ export default function Game() {
                   ? ([current.dishRacks[id]!.length, dishConfig.rackCapacity] as const)
                   : type === "trash"
                     ? ([incinerator!.count, incineratorConfig.capacity] as const)
-                    : null;
+                    : type === "dish-return"
+                      ? ([current.dishReturns[id]!.length, dishConfig.returnCapacity] as const)
+                      : type === "washer"
+                        ? ([washer!.dishes.length, dishConfig.washerCapacity] as const)
+                        : null;
               const spot = tileCenter(tiles[0]);
               if (stock) {
                 this.drawGauge(id, spot.x, spot.y - TILE_SIZE / 2 - 6, stock[0], stock[1]);
@@ -1781,7 +1835,7 @@ export default function Game() {
                   type === "table"
                     ? current.tables[id]![0]
                     : type === "washer"
-                      ? current.washers[id]!.dish
+                      ? current.washers[id]!.dishes[0]
                       : current.stoves[id]![0];
                 const art = held ? carriedArt(held) : null;
                 for (const [slot, key] of [
@@ -1806,7 +1860,7 @@ export default function Game() {
                   : type === "blender"
                     ? blenderStage(current.blenders[id]!)
                     : type === "washer"
-                      ? `${current.washers[id]!.dish?.status ?? "-"}`
+                      ? current.washers[id]!.dishes.map((dish) => dish.status).join() || "-"
                       : type === "trash"
                         ? `${current.incinerators[id]!.count}`
                         : type === "submission"
@@ -1829,7 +1883,10 @@ export default function Game() {
                 const stage = blenderStage(current.blenders[id]!);
                 if (stage === "ready") this.burst(spot.x, y, 0x7fd4ff, 10);
                 if (stage === "done") this.burst(spot.x, y, 0xff8fc4, 16, 130);
-              } else if (type === "washer" && current.washers[id]!.dish?.status === "clean") {
+              } else if (
+                type === "washer" &&
+                current.washers[id]!.dishes.some((dish) => dish.status === "clean")
+              ) {
                 this.burst(spot.x, y, 0x9fe8ff, 14);
               } else if (type === "trash" && current.incinerators[id]!.count === 0) {
                 this.burst(spot.x, y, 0xffa23c, 16, 140);
@@ -1898,8 +1955,18 @@ export default function Game() {
     setSelectedActor(null);
     setInspected(null);
     setSettingsOpen(false);
+    setEarthInfo(false);
+    setEarthInfoComplete(id !== "0");
+    setActionPointInfo(false);
+    setActionPointInfoComplete(id !== "0");
+    setWaterIntro(false);
+    setWaterIntroComplete(id !== "0");
+    setPlatedIntro(false);
+    setPlatedIntroComplete(id !== "0");
     setTutorialOutro(false);
     setStageIntro(false);
+    setFinalOutro(false);
+    setFinalComplete(false);
     setTutorialComplete(id !== "0");
     setState(next);
     setSquad(list);
@@ -1915,7 +1982,7 @@ export default function Game() {
       const guided = onTutorialStage(next)
         ? tutorialCue(next, null, currentStage(next).turnLimit)?.actor
         : null;
-      const first = [guided, ...activeActorIds(next)].find(
+      const first = [...(guided ? [guided] : []), ...activeActorIds(next)].find(
         (id) => (next.actors[id]?.actionPoints ?? 0) > 0,
       );
       setSelectedActor(first ?? null);
@@ -1933,6 +2000,11 @@ export default function Game() {
     if (left > 0 || had !== selectedActor) return;
     if (tutorialDone(state)) return;
     if (
+      onTutorialStage(state) && !actionPointInfoComplete &&
+      state.actors["earth-1"]?.actionPoints === 0 &&
+      state.turnsLeft === currentStage(state).turnLimit
+    ) return;
+    if (
       onTutorialStage(state) &&
       tutorialCue(state, selectedActor, currentStage(state).turnLimit)?.endTurn
     ) {
@@ -1947,7 +2019,7 @@ export default function Game() {
     );
     if (next) setSelectedActor(next);
     else finishTurn();
-  }, [state, selectedActor, squad, finishTurn]);
+  }, [state, selectedActor, squad, finishTurn, actionPointInfoComplete]);
 
   useEffect(() => {
     if (!squad) return;
@@ -2034,8 +2106,12 @@ export default function Game() {
     (actorId) => !skippedActors.current.has(actorId) &&
       (state.actors[actorId]?.actionPoints ?? 0) > 0,
   ).length;
-  const rank = state.phase === "won" ? stageRank(state) : 0;
+  const rank = roundRank(state);
   const turnAngle = 360 * (1 - state.turnsLeft / currentStage(state).turnLimit);
+  const coachedStation = cue?.station
+    ? stationInstances.find((one) => one.id === cue.station || one.type === cue.station)
+    : null;
+  const coachTarget = coachedStation?.tiles[0] ?? (cue?.actor ? state.actors[cue.actor] : null);
 
   return (
     <main className="stage">
@@ -2077,6 +2153,58 @@ export default function Game() {
           />
         )}
 
+        {earthInfo && (
+          <Dialogue
+            key="tutorial-earth-info"
+            lines={earthInfoLines}
+            portrait={slimePortrait}
+            onFocusChange={showDialogueFocus}
+            onDone={() => {
+              showDialogueFocus(undefined);
+              setEarthInfo(false);
+              setEarthInfoComplete(true);
+            }}
+          />
+        )}
+
+        {actionPointInfo && (
+          <Dialogue
+            key="tutorial-action-points"
+            lines={actionPointLines}
+            portrait={slimePortrait}
+            narration
+            onDone={() => {
+              setActionPointInfo(false);
+              setActionPointInfoComplete(true);
+              finishTurn();
+            }}
+          />
+        )}
+
+        {waterIntro && (
+          <Dialogue
+            key="tutorial-water-arrival"
+            lines={waterArrivalLines}
+            portrait={slimePortrait}
+            onDone={() => {
+              setWaterIntro(false);
+              setWaterIntroComplete(true);
+            }}
+          />
+        )}
+
+        {platedIntro && (
+          <Dialogue
+            key="tutorial-plated-food"
+            lines={platedFoodLines}
+            portrait={slimePortrait}
+            onDone={() => {
+              setPlatedIntro(false);
+              setPlatedIntroComplete(true);
+            }}
+          />
+        )}
+
         {tutorialOutro && (
           <Dialogue
             key="tutorial-complete"
@@ -2094,9 +2222,25 @@ export default function Game() {
         {stageIntro && (
           <Dialogue
             key={`stage-${currentStage(state).id}`}
-            lines={[stageOpeningLine(currentStage(state).id)]}
+            lines={stageOpeningLines(currentStage(state).id)}
             portrait={slimePortrait}
-            onDone={() => setStageIntro(false)}
+            onFocusChange={showDialogueFocus}
+            onDone={() => {
+              showDialogueFocus(undefined);
+              setStageIntro(false);
+            }}
+          />
+        )}
+
+        {finalOutro && (
+          <Dialogue
+            key="final-outro"
+            lines={finalLines}
+            portrait={slimePortrait}
+            onDone={() => {
+              setFinalOutro(false);
+              setFinalComplete(true);
+            }}
           />
         )}
 
@@ -2132,6 +2276,24 @@ export default function Game() {
             portrait={slimePortrait}
             passive
           />
+        )}
+
+        {cue && coachTarget && !cue.endTurn && (
+          <span className="coach-map" aria-hidden>
+            <i className="coach-map-stage">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                className="coach-map-arrow"
+                data-up={coachTarget.row <= 1 ? "" : undefined}
+                src="/ui/tutorial-arrow.png"
+                alt=""
+                style={{
+                  left: `${((coachTarget.col + .5) / MAP_WIDTH) * 100}%`,
+                  top: `${((coachTarget.row + .5) / MAP_HEIGHT) * 100}%`,
+                }}
+              />
+            </i>
+          </span>
         )}
 
         <div className="hud-bottom">
@@ -2200,7 +2362,8 @@ export default function Game() {
 
       </div>
 
-      {state.phase !== "playing" && !tutorialOutro && (
+      {state.phase !== "playing" && !tutorialOutro && !finalOutro &&
+        !(state.phase === "won" && isLastStage(state) && !finalComplete) && (
         <section
           className="result-overlay"
           role="dialog"
