@@ -235,7 +235,7 @@ export function tutorialCue(
       return waitForTurn(state, WATER, {
         id: "TAKE_CLEAN_DISH",
         speaker: "water",
-        text: "퐁당이를 클릭하고, 그릇 상자를 눌러 그릇을 꺼내주세요. 물 슬라임 퐁당이는 그릇과 세척을 맡아요.",
+        text: "퐁당이를 클릭하고, 그릇 상자를 눌러 그릇을 꺼내주세요. 퐁당이는 그릇과 세척을 맡아요.",
         station: stationIdOf("dish-rack"),
         actor: WATER,
       });

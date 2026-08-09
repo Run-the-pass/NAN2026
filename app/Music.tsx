@@ -112,10 +112,12 @@ export function MusicSettings({
   variant,
   open: controlledOpen,
   onOpenChange,
+  onRetry,
 }: {
   variant: "home" | "game";
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
+  onRetry?: () => void;
 }) {
   const [internalOpen, setInternalOpen] = useState(false);
   const open = controlledOpen ?? internalOpen;
@@ -207,6 +209,11 @@ export function MusicSettings({
             onToggle={() => saveSettings({ ...settings, sfxEnabled: !settings.sfxEnabled })}
             onVolume={(sfxVolume) => saveSettings({ ...settings, sfxVolume })}
           />
+          {onRetry && (
+            <button type="button" className="settings-retry-button art-button" onClick={onRetry}>
+              재도전
+            </button>
+          )}
           {variant === "game" && (
             <Link className="settings-home-link art-button" href="../">
               홈 화면으로

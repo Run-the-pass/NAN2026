@@ -21,7 +21,7 @@ function ModePlate({
     mode.id === "shift"
       ? `별 ${stars.have} / ${stars.max}`
       : open
-        ? "준비 중"
+        ? "80턴 · 주문마다 +5턴"
         : "아르바이트를 끝내면 열립니다";
   return (
     <button
@@ -106,8 +106,9 @@ export default function StageSelect({
               key={mode.id}
               mode={mode}
               progress={progress}
-              onPick={() => {
-                if (mode.id === "shift") setShowStages(true);
+              onPick={(id) => {
+                if (id === "shift") setShowStages(true);
+                else onPick(id);
               }}
             />
           ))}

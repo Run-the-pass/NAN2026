@@ -9,11 +9,7 @@ const termTones = new Map<string, DialogueTone>([
   ),
   ...[
     "점장 슬라임",
-    ...Object.values(slimeTypes).map(({ name }) => `${name} 슬라임`),
-    "푸름이",
-    "퐁당이",
-    "이글이",
-    "번쩍이",
+    ...Object.values(slimeTypes).map(({ name }) => name),
   ].map((term) => [term, "slime"] as const),
 ]);
 const termPattern = new RegExp(

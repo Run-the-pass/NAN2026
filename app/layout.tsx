@@ -3,21 +3,35 @@ import "./globals.css";
 import { GlobalSoundEffects } from "./SoundEffects";
 import Splash from "./Splash";
 
+const description = "네 슬라임과 함께 제한된 턴 안에 주문을 완성하는 주방 운영 게임";
+
 export const metadata: Metadata = {
   metadataBase: new URL(
     process.env.NEXT_PUBLIC_SITE_URL ??
-      "https://nan2026-slime-shift.silver-bat-5647.chatgpt.site",
+      "https://run-the-pass.github.io/NAN2026/",
   ),
   title: "슬라임 레스토랑",
-  description: "NAN 2026 판타지 슬라임 레스토랑 운영 게임",
+  description,
+  alternates: { canonical: "/" },
   openGraph: {
     title: "슬라임 레스토랑",
-    description: "슬라임을 지휘해 3분 안에 주문 5건을 완료하세요.",
+    description,
+    url: "/",
+    siteName: "슬라임 레스토랑",
+    locale: "ko_KR",
+    type: "website",
+    images: [{
+      url: "/og.png",
+      width: 1731,
+      height: 909,
+      alt: "슬라임 레스토랑과 네 속성 슬라임",
+    }],
   },
   twitter: {
-    card: "summary",
+    card: "summary_large_image",
     title: "슬라임 레스토랑",
-    description: "슬라임을 지휘해 3분 안에 주문 5건을 완료하세요.",
+    description,
+    images: ["/og.png"],
   },
   icons: {
     icon: "/favicon.svg",

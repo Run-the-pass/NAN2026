@@ -9,6 +9,7 @@ import {
   MAP_HEIGHT,
   KITCHEN_ROWS,
   initialState,
+  initialEndlessState,
   interactActor,
   isBesideStation,
   moveActor,
@@ -309,7 +310,7 @@ const stationPanelInfo: Record<
   oven: {
     steps: [
       { art: "/food/mushroom.png", text: "버섯", tip: "화로에 올릴 수 있는 재료입니다. 올리고 꺼내는 것은 누구나 합니다." },
-      { art: "/stations/oven.png", text: "불 슬라임이 굽기", tip: "불 슬라임만 구울 수 있습니다. (행동력 1)" },
+      { art: "/stations/oven.png", text: "이글이가 굽기", tip: "이글이만 구울 수 있습니다. (행동력 1)" },
       { art: "/food/plate.png", text: "그릇에 담기", tip: "깨끗한 그릇을 들고 오면 다 구운 음식이 담깁니다." },
     ],
   },
@@ -322,21 +323,21 @@ const stationPanelInfo: Record<
   fryer: {
     steps: [
       { art: "/food/potato.png", text: "감자·버섯", tip: "튀김기에 넣을 수 있는 재료입니다. 넣고 꺼내는 것은 누구나 합니다." },
-      { art: "/stations/fryer.png", text: "번개 슬라임이 튀기기", tip: "번개 슬라임만 튀길 수 있습니다. (행동력 1)" },
+      { art: "/stations/fryer.png", text: "번쩍이가 튀기기", tip: "번쩍이만 튀길 수 있습니다. (행동력 1)" },
       { art: "/food/plate.png", text: "그릇에 담기", tip: "깨끗한 그릇을 들고 오면 다 튀긴 음식이 담깁니다." },
     ],
   },
   blender: {
     steps: [
       { art: "/food/banana.png", text: "과일 넣기", tip: "과일을 먼저 넣어야 합니다. 한 번 넣은 과일은 다시 뺄 수 없습니다. (행동력 1)" },
-      { art: "/ui/water.png", text: "물 슬라임이 물", tip: "과일이 든 뒤에만 채울 수 있습니다. 물 슬라임만 합니다. (행동력 1)" },
-      { art: "/stations/blender-full.png", text: "번개 슬라임이 가동", tip: "번개 슬라임만 돌릴 수 있습니다. 스무디는 그릇 없이 컵째 나갑니다. (행동력 1)" },
+      { art: "/ui/water.png", text: "퐁당이가 물 공급", tip: "과일이 든 뒤에만 채울 수 있습니다. 퐁당이만 합니다. (행동력 1)" },
+      { art: "/stations/blender-full.png", text: "번쩍이가 가동", tip: "번쩍이만 돌릴 수 있습니다. 스무디는 그릇 없이 컵째 나갑니다. (행동력 1)" },
     ],
   },
   stove: {
     steps: [
       { art: "/food/potato.png", text: "감자·당근·양배추", tip: "도마에서 썰 수 있는 재료입니다. 올리고 꺼내는 것은 누구나 합니다." },
-      { art: KNIFE_ART, text: "땅 슬라임이 썰기", tip: `땅 슬라임만 썰 수 있고 ${actionCost.chop}번 썰어야 다 됩니다.` },
+      { art: KNIFE_ART, text: "푸름이가 썰기", tip: `푸름이만 썰 수 있고 ${actionCost.chop}번 썰어야 다 됩니다.` },
       { art: "/food/plate.png", text: "그릇에 담기", tip: "깨끗한 그릇을 들고 오면 다 썬 재료가 담깁니다." },
     ],
   },
@@ -349,7 +350,7 @@ const stationPanelInfo: Record<
   trash: {
     steps: [
       { art: "/stations/trash-full.png", text: "쓰레기 투입", tip: `최대 ${incineratorConfig.capacity}개까지 넣습니다. 빈 그릇은 버릴 수 없습니다. (행동력 1)` },
-      { art: "/stations/trash.png", text: "불 슬라임이 소각", tip: "불 슬라임만 태워 비울 수 있습니다. (행동력 1)" },
+      { art: "/stations/trash.png", text: "이글이가 소각", tip: "이글이만 태워 비울 수 있습니다. (행동력 1)" },
     ],
   },
   "dish-rack": {
@@ -358,7 +359,7 @@ const stationPanelInfo: Record<
   washer: {
     steps: [
       { art: "/food/dirty-plate.png", text: "더러운 그릇 넣기", tip: "더러운 그릇을 맡깁니다. 누구나 넣을 수 있습니다. (행동력 1)" },
-      { art: "/stations/washer-water.png", text: "물 슬라임이 세척", tip: `물 슬라임만 씻을 수 있고 ${actionCost.wash}번 씻어야 다 됩니다.` },
+      { art: "/stations/washer-water.png", text: "퐁당이가 세척", tip: `퐁당이만 씻을 수 있고 ${actionCost.wash}번 씻어야 다 됩니다.` },
     ],
   },
   table: {
@@ -765,6 +766,9 @@ export default function Game() {
 
   const stateRef = useRef(state);
   const selectedActorRef = useRef(selectedActor);
+  // 행동력을 다 쓴 슬라임도 상세 정보를 볼 수 있어야 한다. 수동으로 고른
+  // 경우만 자동 넘김을 한 번 멈추고, 실제 행동 소진 뒤 자동 넘김은 유지한다.
+  const manuallySelectedSpentActor = useRef<ActorId | null>(null);
   // 캔버스가 이름표를 띄울지 판단하는 데 쓴다.
   const inspectedRef = useRef(inspected);
   // Space로 넘긴 슬라임은 이번 턴의 자동 선택에서 다시 부르지 않는다.
@@ -789,6 +793,15 @@ export default function Game() {
   useEffect(() => {
     selectedActorRef.current = selectedActor;
   }, [selectedActor]);
+
+  const chooseActor = useCallback((actorId: ActorId) => {
+    setSelectedActor((current) => {
+      const next = current === actorId ? null : actorId;
+      manuallySelectedSpentActor.current =
+        next && (stateRef.current?.actors[next]?.actionPoints ?? 0) === 0 ? next : null;
+      return next;
+    });
+  }, []);
 
   useEffect(() => {
     inspectedRef.current = inspected;
@@ -856,7 +869,7 @@ export default function Game() {
   }, [state, platedIntroComplete]);
 
   useEffect(() => {
-    if (!state || state.phase !== "won" || !isLastStage(state) || finalComplete) return;
+    if (!state || state.mode === "endless" || state.phase !== "won" || !isLastStage(state) || finalComplete) return;
     setFinalOutro(true);
   }, [state, finalComplete]);
 
@@ -925,19 +938,21 @@ export default function Game() {
   useEffect(() => {
     if (!state || state.phase === "playing" || savedRef.current) return;
     savedRef.current = true;
-    // 최고 별만 남긴다. 못 깬 판도 0으로 적어야 다음 칸이 열리지 않는다.
-    setProgress((current) => {
-      const stars = withResult(
-        current.stars,
-        currentStage(state).id,
-        roundRank(state),
-      );
-      const kept = { stars };
-      writeProgress(kept);
-      return kept;
-    });
+    if (state.mode === "shift") {
+      // 최고 별만 남긴다. 못 깬 판도 0으로 적어야 다음 칸이 열리지 않는다.
+      setProgress((current) => {
+        const stars = withResult(
+          current.stars,
+          currentStage(state).id,
+          roundRank(state),
+        );
+        const kept = { stars };
+        writeProgress(kept);
+        return kept;
+      });
+    }
     const counts = metrics.current;
-    if (process.env.NEXT_PUBLIC_STATIC_EXPORT !== "true") {
+    if (state.mode === "shift" && process.env.NEXT_PUBLIC_STATIC_EXPORT !== "true") {
       fetch("/api/sessions", {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -1228,7 +1243,7 @@ export default function Game() {
           const { x, y } = sprite.body;
           sprite.body.setDepth(dialogueActorRef.current === actorId ? 9001 : y);
           sprite.selected.setPosition(x, y + 14).setDepth(y - 1);
-          sprite.nameTag.setPosition(x, y + 26).setDepth(y + 6);
+          sprite.nameTag.setPosition(x, y + 26).setDepth(1000);
           // 위아래로 살랑이게 한다. 몸을 따라다녀야 해서 tween 대신 계산한다.
           const markY = y - 30 + Math.sin(this.time.now / 320) * 3;
           sprite.idleMark.setPosition(x + 18, markY).setDepth(y + 3);
@@ -1374,7 +1389,9 @@ export default function Game() {
               .setDepth(y);
             nudge(under, "/stations/table.png");
           }
-          const art = this.add.image(x, y - lift, stationArt[type]).setDepth(y + 1);
+          const art = this.add
+            .image(x, y - lift, stationArt[type])
+            .setDepth(y + (style.onTable ? 2 : 1));
           fit(art);
           nudge(art, stationArt[type]);
           if (type === "blender") {
@@ -1464,7 +1481,7 @@ export default function Game() {
               resolution: RENDER_SCALE,
             })
             .setOrigin(0.5, 0)
-            .setDepth(y + 6)
+            .setDepth(1000)
             .setVisible(false);
           this.add
             .zone(x, y, width, height)
@@ -1555,9 +1572,7 @@ export default function Game() {
                 inputEvent.stopPropagation();
                 if (!fromCanvas(pointer)) return;
                 if (!pointer.leftButtonDown()) return;
-                setSelectedActor((selected) =>
-                  selected === actorId ? null : actorId,
-                );
+                chooseActor(actorId);
               },
             );
           // 손에 든 것 표시 칸. 한 번에 하나만 들지만 배열로 두면 표시
@@ -1663,15 +1678,13 @@ export default function Game() {
           setInspected(null);
         });
 
-        // 이동·상호작용 표시도 다른 그림들과 같은 y 순서를 탄다. 한 그래픽에
-        // 몰아 그리면 깊이가 하나뿐이라 아래쪽 슬라임·설비를 덮어 버린다.
-        // 칸 줄(y)마다 따로 두고, 같은 줄에서는 설비 그림(최대 y+6)보다
-        // 앞에 오도록 y+7에 놓는다.
+        // 하이라이트는 테이블 상판보다 앞, 상판 위 기구·음식보다 뒤에 둔다.
+        // 칸 줄(y)마다 따로 둬 아래쪽 슬라임의 y 정렬은 그대로 지킨다.
         const marks = new Map<number, Phaser.GameObjects.Graphics>();
         const markAt = (y: number) => {
           const found = marks.get(y);
           if (found) return found;
-          const made = this.add.graphics().setDepth(y + 7);
+          const made = this.add.graphics().setDepth(y + 1.5);
           marks.set(y, made);
           return made;
         };
@@ -1819,18 +1832,19 @@ export default function Game() {
             // 거절당하는지로 판단해서, 화면이 규칙을 따로 흉내내지 않는다.
             this.usable = {};
             if (selected) {
+              const actor = current.actors[selected];
+              const moveColor = actor ? typeColors[actor.typeId] : 0xffe9b8;
               // 번개 슬라임은 행동력이 2라 두 칸까지 닿는다. 한 칸 더 가는
               // 자리는 조금 옅게 그려 몇 칸짜리인지 눈으로 알게 한다.
               for (const tile of tutorialMoveOptions(current, selected, tutorialCueRef.current)) {
                 const { x, y } = tileCenter(tile);
                 const far = tile.cost > actionCost.move;
                 markAt(y)
-                  .fillStyle(0xffe9b8, far ? 0.12 : 0.22)
+                  .fillStyle(moveColor, far ? 0.12 : 0.22)
                   .fillRect(x - 24, y - 24, 48, 48)
-                  .lineStyle(2, 0xffe9b8, far ? 0.5 : 0.85)
+                  .lineStyle(2, moveColor, far ? 0.5 : 0.85)
                   .strokeRect(x - 24, y - 24, 48, 48);
               }
-              const actor = current.actors[selected];
               for (const station of actor && actor.actionPoints > 0 ? stationInstances : []) {
                 if (!actor || !isBesideStation(actor, station)) continue;
                 if (!tutorialAllowsStation(current, tutorialCueRef.current, selected, station.id)) continue;
@@ -2000,7 +2014,7 @@ export default function Game() {
       view.current = null;
       game.destroy(true);
     };
-  }, [squad]);
+  }, [squad, chooseActor]);
 
   // 저장된 별은 브라우저에만 있어 첫 렌더 뒤에 읽는다.
   useEffect(() => {
@@ -2013,7 +2027,7 @@ export default function Game() {
   useEffect(() => {
     const words = [
       ...Object.values(stationLabels),
-      ...allTypeIds.map((typeId) => `${slimeTypes[typeId].name} 슬라임`),
+      ...allTypeIds.map((typeId) => slimeTypes[typeId].name),
       ...Object.values(workStatusLabels),
       "1234567890호개세척완료대기중",
     ].join("");
@@ -2022,12 +2036,15 @@ export default function Game() {
 
   function startRound(list: SlimeTypeId[], id: string = stageId ?? "0") {
     const index = Math.max(0, stageIndexOf(id));
-    const next = prepareTutorialState(initialState(2026, list, defaultStages(), index));
+    const next = id === "endless"
+      ? initialEndlessState(2026, list)
+      : prepareTutorialState(initialState(2026, list, defaultStages(), index));
     setStageId(id);
     metrics.current = emptyMetrics();
     savedRef.current = false;
     roundSeed.current = next.seed;
     skippedActors.current.clear();
+    manuallySelectedSpentActor.current = null;
     setSelectedActor(null);
     setInspected(null);
     setSettingsOpen(false);
@@ -2050,6 +2067,7 @@ export default function Game() {
 
   const finishTurn = useCallback(() => {
     skippedActors.current.clear();
+    manuallySelectedSpentActor.current = null;
     setState((value) => {
       if (!value) return value;
       const next = endTurn(value);
@@ -2075,6 +2093,7 @@ export default function Game() {
     if (narrationHolds) return;
     const left = state.actors[selectedActor]?.actionPoints ?? 0;
     if (left > 0) return;
+    if (manuallySelectedSpentActor.current === selectedActor) return;
     const next = nextReadyActor(
       state,
       activeActorIds(state),
@@ -2147,7 +2166,7 @@ export default function Game() {
           onPick={(id) => {
             setIntro(id === "0");
             startRound(allTypeIds, id);
-            if (id !== "0") setStageIntro(true);
+            if (id !== "0" && id !== "endless") setStageIntro(true);
           }}
           onBack={() => router.push("/")}
         />
@@ -2156,7 +2175,9 @@ export default function Game() {
   }
 
   const result =
-    state.phase === "lost"
+    state.mode === "endless"
+      ? `무한 모드 종료! 최종 점수 ${state.filled}점`
+      : state.phase === "lost"
       ? "영업 종료. 주문을 다 채우지 못했습니다."
       : currentStage(state).id === "0"
         ? "튜토리얼 클리어!"
@@ -2170,7 +2191,7 @@ export default function Game() {
       (state.actors[actorId]?.actionPoints ?? 0) > 0,
   ).length;
   const rank = roundRank(state);
-  const turnAngle = 360 * (1 - state.turnsLeft / currentStage(state).turnLimit);
+  const turnAngle = Math.max(0, 360 * (1 - state.turnsLeft / currentStage(state).turnLimit));
   const coachedStation = cue?.station
     ? stationInstances.find((one) => one.id === cue.station || one.type === cue.station)
     : null;
@@ -2188,6 +2209,7 @@ export default function Game() {
         <MusicSettings
           variant="game"
           open={settingsOpen}
+          onRetry={() => startRound(squad, currentStage(state).id)}
           onOpenChange={(open) => {
             setSettingsOpen(open);
           }}
@@ -2387,7 +2409,7 @@ export default function Game() {
                   data-spent={actor.actionPoints === 0 || skippedActors.current.has(actorId) ? "" : undefined}
                   aria-label={`${actor.name} 선택, 남은 행동력 ${actor.actionPoints}`}
                   aria-pressed={selectedActor === actorId}
-                  onClick={() => setSelectedActor((current) => (current === actorId ? null : actorId))}
+                  onClick={() => chooseActor(actorId)}
                 >
                   {/* 슬라임 몸이 버튼 배경이다. 얼굴 그대로 두고 위에는
                       남은 에너지만 얹는다. */}
@@ -2442,7 +2464,7 @@ export default function Game() {
       </div>
 
       {state.phase !== "playing" && !tutorialOutro && !finalOutro &&
-        !(state.phase === "won" && isLastStage(state) && !finalComplete) && (
+        !(state.mode === "shift" && state.phase === "won" && isLastStage(state) && !finalComplete) && (
         <section
           className="result-overlay"
           role="dialog"
@@ -2459,7 +2481,9 @@ export default function Game() {
             />
             <div className="paper-body">
             <h2 id="result-title">
-              {state.phase === "won" ? (
+              {state.mode === "endless" ? (
+                result
+              ) : state.phase === "won" ? (
                 <>
                   <span className="sr-only">{result}</span>
                   {currentStage(state).id === "0" ? (
@@ -2477,25 +2501,27 @@ export default function Game() {
               ) : result}
             </h2>
             {/* 별은 하나씩 차례로 찍힌다. 받은 개수만 밝다. */}
-            <p className="stage-rank" aria-label={`스테이지 랭크 별 ${rank}개`}>
-              {[0, 1, 2].map((index) => (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  key={index}
-                  src={index < rank ? "/ui/star-yellow.png" : "/ui/star-gray.png"}
-                  alt=""
-                  aria-hidden
-                  data-on={index < rank ? "" : undefined}
-                  style={{ animationDelay: `${400 + index * 260}ms` }}
-                />
-              ))}
-            </p>
+            {state.mode !== "endless" && (
+              <p className="stage-rank" aria-label={`스테이지 랭크 별 ${rank}개`}>
+                {[0, 1, 2].map((index) => (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    key={index}
+                    src={index < rank ? "/ui/star-yellow.png" : "/ui/star-gray.png"}
+                    alt=""
+                    aria-hidden
+                    data-on={index < rank ? "" : undefined}
+                    style={{ animationDelay: `${400 + index * 260}ms` }}
+                  />
+                ))}
+              </p>
+            )}
             {/* 정산: 채운 주문과 남은 턴을 보여 준다. */}
             <dl className="settle">
               <div>
-                <dt>주문 성공</dt>
+                <dt>{state.mode === "endless" ? "최종 점수" : "주문 성공"}</dt>
                 <dd />
-                <dd><CountUp value={state.filled} />번</dd>
+                <dd><CountUp value={state.filled} />{state.mode === "endless" ? "점" : "번"}</dd>
               </div>
               <div>
                 <dt>남은 턴</dt>
@@ -2504,10 +2530,9 @@ export default function Game() {
               </div>
             </dl>
             <div className="result-actions">
-              {state.phase === "won" && !isLastStage(state) ? (
+              {state.phase === "won" && !isLastStage(state) && (
                 <button
                   className="art-button result-art-button"
-                  autoFocus
                   onClick={() => {
                     savedRef.current = false;
                     setSelectedActor(null);
@@ -2517,15 +2542,13 @@ export default function Game() {
                 >
                   다음 스테이지
                 </button>
-              ) : (
-                <button
-                  className="art-button result-art-button"
-                  autoFocus
-                  onClick={() => startRound(squad, currentStage(state).id)}
-                >
-                  다시 도전
-                </button>
               )}
+              <button
+                className="art-button result-art-button"
+                onClick={() => startRound(squad, currentStage(state).id)}
+              >
+                재도전
+              </button>
               <button
                 className="art-button result-art-button"
                 onClick={() => {

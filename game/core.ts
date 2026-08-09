@@ -329,7 +329,7 @@ export const slimeTypes: Record<
   }
 > = {
   water: {
-    name: "물",
+    name: "퐁당이",
     trait: "물을 공급하고 설거지를 담당합니다.",
     traits: [
       { id: "water-supply", name: "물 공급", detail: "믹서기에 물을 채웁니다. 과일을 넣은 뒤에만 채울 수 있습니다." },
@@ -339,7 +339,7 @@ export const slimeTypes: Record<
     elementLabel: "물",
   },
   fire: {
-    name: "불",
+    name: "이글이",
     trait: "열을 다뤄 굽고 튀기고 태웁니다.",
     traits: [
       { id: "cook-heat", name: "가열 조리", detail: "화로와 튀김기를 돌려 굽거나 튀깁니다." },
@@ -349,7 +349,7 @@ export const slimeTypes: Record<
     elementLabel: "불",
   },
   lightning: {
-    name: "번개",
+    name: "번쩍이",
     trait: "턴마다 두 번 움직여 재료와 음식을 빠르게 나릅니다.",
     traits: [
       { id: "double-move", name: "두 번 행동", detail: "턴마다 행동력이 2입니다. 다른 슬라임은 1입니다." },
@@ -359,7 +359,7 @@ export const slimeTypes: Record<
     elementLabel: "번개",
   },
   earth: {
-    name: "땅",
+    name: "푸름이",
     trait: "재료를 도마에서 손질합니다.",
     traits: [
       { id: "chop", name: "손질", detail: "도마에서 감자·당근·양배추를 채썹니다." },
@@ -387,7 +387,7 @@ export const stationElements = balanceData.stationElements as {
   burn: SlimeElement[];
 };
 
-// 속성 목록을 "물·번개 슬라임"처럼 읽히게 붙인다.
+// 작업할 수 있는 슬라임 이름을 "퐁당이·번쩍이"처럼 붙인다.
 export const elementNames = (list: SlimeElement[]) =>
   list.map((one) => slimeTypes[one].name).join("·");
 
@@ -472,6 +472,7 @@ export type Refusal = { seq: number; message: string };
 
 export type GameState = {
   seed: number;
+  mode: "shift" | "endless";
   phase: "playing" | "won" | "lost";
   turn: number;
   turnsLeft: number;
@@ -501,11 +502,8 @@ export type GameState = {
   stages: Stage[];
   stageIndex: number;
   squad: SlimeTypeId[];
-  // 주문에 없는 음식을 제출한 횟수. 표시용이다.
-  misses: number;
   refusal: Refusal | null;
   lastEvent: string;
-  history: string[];
 };
 
 export const TILE_SIZE = 60;
@@ -514,6 +512,8 @@ export const MAP_HEIGHT = 8;
 export const INGREDIENT_MAX = balanceData.ingredients.max;
 // 남은 턴이 이 이하면 마감이 임박한 것으로 본다. 음악·배너가 함께 쓴다.
 export const RUSH_TURNS_LEFT = balanceData.rushTurnsLeft;
+export const ENDLESS_TURN_LIMIT = 80;
+export const ENDLESS_ORDER_TURN_BONUS = 5;
 // 턴이 끝날 때 재료 상자마다 채우는 개수.
 export const INGREDIENT_PER_TURN = balanceData.ingredients.perTurn;
 export const STORAGE_MAX = 1;
@@ -675,11 +675,11 @@ export function validateKitchenMap(data: KitchenMapData) {
   for (const element of allElements) {
     const tile = spawns[element];
     if (!tile || !inMap(tile) || data.rows[tile.row]?.[tile.col] !== ".") {
-      errors.push(`${slimeTypes[element].name} 슬라임 위치는 빈 바닥이어야 합니다.`);
+      errors.push(`${slimeTypes[element].name} 위치는 빈 바닥이어야 합니다.`);
       continue;
     }
     if (used.has(tileKeyOf(tile))) {
-      errors.push(`${slimeTypes[element].name} 슬라임 위치가 다른 슬라임과 겹칩니다.`);
+      errors.push(`${slimeTypes[element].name} 위치가 다른 슬라임과 겹칩니다.`);
     }
     used.add(tileKeyOf(tile));
   }
@@ -819,7 +819,9 @@ export const upcomingOrders = (state: GameState) =>
 
 // 스테이지 통과 판정. 최소 주문 수를 채웠는지만 본다.
 export const roundResult = (state: GameState): "won" | "lost" =>
-  state.filled >= passMark(currentStage(state)) ? "won" : "lost";
+  state.mode === "endless" || state.filled >= passMark(currentStage(state))
+    ? "won"
+    : "lost";
 
 // 처리한 주문 수가 스테이지의 별 기준을 몇 개나 넘겼는지. 못 넘겼으면 0이다.
 export function stageRank(state: GameState) {
@@ -928,7 +930,6 @@ export type GameMode = {
   id: "shift" | "endless";
   name: string;
   detail: string;
-  // 규칙이 아직 없어 열 수 없는 모드.
   ready: boolean;
 };
 
@@ -939,12 +940,11 @@ export const gameModes: GameMode[] = [
     detail: "튜토리얼부터 마지막 영업까지 이어서 돕니다.",
     ready: true,
   },
-  // ponytail: 무한 모드 규칙(주문 유입·종료 조건)이 정해지면 ready를 켠다.
   {
     id: "endless",
     name: "무한 모드",
-    detail: "아르바이트를 끝내면 열립니다.",
-    ready: false,
+    detail: "80턴 동안 주문을 최대한 완료합니다.",
+    ready: true,
   },
 ];
 
@@ -1002,6 +1002,7 @@ export function initialState(
   squad: SlimeTypeId[] = ["water"],
   stages: Stage[] = defaultStages(),
   stageIndex = 0,
+  mode: GameState["mode"] = "shift",
 ): GameState {
   // 같은 속성을 여러 마리 데려올 수 있다. 인원 상한은 맵의 빈 바닥이 정한다.
   if (squad.length < 1 || squad.some((typeId) => !(typeId in slimeTypes))) {
@@ -1024,7 +1025,7 @@ export function initialState(
   );
   const actors: Partial<Record<ActorId, ActorState>> = {};
   squad.forEach((typeId, index) => {
-    const label = `${slimeTypes[typeId].name} 슬라임`;
+    const label = slimeTypes[typeId].name;
     actors[ids[index]] = makeActor(
       typeId,
       placements[index],
@@ -1034,6 +1035,7 @@ export function initialState(
   const stationState = initialStationState();
   return {
     seed: seed >>> 0,
+    mode,
     phase: "playing",
     turn: 1,
     turnsLeft: stage.turnLimit,
@@ -1046,10 +1048,8 @@ export function initialState(
     stages: roundStages,
     stageIndex,
     squad: [...squad],
-    misses: 0,
     refusal: null,
     lastEvent: `${stage.id} — ${stage.turnLimit}턴 안에 음식 주문 ${passMark(stage)}건을 완료하세요.`,
-    history: [`${stage.id} 영업 시작`],
   };
 }
 
@@ -1057,7 +1057,7 @@ export function initialState(
 // 소지품은 새로 시작한다.
 export function nextStage(state: GameState): GameState {
   if (state.phase !== "won" || isLastStage(state)) return state;
-  return initialState(state.seed, state.squad, state.stages, state.stageIndex + 1);
+  return initialState(state.seed, state.squad, state.stages, state.stageIndex + 1, state.mode);
 }
 
 function advanceSeed(seed: number) {
@@ -1068,6 +1068,35 @@ function advanceSeed(seed: number) {
   return next >>> 0;
 }
 
+function endlessOrders(seed: number, offset = 0): Order[] {
+  const foods = allRecipes.map(({ foodId }) => foodId);
+  let random = seed;
+  for (let index = foods.length - 1; index > 0; index -= 1) {
+    random = advanceSeed(random);
+    const swap = random % (index + 1);
+    [foods[index], foods[swap]] = [foods[swap]!, foods[index]!];
+  }
+  return foods.map((foodId, index) => ({
+    id: `endless-order-${offset + index + 1}`,
+    foodId,
+    targetCount: 1,
+    submittedCount: 0,
+  }));
+}
+
+export function initialEndlessState(
+  seed = 2026,
+  squad: SlimeTypeId[] = [...allElements],
+): GameState {
+  const orders = endlessOrders(seed);
+  return initialState(seed, squad, [{
+    id: "endless",
+    turnLimit: ENDLESS_TURN_LIMIT,
+    stars: [1, 2, 3],
+    orders,
+  }], 0, "endless");
+}
+
 function event(state: GameState, message: string, patch: Partial<GameState>) {
   return {
     ...state,
@@ -1075,7 +1104,6 @@ function event(state: GameState, message: string, patch: Partial<GameState>) {
     seed: advanceSeed(state.seed),
     refusal: null,
     lastEvent: message,
-    history: [...state.history.slice(-7), message],
   };
 }
 
@@ -1437,7 +1465,7 @@ function atCooktop(
     return refuse(
       state,
       actor,
-      `${elementNames(recipe.workers)} 슬라임만 ${withParticle(label)} 쓸 수 있습니다.`,
+      `${elementNames(recipe.workers)}만 ${withParticle(label)} 쓸 수 있습니다.`,
     );
   }
   const step = progressStep(actor, actionCost.chop, workstation.progress);
@@ -1558,7 +1586,7 @@ function atBlender(
       return refuse(
         state,
         actor,
-        `${elementNames(stationElements.wash)} 슬라임이 믹서기에 물을 채워야 합니다.`,
+        `${elementNames(stationElements.wash)}가 믹서기에 물을 채워야 합니다.`,
       );
     }
     return event(state, `${actor.name}이(가) 믹서기에 물을 채웠습니다.`, {
@@ -1573,7 +1601,7 @@ function atBlender(
     return refuse(
       state,
       actor,
-      `${elementNames(recipe.workers)} 슬라임만 믹서기를 돌릴 수 있습니다.`,
+      `${elementNames(recipe.workers)}만 믹서기를 돌릴 수 있습니다.`,
     );
   }
   if (actor.carrying.length > 0) {
@@ -1658,7 +1686,7 @@ function atWasher(
     return refuse(
       state,
       actor,
-      `${elementNames(stationElements.wash)} 슬라임만 그릇을 씻을 수 있습니다.`,
+      `${elementNames(stationElements.wash)}만 그릇을 씻을 수 있습니다.`,
     );
   }
   if (washed >= 0) return refuse(state, actor, "씻은 그릇을 들 수 없습니다.");
@@ -1699,7 +1727,7 @@ function atIncinerator(
     return refuse(
       state,
       actor,
-      `${elementNames(stationElements.burn)} 슬라임만 소각기를 비울 수 있습니다.`,
+      `${elementNames(stationElements.burn)}만 소각기를 비울 수 있습니다.`,
     );
   }
   if (incinerator.count < 1) {
@@ -1955,22 +1983,20 @@ function submitFood(
     carrying: base.carrying.filter((_, index) => index !== carriedIndex),
   });
   if (!target) {
-    // 실수는 횟수만 센다.
-    const missed = { ...state, misses: state.misses + 1 };
     if (orderConfig.invalidSubmission === "reject") {
       // 거절이라 행동력을 쓰지 않는다.
-      return refuse(missed, actor, `현재 주문에 없는 ${withParticle(label)} 제출할 수 없습니다.`);
+      return refuse(state, actor, `현재 주문에 없는 ${withParticle(label)} 제출할 수 없습니다.`);
     }
     return event(
-      missed,
+      state,
       `${actor.name}이(가) 주문에 없는 ${withParticle(label)} 처분했습니다.`,
       {
         actors: patchActor(
-          missed,
+          state,
           actorId,
           emptied(spend(actor, actionCost.carry, "CARRYING")),
         ),
-        pendingReturns: [...missed.pendingReturns, ...returned],
+        pendingReturns: [...state.pendingReturns, ...returned],
       },
     );
   }
@@ -1979,13 +2005,22 @@ function submitFood(
       ? { ...order, submittedCount: order.submittedCount + 1 }
       : order,
   );
-  const filled = orders.filter(orderComplete).length;
+  const completed = orderComplete(orders.find((order) => order.id === target.id)!) &&
+    !orderComplete(target);
+  const filled = state.mode === "endless"
+    ? state.filled + (completed ? 1 : 0)
+    : orders.filter(orderComplete).length;
   const cleared = filled > state.filled;
   const allDone = orders.every(orderComplete);
   const submitted = orders.find((order) => order.id === target.id)!;
+  const nextOrders = state.mode === "endless" && allDone
+    ? endlessOrders(state.seed, filled)
+    : orders;
   return event(
     state,
-    cleared
+    state.mode === "endless" && cleared
+      ? `음식 주문 완료 — ${filled}점 (+${ENDLESS_ORDER_TURN_BONUS}턴)`
+      : cleared
       ? `음식 주문 완료 — ${filled}/${passMark(currentStage(state))}`
       : `${label} 제출 — ${submitted.submittedCount}/${submitted.targetCount}`,
     {
@@ -1994,12 +2029,14 @@ function submitFood(
         actorId,
         emptied(spend(actor, actionCost.carry, "CARRYING")),
       ),
-      orders,
+      orders: nextOrders,
       filled,
+      turnsLeft: state.turnsLeft +
+        (state.mode === "endless" && completed ? ENDLESS_ORDER_TURN_BONUS : 0),
       pendingReturns: [...state.pendingReturns, ...returned],
       // 레시피 목록을 다 처리하면 남은 턴과 무관하게 끝난다.
       phase:
-        allDone && orderConfig.endRoundWhenOrdersDone
+        state.mode !== "endless" && allDone && orderConfig.endRoundWhenOrdersDone
           ? filled >= passMark(currentStage(state))
             ? "won"
             : "lost"
@@ -2051,7 +2088,9 @@ export function endTurn(state: GameState): GameState {
   const stage = currentStage(played);
   return event(
     played,
-    `${stage.id} 영업 종료 — 주문 ${played.filled}/${passMark(stage)}건 완료`,
+    played.mode === "endless"
+      ? `무한 모드 종료 — 최종 점수 ${played.filled}점`
+      : `${stage.id} 영업 종료 — 주문 ${played.filled}/${passMark(stage)}건 완료`,
     { phase: roundResult(played), turnsLeft: 0 },
   );
 }

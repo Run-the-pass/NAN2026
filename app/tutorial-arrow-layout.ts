@@ -45,8 +45,8 @@ export const tutorialArrowLayout: Record<TutorialCue["id"], TutorialArrowLayout>
   TAKE_CLEAN_DISH: bottom(0, -0.2),
   // 테이블 오른쪽은 퐁당이의 자연스러운 접근 칸이다. 아래쪽에서 한 칸가량
   // 왼쪽으로 빼 두면 어느 단계에서도 슬라임 몸을 덮지 않는다.
-  PLATE_AT_TABLE: bottom(-0.75, 0.1),
-  TAKE_PLATED_FOOD: bottom(-0.75, 0.1),
+  PLATE_AT_TABLE: bottom(),
+  TAKE_PLATED_FOOD: bottom(),
   SUBMIT_ORDER: top(0, -0.8),
 };
 

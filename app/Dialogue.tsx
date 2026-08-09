@@ -64,7 +64,7 @@ export default function Dialogue({
   }, [advance, passive]);
 
   if (!line) return null;
-  const name = line.name ?? `${slimeTypes[line.speaker].name} 슬라임`;
+  const name = line.name ?? slimeTypes[line.speaker].name;
   return (
     <div
       className="dialogue-screen"
