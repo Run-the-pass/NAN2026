@@ -81,7 +81,7 @@ export default function Dialogue({
           건너뛰기
         </button>
       )}
-      {line.focus && (
+      {line.focus && dialogueArrowLayout[line.focus] && (
         // eslint-disable-next-line @next/next/no-img-element
         <img
           className={`dialogue-arrow dialogue-arrow-${line.focus}`}

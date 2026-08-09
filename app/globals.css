@@ -57,8 +57,9 @@ button:disabled { cursor: var(--cursor-arrow); }
   white-space: nowrap;
 }
 
-/* 첫 화면. 그림을 다 받을 때까지 로고를 덮어 둔다. 게임에 들어가서야
-   그림이 하나씩 뜨는 것보다 여기서 한 번에 기다리는 편이 낫다. */
+/* 첫 화면. 그림을 다 받을 때까지 팀 로고를 덮어 둔다. 게임에 들어가서야
+   그림이 하나씩 뜨는 것보다 여기서 한 번에 기다리는 편이 낫다.
+   로고 그림에는 배경이 없다. 도장을 찍을 종이는 여기서 만든다. */
 .splash {
   position: fixed;
   z-index: 9000;
@@ -66,34 +67,61 @@ button:disabled { cursor: var(--cursor-arrow); }
   display: grid;
   align-content: center;
   justify-items: center;
-  gap: clamp(20px, 4svh, 44px);
-  background: var(--plank-wall), #241408;
+  gap: clamp(18px, 3.4svh, 38px);
+  background: radial-gradient(120% 90% at 50% 42%, #fbf6ec, #e7ddcc 60%, #cfc2ac);
+  /* 도장이 닿는 0.38초에 종이가 한 번 눌린다. */
+  animation: splash-recoil 900ms ease-out both;
 }
+@keyframes splash-recoil {
+  0%, 42% { translate: 0 0; }
+  47% { translate: 0 6px; }
+  55% { translate: -3px -2px; }
+  64% { translate: 2px 1px; }
+  100% { translate: 0 0; }
+}
+/* 위에서 크게 내려와 한 번에 멈춘다. 내려오는 동안 가속해야 "쾅"이 되므로
+   구간마다 곡선을 따로 준다. 전체를 감속 곡선 하나로 두면 첫 순간에 다 와
+   버려서 떨어지는 게 안 보인다. 멈춘 뒤 살짝 커지는 건 눌린 잉크가 번지는 것. */
 .splash-logo {
-  width: min(46%, 62svh);
-  height: auto;
-  animation: splash-breathe 1.6s ease-in-out infinite alternate;
+  width: auto;
+  height: min(62svh, 58vw);
+  transform-origin: 50% 62%;
+  animation: splash-stamp 900ms linear both;
 }
-@keyframes splash-breathe {
-  to { transform: scale(1.035); }
+@keyframes splash-stamp {
+  0% {
+    opacity: 0; scale: 2.8; rotate: -10deg; filter: blur(10px);
+    animation-timing-function: cubic-bezier(.62, 0, .84, .28);
+  }
+  42% {
+    opacity: 1; scale: 1; rotate: -2deg; filter: blur(0px);
+    animation-timing-function: cubic-bezier(.2, 1.4, .5, 1);
+  }
+  52% { scale: 1.045; }
+  100% { opacity: 1; scale: 1; rotate: -2deg; filter: blur(0px); }
 }
-.splash-bar {
-  display: block;
-  width: min(280px, 40vw);
-  height: 12px;
-  overflow: hidden;
-  border: 3px solid #7b4a24;
-  border-radius: 99px;
-  background: #1d1009;
+/* 나갈 때. 도장이 눈앞으로 확 다가와 사라지고 종이가 걷히면서 홈 화면이
+   드러난다. 길이는 Splash.tsx의 OUT_MS와 맞춰야 한다. 걷히는 동안에는
+   아래 홈 화면이 눌려야 하므로 입력을 통과시킨다. */
+.splash[data-leaving] {
+  animation: splash-out 520ms ease-in both;
+  pointer-events: none;
 }
-.splash-bar i {
-  display: block;
-  height: 100%;
-  background: var(--gold);
-  transition: width .2s ease;
+@keyframes splash-out {
+  to { opacity: 0; }
+}
+.splash[data-leaving] .splash-logo {
+  animation: splash-lift 420ms cubic-bezier(.4, 0, .9, .5) both;
+}
+@keyframes splash-lift {
+  from { opacity: 1; scale: 1; rotate: -2deg; }
+  to { opacity: 0; scale: 3.4; rotate: -2deg; }
 }
 @media (prefers-reduced-motion: reduce) {
-  .splash-logo { animation: none; }
+  /* 튀고 커지는 것만 없앤다. 종이가 걷히는 건 자리가 안 움직여 남겨 둔다.
+     이걸 빼면 나가는 연출이 통째로 죽어 홈 화면이 툭 튀어나온다. */
+  .splash, .splash-logo, .splash[data-leaving] .splash-logo { animation: none; }
+  .splash[data-leaving] { animation: splash-out 520ms ease-in both; }
 }
 
 .home-screen {
@@ -1810,10 +1838,11 @@ img.paper-title { width: 56%; height: 11.4%; top: 4.9%; left: 22%; object-fit: c
 }
 
 .stage-select h1 {
+  width: min(420px, 68vw);
+  aspect-ratio: 1363 / 432;
   margin: 0;
-  color: var(--ink);
-  font-size: clamp(24px, 4vw, 40px);
-  text-shadow: 0 5px 0 #4a2411, 0 10px 26px #0009;
+  background: url("/ui/mode-select-title.png") center / contain no-repeat;
+  filter: drop-shadow(0 10px 16px #0008);
 }
 
 .stage-select-bar {

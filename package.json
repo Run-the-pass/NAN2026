@@ -15,6 +15,7 @@
     "map:edit": "node tools/map-editor.mjs",
     "map:check": "node tools/map-editor.mjs --check",
     "lint": "eslint . --ignore-pattern dist --ignore-pattern .next",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
     "db:generate": "drizzle-kit generate",
     "balance:edit": "node tools/balance-editor.mjs",
     "balance:check": "node tools/balance-editor.mjs --check"
@@ -22,12 +23,13 @@
   "dependencies": {
     "drizzle-orm": "0.45.2",
     "next": "16.2.6",
+    "phaser": "3.90.0",
     "react": "19.2.6",
-    "react-dom": "19.2.6",
-    "phaser": "3.90.0"
+    "react-dom": "19.2.6"
   },
   "devDependencies": {
     "@cloudflare/vite-plugin": "1.37.1",
+    "@cloudflare/workers-types": "^4.20260517.1",
     "@tailwindcss/postcss": "4.2.1",
     "@types/node": "22.19.19",
     "@types/react": "19.2.14",

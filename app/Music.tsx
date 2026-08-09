@@ -151,11 +151,8 @@ export function MusicSettings({
           // eslint-disable-next-line @next/next/no-img-element
           <img src="/home/setting.svg" width={964} height={574} alt="설정" />
         ) : (
-          <>
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img className="settings-icon" src="/ui/settings-icon.png" alt="" aria-hidden />
-            <span className="sr-only">설정</span>
-          </>
+          // 게임 안 설정은 톱니까지 그려진 정사각 버튼 그림 하나로 끝난다.
+          <span className="sr-only">설정</span>
         )}
       </button>
       <div
@@ -201,7 +198,7 @@ export function MusicSettings({
           />
           {variant === "game" && (
             <Link className="settings-home-link art-button" href="/">
-              홈
+              홈 화면으로
             </Link>
           )}
         </section>

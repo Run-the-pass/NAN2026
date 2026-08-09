@@ -60,7 +60,7 @@ function settings() {
 const choose = (value: string | string[]) =>
   Array.isArray(value) ? value[Math.floor(Math.random() * value.length)] : value;
 
-function play(file: string, gain = 0.8) {
+export function play(file: string, gain = 0.8) {
   const current = settings();
   if (!current.sfxEnabled) return;
   const audio = new Audio(root + file);

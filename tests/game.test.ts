@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
+import { readdirSync } from "node:fs";
 import test from "node:test";
+import { assetManifest } from "../app/asset-manifest.js";
 import { simulate, actAt } from "../game/cli.js";
 import { activeActorIds, finishTutorial, prepareTutorialState, roundRank, tutorialCue, tutorialDone } from "../app/tutorial.js";
 import { dialogueParts, finalLines, stageOpeningLines } from "../app/dialogue-script.js";
@@ -1404,4 +1406,16 @@ test("튜토리얼 화살표와 쿠키 진행도는 조절·검증된 값만 쓴
     sanitizeProgress({ stars: { "1": 2 }, resumeStageId: "nope" }),
     { stars: { "1": 2 }, resumeStageId: null },
   );
+});
+
+test("첫 화면이 미리 받는 목록은 public의 그림과 정확히 같다", () => {
+  // 그림을 새로 넣고 목록에 안 적으면 그것만 게임 도중에 늦게 뜬다.
+  // 손으로 맞추면 반드시 어긋나므로 실제 파일과 대조한다.
+  const walk = (dir: URL, base: string): string[] =>
+    readdirSync(dir, { withFileTypes: true }).flatMap((entry) =>
+      entry.isDirectory()
+        ? walk(new URL(`${entry.name}/`, dir), `${base}${entry.name}/`)
+        : /\.(png|svg)$/.test(entry.name) ? [`${base}${entry.name}`] : []);
+  const onDisk = walk(new URL("../../public/", import.meta.url), "/").sort();
+  assert.deepEqual([...assetManifest], onDisk);
 });

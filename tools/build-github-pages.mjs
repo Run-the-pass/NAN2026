@@ -38,7 +38,7 @@ async function rewritePublicPaths(directory) {
       const source = await readFile(path, "utf8");
       const rewritten = source
         .replace(
-          /([("'])\/(favicon\.svg|(?:food|home|music|sfx|slimes|stations|text|ui)\/)/g,
+          /([("'`])\/(favicon\.svg|team-logo\.png|(?:food|home|music|sfx|slimes|stations|text|ui)\/)/g,
           "$1/NAN2026/$2",
         )
         .replace(
@@ -46,7 +46,7 @@ async function rewritePublicPaths(directory) {
           `$1?v=${assetVersion}`,
         );
       if (
-        /[("']\/(?:favicon\.svg|(?:food|home|music|sfx|slimes|stations|text|ui)\/)/.test(
+        /[("'`]\/(?:favicon\.svg|team-logo\.png|(?:food|home|music|sfx|slimes|stations|text|ui)\/)/.test(
           rewritten,
         )
       ) {

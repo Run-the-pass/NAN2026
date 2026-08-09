@@ -5,10 +5,11 @@ import type { TutorialCue } from "./tutorial.js";
 type ArrowStyle = CSSProperties & Record<`--arrow-${"x" | "y"}`, string>;
 
 // 튜토리얼 화살표 좌표·방향·흔들림은 이 파일의 숫자만 바꾸면 된다.
-export const dialogueArrowLayout: Record<DialogueFocus, ArrowStyle> = {
+// 화면 가장자리에 붙는 UI만 여기에 둔다. 지도 위의 푸름이(earth)는 화면 비율에
+// 따라 타일 크기가 달라져 %로는 못 맞춘다. Game.tsx가 실제 타일 좌표로 짚는다.
+export const dialogueArrowLayout: Partial<Record<DialogueFocus, ArrowStyle>> = {
   orders: { top: "clamp(176px, 25vh, 204px)", left: "clamp(84px, 8vw, 104px)", rotate: "180deg", "--arrow-x": "0px", "--arrow-y": "-12px" },
   "next-order": { top: "clamp(94px, 15vh, 112px)", left: "clamp(224px, 21vw, 270px)", rotate: "180deg", "--arrow-x": "0px", "--arrow-y": "-12px" },
-  earth: { top: "30%", left: "26%", rotate: "90deg", "--arrow-x": "-12px", "--arrow-y": "0px" },
   inspector: { top: "38%", right: "calc(var(--game-info-rail) + 2%)", rotate: "-90deg", "--arrow-x": "12px", "--arrow-y": "0px" },
   clock: { top: "5%", right: "18%", rotate: "-90deg", "--arrow-x": "12px", "--arrow-y": "0px" },
 };

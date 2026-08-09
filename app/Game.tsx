@@ -68,7 +68,7 @@ import StageSelect from "./StageSelect";
 import Dialogue from "./Dialogue";
 import { actionPointLines, earthInfoLines, finalLines, openingLines, platedFoodLines, stageOpeningLines, tutorialCompleteLines, waterArrivalLines, type DialogueFocus } from "./dialogue-script";
 import { activeActorIds, finishTutorial, onTutorialStage, platedIntroReady, prepareTutorialState, roundRank, tutorialCue, tutorialDone, waterIntroReady } from "./tutorial";
-import { arrowLayoutFor } from "./tutorial-arrow-layout";
+import { arrowLayoutFor, type TutorialArrowLayout } from "./tutorial-arrow-layout";
 import { emptyProgress, readProgress, withResult, writeProgress, type ProgressData } from "./progress";
 
 type View = {
@@ -109,8 +109,10 @@ const CURSOR_HAND = 'url("/ui/cursor-click.png") 6 0, pointer';
 // 지금은 쓸 수 없는 설비. 금지 표시 대신 "?"를 붙인 화살표로 알린다.
 const CURSOR_ASK = 'url("/ui/cursor-help.png") 2 0, help';
 
-function coachArrowStyle(cueId: string, tiles: { col: number; row: number }[]): CSSProperties {
-  const layout = arrowLayoutFor(cueId);
+function coachArrowStyle(
+  layout: TutorialArrowLayout | undefined,
+  tiles: { col: number; row: number }[],
+): CSSProperties {
   if (!layout || tiles.length === 0) return {};
   const cols = tiles.map(({ col }) => col);
   const rows = tiles.map(({ row }) => row);
@@ -756,6 +758,8 @@ export default function Game() {
   const coachRef = useRef<StationId | StationInstanceId | null>(null);
   // 도입 대사가 짚는 슬라임. Phaser의 어두운 막보다 앞으로 올린다.
   const dialogueActorRef = useRef<ActorId | null>(null);
+  // 화살표를 지도 위 실제 타일에 붙이려면 렌더에서도 알아야 해서 ref와 함께 둔다.
+  const [dialogueActor, setDialogueActor] = useState<ActorId | null>(null);
   const view = useRef<View | null>(null);
   const metrics = useRef<Metrics>(emptyMetrics());
   const savedRef = useRef(false);
@@ -840,6 +844,7 @@ export default function Game() {
 
   const showDialogueFocus = useCallback((focus: DialogueFocus | undefined) => {
     dialogueActorRef.current = focus === "earth" ? "earth-1" : null;
+    setDialogueActor(dialogueActorRef.current);
     setInspected(focus === "inspector" ? { kind: "actor", id: "earth-1" } : null);
     if (stateRef.current) view.current?.sync(stateRef.current);
   }, []);
@@ -2317,6 +2322,22 @@ export default function Game() {
           />
         )}
 
+        {/* 대사가 푸름이를 짚을 때. 타일 크기는 화면 비율마다 달라지므로
+            안내 화살표와 같은 좌표계를 써야 슬라임 위에 안 뜬다. */}
+        {dialogueActor && state.actors[dialogueActor] && (
+          <span className="coach-map coach-map-over-dialogue" aria-hidden>
+            <i className="coach-map-stage">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                className="coach-map-arrow"
+                src="/ui/tutorial-arrow.png"
+                alt=""
+                style={coachArrowStyle(arrowLayoutFor("SELECT_EARTH"), [state.actors[dialogueActor]!])}
+              />
+            </i>
+          </span>
+        )}
+
         {/* 자리를 못 찾으면 아예 그리지 않는다. 빈 style로 그리면 화살표가
             지도 왼쪽 위 구석에 붙는다. */}
         {cue && coachTiles.length > 0 && !cue.endTurn && arrowLayoutFor(cue.id) && (
@@ -2327,7 +2348,7 @@ export default function Game() {
                 className="coach-map-arrow"
                 src="/ui/tutorial-arrow.png"
                 alt=""
-                style={coachArrowStyle(cue.id, coachTiles)}
+                style={coachArrowStyle(arrowLayoutFor(cue.id), coachTiles)}
               />
             </i>
           </span>

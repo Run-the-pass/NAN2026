@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import { GlobalSoundEffects } from "./SoundEffects";
+import Splash from "./Splash";
 
 export const metadata: Metadata = {
   metadataBase: new URL(
@@ -33,6 +34,7 @@ export default function RootLayout({
     <html lang="ko">
       <body>
         <GlobalSoundEffects />
+        <Splash />
         {children}
       </body>
     </html>

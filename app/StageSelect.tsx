@@ -59,7 +59,7 @@ export default function StageSelect({
         </button>
         <MusicSettings variant="game" />
       </header>
-      <h1>모드 선택</h1>
+      <h1><span className="sr-only">모드 선택</span></h1>
       <div className="mode-plates">
         {gameModes.map((mode) => (
           <ModePlate
