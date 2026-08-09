@@ -68,15 +68,23 @@ button:disabled { cursor: var(--cursor-arrow); }
   align-content: center;
   justify-items: center;
   gap: clamp(18px, 3.4svh, 38px);
+  width: auto;
+  border: 0;
+  padding: 0;
+  color: #4b2b17;
+  font: inherit;
+  appearance: none;
   background: radial-gradient(120% 90% at 50% 42%, #fbf6ec, #e7ddcc 60%, #cfc2ac);
-  /* 도장이 닿는 0.38초에 종이가 한 번 눌린다. */
+}
+.splash[data-started] {
+  /* 효과음의 첫 타격과 맞춰 도장이 거의 바로 종이에 닿는다. */
   animation: splash-recoil 900ms ease-out both;
 }
 @keyframes splash-recoil {
-  0%, 42% { translate: 0 0; }
-  47% { translate: 0 6px; }
-  55% { translate: -3px -2px; }
-  64% { translate: 2px 1px; }
+  0%, 10% { translate: 0 0; }
+  11% { translate: 0 6px; }
+  20% { translate: -3px -2px; }
+  29% { translate: 2px 1px; }
   100% { translate: 0 0; }
 }
 /* 위에서 크게 내려와 한 번에 멈춘다. 내려오는 동안 가속해야 "쾅"이 되므로
@@ -86,18 +94,31 @@ button:disabled { cursor: var(--cursor-arrow); }
   width: auto;
   height: min(62svh, 58vw);
   transform-origin: 50% 62%;
+  opacity: .28;
+  scale: .92;
+  rotate: -2deg;
+  filter: grayscale(1);
+}
+.splash[data-started] .splash-logo {
   animation: splash-stamp 900ms linear both;
 }
+.splash-start {
+  font-size: clamp(22px, 3vw, 36px);
+  letter-spacing: .08em;
+  transition: opacity 120ms ease;
+}
+.splash[data-started] .splash-start { opacity: 0; }
+.splash:focus-visible { outline: 4px solid #8d592c; outline-offset: -8px; }
 @keyframes splash-stamp {
   0% {
     opacity: 0; scale: 2.8; rotate: -10deg; filter: blur(10px);
     animation-timing-function: cubic-bezier(.62, 0, .84, .28);
   }
-  42% {
+  10% {
     opacity: 1; scale: 1; rotate: -2deg; filter: blur(0px);
     animation-timing-function: cubic-bezier(.2, 1.4, .5, 1);
   }
-  52% { scale: 1.045; }
+  20% { scale: 1.045; }
   100% { opacity: 1; scale: 1; rotate: -2deg; filter: blur(0px); }
 }
 /* 나갈 때. 도장이 눈앞으로 확 다가와 사라지고 종이가 걷히면서 홈 화면이
@@ -120,7 +141,14 @@ button:disabled { cursor: var(--cursor-arrow); }
 @media (prefers-reduced-motion: reduce) {
   /* 튀고 커지는 것만 없앤다. 종이가 걷히는 건 자리가 안 움직여 남겨 둔다.
      이걸 빼면 나가는 연출이 통째로 죽어 홈 화면이 툭 튀어나온다. */
-  .splash, .splash-logo, .splash[data-leaving] .splash-logo { animation: none; }
+  .splash[data-started], .splash[data-started] .splash-logo,
+  .splash[data-leaving] .splash-logo { animation: none; }
+  .splash[data-started] .splash-logo {
+    opacity: 1;
+    scale: 1;
+    rotate: -2deg;
+    filter: none;
+  }
   .splash[data-leaving] { animation: splash-out 520ms ease-in both; }
 }
 

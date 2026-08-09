@@ -2127,7 +2127,7 @@ export default function Game() {
             startRound(allTypeIds, id);
             if (id !== "0") setStageIntro(true);
           }}
-          onBack={() => window.location.assign("/")}
+          onBack={() => window.location.assign("../")}
         />
       </>
     );

@@ -1,10 +1,10 @@
 "use client";
 
-import Link from "next/link";
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 
 const storageKey = "slime-restaurant-music";
 const changeEvent = "slime-restaurant-music-change";
+const splashEndEvent = "slime-restaurant-splash-end";
 // 음악과 효과음을 따로 끄고 조절한다. 한 벌로 저장해 이벤트도 하나만 쓴다.
 const defaults = { enabled: true, volume: 0.35, sfxEnabled: true, sfxVolume: 0.35 };
 const defaultJson = JSON.stringify(defaults);
@@ -29,7 +29,11 @@ export default function Music({ src }: { src: string }) {
   useEffect(() => {
     const audio = audioRef.current;
     if (!audio) return;
-    const apply = (settings = readSettings()) => {
+    const apply = (settings = readSettings(), afterSplash = false) => {
+      if (!afterSplash && document.querySelector(".splash")) {
+        audio.pause();
+        return;
+      }
       audio.volume = Math.min(1, Math.max(0, settings.volume));
       if (settings.enabled) void audio.play().catch(() => undefined);
       else audio.pause();
@@ -37,14 +41,20 @@ export default function Music({ src }: { src: string }) {
     const changed = (event: Event) =>
       apply((event as CustomEvent<Settings>).detail);
     const resume = () => apply();
+    const finishSplash = () => {
+      audio.currentTime = 0;
+      apply(readSettings(), true);
+    };
 
     audio.load();
     apply();
     window.addEventListener(changeEvent, changed);
+    window.addEventListener(splashEndEvent, finishSplash);
     window.addEventListener("pointerdown", resume, { once: true });
     window.addEventListener("keydown", resume, { once: true });
     return () => {
       window.removeEventListener(changeEvent, changed);
+      window.removeEventListener(splashEndEvent, finishSplash);
       window.removeEventListener("pointerdown", resume);
       window.removeEventListener("keydown", resume);
       audio.pause();
@@ -197,9 +207,9 @@ export function MusicSettings({
             onVolume={(sfxVolume) => saveSettings({ ...settings, sfxVolume })}
           />
           {variant === "game" && (
-            <Link className="settings-home-link art-button" href="/">
+            <a className="settings-home-link art-button" href="../">
               홈 화면으로
-            </Link>
+            </a>
           )}
         </section>
       </div>
