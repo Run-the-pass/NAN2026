@@ -1527,6 +1527,8 @@ test("첫 화면이 미리 받는 목록은 public의 그림과 정확히 같다
       entry.isDirectory()
         ? walk(new URL(`${entry.name}/`, dir), `${base}${entry.name}/`)
         : /\.(png|svg)$/.test(entry.name) ? [`${base}${entry.name}`] : []);
-  const onDisk = walk(new URL("../../public/", import.meta.url), "/").sort();
+  const onDisk = walk(new URL("../../public/", import.meta.url), "/")
+    .filter((file) => file !== "/og.png")
+    .sort();
   assert.deepEqual([...assetManifest], onDisk);
 });

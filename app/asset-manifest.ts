@@ -1,6 +1,6 @@
 // 첫 화면에서 미리 받아 둘 그림 목록. 게임에 들어가서야 그림이 뜨는 일을
 // 없애려고 로고 화면이 떠 있는 동안 통째로 받아 둔다.
-// public/의 png·svg 전부다. 게임 테스트가 실제 파일과 대조한다.
+// 게임 실행용 png·svg 전부다. 소셜 미리보기 og.png는 받지 않는다.
 export const assetManifest = [
   "/favicon.svg",
   "/food/banana-smoothie.png",
