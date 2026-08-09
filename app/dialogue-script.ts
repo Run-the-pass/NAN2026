@@ -30,7 +30,7 @@ export const dialogueParts = (text: string) =>
     tone: termTones.get(part),
   }));
 
-export type DialogueFocus = "orders" | "earth" | "inspector" | "next-order" | "clock";
+export type DialogueFocus = "orders" | "earth" | "inspector" | "next-order" | "clock" | "roster";
 export type DialogueLine = {
   speaker: SlimeTypeId;
   text: string;
@@ -63,9 +63,9 @@ export const earthInfoLines: DialogueLine[] = [
 ];
 
 export const actionPointLines: DialogueLine[] = [
-  { speaker: "earth", text: "슬라임은 행동력이 존재합니다. 행동력은 이동이나 상호 작용 시에 소모됩니다." },
-  { speaker: "earth", text: "매 턴 시작 시 행동력은 리셋됩니다. 사용하지 않은 행동력이 다음 턴에 추가되지는 않습니다." },
-  { speaker: "earth", text: "행동력을 모두 쓰면 다음 턴으로 자동으로 넘어갑니다." },
+  { speaker: "earth", text: "슬라임은 행동력이 존재합니다. 행동력은 이동이나 상호 작용 시에 소모됩니다.", focus: "roster" },
+  { speaker: "earth", text: "매 턴 시작 시 행동력은 리셋됩니다. 사용하지 않은 행동력이 다음 턴에 추가되지는 않습니다.", focus: "roster" },
+  { speaker: "earth", text: "행동력을 모두 쓰면 다음 턴으로 자동으로 넘어갑니다.", focus: "roster" },
 ];
 
 export const waterArrivalLines: DialogueLine[] = [

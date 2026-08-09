@@ -24,7 +24,11 @@ body {
   background: var(--plank-wall), #241408;
   color: var(--ink);
   font-family: Jua, "Apple SD Gothic Neo", sans-serif;
+  user-select: none;
+  -webkit-user-select: none;
 }
+
+img { -webkit-user-drag: none; user-select: none; }
 
 button, select { font: inherit; }
 
@@ -400,6 +404,7 @@ button:disabled { cursor: var(--cursor-arrow); }
 
 #game-canvas {
   position: absolute;
+  z-index: 1;
   top: var(--game-top-rail);
   right: var(--game-info-rail);
   bottom: var(--game-bottom-rail);
@@ -416,7 +421,7 @@ button:disabled { cursor: var(--cursor-arrow); }
    덮는 좌표계라 화면 크기가 달라져도 타일 중심을 그대로 따른다. */
 .coach-map {
   position: absolute;
-  z-index: 22;
+  z-index: 32;
   top: var(--game-top-rail);
   right: var(--game-info-rail);
   bottom: var(--game-bottom-rail);
@@ -722,6 +727,7 @@ button:disabled { cursor: var(--cursor-arrow); }
 .stage-frame:has(> .dialogue-screen[data-focus="clock"]) .hud-top {
   z-index: 41;
 }
+.stage-frame:has(> .dialogue-screen[data-focus="roster"]) .hud-bottom { z-index: 41; }
 .stage-frame:has(> .dialogue-screen[data-focus="next-order"]) .order-cards > .order-card {
   filter: brightness(.22) drop-shadow(0 6px 5px #0007);
 }
@@ -738,17 +744,18 @@ button:disabled { cursor: var(--cursor-arrow); }
    않도록 검은 막과 입력 차단만 뺀다. */
 .dialogue-screen[data-passive] {
   z-index: 21;
-  top: var(--game-top-rail);
-  right: 0;
-  bottom: var(--game-bottom-rail);
-  left: calc(100% - var(--game-info-rail));
+  top: auto;
+  right: calc(var(--game-info-rail) + 12px);
+  bottom: 8px;
+  left: clamp(330px, 32vw, 430px);
+  height: calc(var(--game-bottom-rail) - 14px);
   align-items: center;
   cursor: default;
   pointer-events: none;
 }
 .dialogue-screen[data-passive]::before { content: none; }
 .dialogue-screen[data-passive] .dialogue-bar {
-  padding: var(--panel-frame-top) var(--panel-frame-x) var(--panel-frame-bottom);
+  padding: 0;
 }
 .dialogue-screen[data-passive] .dialogue-text {
   min-height: 0;
@@ -759,6 +766,15 @@ button:disabled { cursor: var(--cursor-arrow); }
 .dialogue-screen[data-narration] .dialogue-text {
   padding-left: clamp(10px, 1.4vw, 22px);
 }
+.dialogue-screen[data-narration] .dialogue-bar {
+  position: absolute;
+  right: calc(var(--game-info-rail) + 12px);
+  bottom: 8px;
+  left: clamp(270px, 28vw, 360px);
+  width: auto;
+  padding: 0;
+}
+.dialogue-screen[data-narration] .dialogue-text { min-height: 96px; }
 
 .dialogue-bar {
   position: relative;
@@ -839,6 +855,9 @@ button:disabled { cursor: var(--cursor-arrow); }
   font-size: clamp(14px, 1.7vw, 21px);
   line-height: 1.55;
   text-align: left;
+  word-break: keep-all;
+  overflow-wrap: break-word;
+  text-wrap: pretty;
 }
 /* 초상이 상자 왼쪽을 가리므로 글은 그만큼 안쪽에서 시작한다. */
 .dialogue-text { padding-left: clamp(96px, 15vw, 200px); }
@@ -1354,7 +1373,7 @@ img.paper-title { width: 56%; height: 11.4%; top: 4.9%; left: 22%; object-fit: c
 }
 .result-clear-stage img:first-child { width: clamp(42px, 5.2vw, 60px); aspect-ratio: 1; object-fit: contain; }
 .result-clear-stage img:last-child { width: min(72%, 270px); height: auto; }
-.result-clear-tutorial { width: min(78%, 300px); height: auto; object-fit: contain; }
+.result-clear-tutorial { display: block; width: min(78%, 300px); height: auto; margin-inline: auto; object-fit: contain; }
 .result-overlay button { border: 2px solid #7e4d24; border-radius: 3px; padding: 10px 14px; background: var(--gold); color: #21120a; font-weight: 800; cursor: var(--cursor-hand); }
 
 /* 스테이지 시작 전 정보 화면: 제목 / 맵+TIP / 음식 / 다음 순서를 유지한다. */
@@ -1949,6 +1968,11 @@ img.paper-title { width: 56%; height: 11.4%; top: 4.9%; left: 22%; object-fit: c
   outline: none;
   filter: drop-shadow(0 0 1px var(--gold)) drop-shadow(0 0 4px var(--gold));
 }
+.result-overlay button.result-art-button:focus-visible {
+  outline: 3px solid #6b3d1a;
+  outline-offset: 2px;
+  filter: none;
+}
 .stage-select-bar .music-settings-game { position: static; }
 
 .mode-plates { display: grid; gap: clamp(14px, 3vh, 28px); justify-items: center; }
@@ -1965,12 +1989,11 @@ img.paper-title { width: 56%; height: 11.4%; top: 4.9%; left: 22%; object-fit: c
   padding: 0 12% 2%;
   background: url("/ui/mode-plate.png") center / 100% 100% no-repeat;
   color: #ffeec4;
-  filter: drop-shadow(0 8px 0 #1b0d05aa) drop-shadow(0 14px 22px #0008);
-  transition: transform 120ms ease, filter 120ms ease;
+  transition: transform 120ms ease;
 }
-.mode-plate b { font-size: clamp(20px, 2.8vw, 34px); text-shadow: 0 3px 0 #4a2411, 0 0 12px #00000088; }
-.mode-plate small { color: #ffdca6; font-size: clamp(11px, 1.2vw, 15px); text-shadow: 0 2px 0 #3a1c0b; }
-.mode-plate:hover:not(:disabled) { transform: translateY(-4px) scale(1.02); filter: drop-shadow(0 12px 0 #1b0d05aa) brightness(1.06); }
+.mode-plate b { font-size: clamp(20px, 2.8vw, 34px); }
+.mode-plate small { color: #ffdca6; font-size: clamp(11px, 1.2vw, 15px); }
+.mode-plate:hover:not(:disabled) { transform: translateY(-4px) scale(1.02); filter: brightness(1.06); }
 .mode-plate:focus-visible { outline: 4px solid var(--gold); outline-offset: 6px; border-radius: 20px; }
 .mode-plate[data-locked] { filter: grayscale(.75) brightness(.6); cursor: var(--cursor-deny); }
 .mode-plate[data-locked]:hover { transform: none; }
@@ -1991,8 +2014,7 @@ img.paper-title { width: 56%; height: 11.4%; top: 4.9%; left: 22%; object-fit: c
   padding: 0;
   background: none;
   color: #ffd45a;
-  filter: drop-shadow(0 8px 0 #1b0d05aa) drop-shadow(0 14px 22px #0008);
-  transition: transform 120ms ease, filter 120ms ease;
+  transition: transform 120ms ease;
 }
 .stage-card::before {
   position: absolute;
@@ -2003,7 +2025,17 @@ img.paper-title { width: 56%; height: 11.4%; top: 4.9%; left: 22%; object-fit: c
 .stage-card[data-tutorial]::before { filter: hue-rotate(72deg) saturate(1.35) brightness(.92); }
 .stage-card > img { position: relative; width: 54%; height: 54%; object-fit: contain; }
 .stage-card > .stage-lock { width: 48%; height: 48%; }
-.stage-card:hover:not(:disabled) { transform: translateY(-4px) scale(1.03); filter: drop-shadow(0 12px 0 #1b0d05aa) brightness(1.08); }
+.stage-card-stars {
+  position: absolute;
+  bottom: -13%;
+  display: flex;
+  justify-content: center;
+  width: 76%;
+  height: 25%;
+  gap: 1%;
+}
+.stage-card-stars img { width: 31%; object-fit: contain; filter: drop-shadow(0 3px 3px #0009); }
+.stage-card:hover:not(:disabled) { transform: translateY(-4px) scale(1.03); filter: brightness(1.08); }
 .stage-card:focus-visible { outline: 4px solid var(--gold); outline-offset: 4px; border-radius: 22px; }
 .stage-card[data-locked] { filter: grayscale(.75) brightness(.42); cursor: var(--cursor-deny); }
 .stage-card[data-locked]:hover { transform: none; }
@@ -2068,17 +2100,20 @@ img.paper-title { width: 56%; height: 11.4%; top: 4.9%; left: 22%; object-fit: c
   .dialogue-screen[data-passive] .dialogue-text,
   .dialogue-screen[data-narration] .dialogue-text { padding-left: 9px; }
   .dialogue-screen[data-passive] {
-    top: calc(var(--game-top-rail) + 4px);
-    right: 4px;
-    bottom: auto;
-    left: calc(var(--game-side-rail) + 4px);
-    align-items: start;
-  }
-  .dialogue-screen[data-passive][data-speaker="earth"] {
     top: auto;
-    bottom: var(--game-bottom-rail);
+    right: 8px;
+    bottom: 4px;
+    left: calc(var(--game-side-rail) + 220px);
+    height: calc(var(--game-bottom-rail) - 8px);
+    align-items: center;
   }
   .dialogue-screen[data-passive] .dialogue-bar { padding: 0; }
+  .dialogue-screen[data-narration] .dialogue-bar {
+    right: 8px;
+    bottom: 4px;
+    left: calc(var(--game-side-rail) + 220px);
+  }
+  .dialogue-screen[data-narration] .dialogue-text { min-height: 56px; }
   .dialogue-companions { right: 14px; bottom: 82px; }
   .dialogue-companions img { width: 68px; }
   .stage-frame .dialogue-skip { top: 43px; right: 5px; width: 100px; min-height: 44px; }

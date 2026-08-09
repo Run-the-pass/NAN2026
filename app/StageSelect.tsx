@@ -66,6 +66,7 @@ export default function StageSelect({
         <div className="stage-cards">
           {defaultStages().map((stage) => {
             const unlocked = stageUnlocked(progress, stage.id);
+            const stars = progress[stage.id] ?? 0;
             return (
               <button
                 type="button"
@@ -75,7 +76,7 @@ export default function StageSelect({
                 data-locked={unlocked ? undefined : ""}
                 disabled={!unlocked}
                 aria-label={unlocked
-                  ? stage.id === "0" ? "튜토리얼 스테이지 0" : `스테이지 ${stage.id}`
+                  ? `${stage.id === "0" ? "튜토리얼 스테이지 0" : `스테이지 ${stage.id}`}${stars ? `, 별 ${stars}개` : ""}`
                   : `스테이지 ${stage.id} 잠김`}
                 onClick={() => onPick(stage.id)}
               >
@@ -85,6 +86,14 @@ export default function StageSelect({
                 ) : (
                   // eslint-disable-next-line @next/next/no-img-element
                   <img className="stage-lock" src="/ui/stage-lock.png" alt="" aria-hidden />
+                )}
+                {stars > 0 && (
+                  <span className="stage-card-stars" aria-hidden>
+                    {Array.from({ length: stars }, (_, index) => (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img key={index} src="/ui/star-yellow.png" alt="" />
+                    ))}
+                  </span>
                 )}
               </button>
             );

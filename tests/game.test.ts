@@ -4,7 +4,7 @@ import test from "node:test";
 import { assetManifest } from "../app/asset-manifest.js";
 import { simulate, actAt } from "../game/cli.js";
 import { activeActorIds, finishTutorial, prepareTutorialState, roundRank, tutorialAllowsStation, tutorialCue, tutorialDone, tutorialMoveOptions } from "../app/tutorial.js";
-import { dialogueParts, finalLines, stageOpeningLines } from "../app/dialogue-script.js";
+import { actionPointLines, dialogueParts, finalLines, stageOpeningLines } from "../app/dialogue-script.js";
 import { parseSession } from "../game/session.js";
 import recipeData from "../game/recipes.json" with { type: "json" };
 import stageData from "../game/stages.json" with { type: "json" };
@@ -12,7 +12,7 @@ import { authoredFaceLayout, facingFromDelta, slimeSvg, type Facing } from "../a
 import { gameMusicSource } from "../app/music-source.js";
 import { gameSoundCues } from "../app/sound-events.js";
 import { sanitizeProgress, stageUnlocked } from "../app/progress.js";
-import { arrowLayoutFor } from "../app/tutorial-arrow-layout.js";
+import { arrowLayoutFor, dialogueArrowLayout } from "../app/tutorial-arrow-layout.js";
 import {
   INGREDIENT_MAX,
   INGREDIENT_PER_TURN,
@@ -1345,8 +1345,28 @@ test("튜토리얼은 첫 양배추 제출까지 한 번에 한 가지만 시킨
   assert.equal(step(state, "earth-1"), "END_TURN_CHOP_CABBAGE");
   state = actAt(state, "earth-1", stoveId);
   state = nextTurn(state);
-  // 음식이 완성되면 물 슬라임이 나오고 테이블 전달을 시작한다.
+  // 음식이 완성되면 물 슬라임이 나오고, 눈앞의 그릇부터 챙긴다.
   assert.deepEqual(activeActorIds(state).sort(), ["earth-1", "water-1"]);
+  assert.equal(step(state, "water-1"), "TAKE_CLEAN_DISH");
+  assert.match(tutorialCue(state, "water-1", limit)!.text, /그릇 상자.*물 슬라임/);
+  const spentWater = {
+    ...state,
+    actors: {
+      ...state.actors,
+      "water-1": { ...state.actors["water-1"]!, actionPoints: 0 },
+    },
+  };
+  const dishWait = tutorialCue(spentWater, "water-1", limit)!;
+  assert.equal(dishWait.id, "END_TURN_TAKE_CLEAN_DISH");
+  assert.equal(dishWait.endTurn, true);
+  assert.deepEqual(
+    tutorialMoveOptions(spentWater, "earth-1", dishWait),
+    moveOptions(spentWater, "earth-1"),
+  );
+  assert.equal(nextReadyActor(spentWater, activeActorIds(spentWater), "water-1"), "earth-1");
+  assert.equal(tutorialAllowsStation(spentWater, dishWait, "earth-1", rackId), false);
+  state = actAt(state, "water-1", rackId);
+  state = nextTurn(state);
   assert.equal(step(state, "earth-1"), "TAKE_FINISHED_FOOD");
 
   state = actAt(state, "earth-1", stoveId);
@@ -1387,26 +1407,6 @@ test("튜토리얼은 첫 양배추 제출까지 한 번에 한 가지만 시킨
   assert.equal(tutorialAllowsStation(waterOnly, handoff, "water-1", target.id), false);
   state = actAt(state, "earth-1", tableId);
   state = nextTurn(state);
-  assert.equal(step(state, "water-1"), "TAKE_CLEAN_DISH");
-  assert.match(tutorialCue(state, "water-1", limit)!.text, /그릇 상자.*물 슬라임/);
-  const spentWater = {
-    ...state,
-    actors: {
-      ...state.actors,
-      "water-1": { ...state.actors["water-1"]!, actionPoints: 0 },
-    },
-  };
-  const dishWait = tutorialCue(spentWater, "water-1", limit)!;
-  assert.equal(dishWait.id, "END_TURN_TAKE_CLEAN_DISH");
-  assert.equal(dishWait.endTurn, true);
-  assert.deepEqual(
-    tutorialMoveOptions(spentWater, "earth-1", dishWait),
-    moveOptions(spentWater, "earth-1"),
-  );
-  assert.equal(nextReadyActor(spentWater, activeActorIds(spentWater), "water-1"), "earth-1");
-  assert.equal(tutorialAllowsStation(spentWater, dishWait, "earth-1", rackId), false);
-  state = actAt(state, "water-1", rackId);
-  state = nextTurn(state);
   assert.equal(step(state, "water-1"), "PLATE_AT_TABLE");
   state = actAt(state, "water-1", tableId);
   state = nextTurn(state);
@@ -1438,6 +1438,7 @@ test("다이얼로그는 확정된 음식·도구·슬라임 이름만 구분한
   assert.match(stageOpeningLines("2")[1]!.text, /화덕과 튀김기/);
   assert.match(stageOpeningLines("3")[1]!.text, /과일.*물.*전기/);
   assert.match(finalLines.at(-1)!.text, /무한 모드/);
+  assert.ok(actionPointLines.every(({ focus }) => focus === "roster"));
 });
 
 test("튜토리얼 화살표와 쿠키 진행도는 조절·검증된 값만 쓴다", () => {
@@ -1450,8 +1451,13 @@ test("튜토리얼 화살표와 쿠키 진행도는 조절·검증된 값만 쓴
   assert.equal(arrowLayoutFor("PUT_FOOD_ON_TABLE")!.side, "bottom");
   assert.equal(arrowLayoutFor("TAKE_CLEAN_DISH")!.side, "bottom");
   assert.equal(arrowLayoutFor("TAKE_CLEAN_DISH")!.offsetRow, -0.2);
-  assert.equal(arrowLayoutFor("PLATE_AT_TABLE")!.side, "right");
-  assert.equal(arrowLayoutFor("TAKE_PLATED_FOOD")!.bobX < 0, true);
+  assert.equal(arrowLayoutFor("PLATE_AT_TABLE")!.side, "bottom");
+  assert.equal(arrowLayoutFor("PLATE_AT_TABLE")!.offsetCol, -0.75);
+  assert.equal(arrowLayoutFor("TAKE_PLATED_FOOD")!.side, "bottom");
+  assert.equal(arrowLayoutFor("TAKE_PLATED_FOOD")!.bobY < 0, true);
+  assert.equal(dialogueArrowLayout.clock!.rotate, "180deg");
+  assert.equal(dialogueArrowLayout.clock!.top, "clamp(96px, 14vh, 104px)");
+  assert.equal(dialogueArrowLayout.clock!["--arrow-y"], "-12px");
   assert.deepEqual(
     sanitizeProgress({
       stars: { "0": 3, "1": 7, nope: 2 },

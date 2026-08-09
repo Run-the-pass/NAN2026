@@ -229,21 +229,23 @@ export function tutorialCue(
         actor: WATER,
       });
     }
-    if (looseTable) {
-      if (water.carrying.some(cleanDish)) {
-        return waitForTurn(state, WATER, {
-          id: "PLATE_AT_TABLE",
-          speaker: "water",
-          text: "퐁당이가 든 접시를 테이블의 양배추와 합쳐주세요.",
-          station: looseTable,
-          actor: WATER,
-        });
-      }
+    // 퐁당이는 등장한 자리에서 접시부터 챙긴다. 푸름이의 음식 전달을 먼저
+    // 강제하면 이동은 되는데 눈앞의 그릇 상자는 못 누르는 모순이 생긴다.
+    if (!water.carrying.some(cleanDish)) {
       return waitForTurn(state, WATER, {
         id: "TAKE_CLEAN_DISH",
         speaker: "water",
         text: "퐁당이를 클릭하고, 그릇 상자를 눌러 그릇을 꺼내주세요. 물 슬라임 퐁당이는 그릇과 세척을 맡아요.",
         station: stationIdOf("dish-rack"),
+        actor: WATER,
+      });
+    }
+    if (looseTable) {
+      return waitForTurn(state, WATER, {
+        id: "PLATE_AT_TABLE",
+        speaker: "water",
+        text: "퐁당이가 든 접시를 테이블의 양배추와 합쳐주세요.",
+        station: looseTable,
         actor: WATER,
       });
     }

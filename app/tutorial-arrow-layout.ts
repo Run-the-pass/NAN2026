@@ -11,7 +11,7 @@ export const dialogueArrowLayout: Partial<Record<DialogueFocus, ArrowStyle>> = {
   orders: { top: "clamp(176px, 25vh, 204px)", left: "clamp(84px, 8vw, 104px)", rotate: "180deg", "--arrow-x": "0px", "--arrow-y": "-12px" },
   "next-order": { top: "clamp(94px, 15vh, 112px)", left: "clamp(224px, 21vw, 270px)", rotate: "180deg", "--arrow-x": "0px", "--arrow-y": "-12px" },
   inspector: { top: "38%", right: "calc(var(--game-info-rail) + 2%)", rotate: "-90deg", "--arrow-x": "12px", "--arrow-y": "0px" },
-  clock: { top: "5%", right: "18%", rotate: "-90deg", "--arrow-x": "12px", "--arrow-y": "0px" },
+  clock: { top: "clamp(96px, 14vh, 104px)", right: "clamp(68px, 6vw, 82px)", rotate: "180deg", "--arrow-x": "0px", "--arrow-y": "-12px" },
 };
 
 export type TutorialArrowLayout = {
@@ -29,9 +29,6 @@ const top = (offsetCol = 0, offsetRow = 0): TutorialArrowLayout => ({
 const left = (offsetCol = 0, offsetRow = 0): TutorialArrowLayout => ({
   side: "left", offsetCol, offsetRow, rotate: -90, bobX: 12, bobY: 0,
 });
-const right = (offsetCol = 0, offsetRow = 0): TutorialArrowLayout => ({
-  side: "right", offsetCol, offsetRow, rotate: 90, bobX: -12, bobY: 0,
-});
 const bottom = (offsetCol = 0, offsetRow = 0): TutorialArrowLayout => ({
   side: "bottom", offsetCol, offsetRow, rotate: 180, bobX: 0, bobY: -12,
 });
@@ -44,10 +41,12 @@ export const tutorialArrowLayout: Record<TutorialCue["id"], TutorialArrowLayout>
   PLACE_CABBAGE: top(),
   CHOP_CABBAGE: top(),
   TAKE_FINISHED_FOOD: top(),
-  PUT_FOOD_ON_TABLE: bottom(0, 0.8),
+  PUT_FOOD_ON_TABLE: bottom(0, 0),
   TAKE_CLEAN_DISH: bottom(0, -0.2),
-  PLATE_AT_TABLE: right(),
-  TAKE_PLATED_FOOD: right(),
+  // 테이블 오른쪽은 퐁당이의 자연스러운 접근 칸이다. 아래쪽에서 한 칸가량
+  // 왼쪽으로 빼 두면 어느 단계에서도 슬라임 몸을 덮지 않는다.
+  PLATE_AT_TABLE: bottom(-0.75, 0.1),
+  TAKE_PLATED_FOOD: bottom(-0.75, 0.1),
   SUBMIT_ORDER: top(0, -0.8),
 };
 

@@ -781,13 +781,6 @@ export default function Game() {
   const savedRef = useRef(false);
   const roundSeed = useRef(0);
   const closingBannerShown = useRef(false);
-  const tutorialBlockTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  const showTutorialBlock = useCallback(() => {
-    if (tutorialBlockTimer.current) clearTimeout(tutorialBlockTimer.current);
-    setToast("지금은 노란색 화살표가 가리키는 곳부터 해볼까요?");
-    tutorialBlockTimer.current = setTimeout(() => setToast(null), 2_200);
-  }, []);
 
   useEffect(() => {
     stateRef.current = state;
@@ -1500,7 +1493,6 @@ export default function Game() {
                 const actorId = selectedActorRef.current;
                 const current = stateRef.current;
                 if (current && !tutorialAllowsStation(current, tutorialCueRef.current, actorId, id)) {
-                  showTutorialBlock();
                   return;
                 }
                 setInspected({ kind: "station", id });
@@ -1665,7 +1657,6 @@ export default function Game() {
             return;
           }
           if (current && actorId && onTutorialStage(current) && tutorialCueRef.current) {
-            showTutorialBlock();
             return;
           }
           setSelectedActor(null);
@@ -2009,7 +2000,7 @@ export default function Game() {
       view.current = null;
       game.destroy(true);
     };
-  }, [squad, showTutorialBlock]);
+  }, [squad]);
 
   // 저장된 별은 브라우저에만 있어 첫 렌더 뒤에 읽는다.
   useEffect(() => {
@@ -2245,7 +2236,9 @@ export default function Game() {
             lines={actionPointLines}
             portrait={slimePortrait}
             narration
+            onFocusChange={showDialogueFocus}
             onDone={() => {
+              showDialogueFocus(undefined);
               setActionPointInfo(false);
               setActionPointInfoComplete(true);
               finishTurn();
@@ -2390,7 +2383,7 @@ export default function Game() {
                   className="roster-button"
                   key={actorId}
                   data-type={actor.typeId}
-                  data-coach={cue?.actor === actorId ? "" : undefined}
+                  data-coach={actionPointInfo || cue?.actor === actorId ? "" : undefined}
                   data-spent={actor.actionPoints === 0 || skippedActors.current.has(actorId) ? "" : undefined}
                   aria-label={`${actor.name} 선택, 남은 행동력 ${actor.actionPoints}`}
                   aria-pressed={selectedActor === actorId}
@@ -2427,7 +2420,6 @@ export default function Game() {
               data-coach={cue?.endTurn ? "" : undefined}
               onClick={() => {
                 if (cue && !cue.endTurn) {
-                  showTutorialBlock();
                   return;
                 }
                 finishTurn();

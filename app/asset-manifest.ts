@@ -58,6 +58,7 @@ export const assetManifest = [
   "/text/business-start-title.png",
   "/text/closing-soon-title.png",
   "/text/game-over-title.png",
+  "/tiles/dark-floor-map.png",
   "/ui/button.png",
   "/ui/cancel.png",
   "/ui/cursor-click.png",
