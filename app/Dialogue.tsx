@@ -69,6 +69,7 @@ export default function Dialogue({
     <div
       className="dialogue-screen"
       data-focus={line.focus}
+      data-speaker={line.speaker}
       data-passive={passive ? "" : undefined}
       data-narration={narration ? "" : undefined}
       role={passive ? "status" : "dialog"}

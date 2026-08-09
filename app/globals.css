@@ -738,16 +738,23 @@ button:disabled { cursor: var(--cursor-arrow); }
    않도록 검은 막과 입력 차단만 뺀다. */
 .dialogue-screen[data-passive] {
   z-index: 21;
+  top: var(--game-top-rail);
+  right: 0;
   bottom: var(--game-bottom-rail);
+  left: calc(100% - var(--game-info-rail));
+  align-items: center;
   cursor: default;
   pointer-events: none;
 }
 .dialogue-screen[data-passive]::before { content: none; }
 .dialogue-screen[data-passive] .dialogue-bar {
-  padding-right: calc(var(--game-info-rail) + clamp(14px, 2.5vw, 34px));
+  padding: var(--panel-frame-top) var(--panel-frame-x) var(--panel-frame-bottom);
 }
 .dialogue-screen[data-passive] .dialogue-text {
-  padding-left: clamp(10px, 1.4vw, 22px);
+  min-height: 0;
+  padding: 10px 12px;
+  font-size: clamp(13px, 1.2vw, 17px);
+  line-height: 1.4;
 }
 .dialogue-screen[data-narration] .dialogue-text {
   padding-left: clamp(10px, 1.4vw, 22px);
@@ -1320,8 +1327,9 @@ button:disabled { cursor: var(--cursor-arrow); }
 }
 /* 제목이 그림이면 리본 안에 꽉 차지 않게 조금 줄여 앉힌다. */
 img.paper-title { width: 56%; height: 11.4%; top: 4.9%; left: 22%; object-fit: contain; }
-/* 게임 오버 글자만 리본 중앙에 맞춘다. */
+/* 정산 제목을 리본 중앙보다 조금 아래에 앉힌다. */
 .result-title-art-game-over { transform: translateY(4px); }
+.result-title-art-business-end { transform: translateY(4px); }
 
 .paper-body {
   position: absolute;
@@ -1338,6 +1346,15 @@ img.paper-title { width: 56%; height: 11.4%; top: 4.9%; left: 22%; object-fit: c
 
 .result-overlay .eyebrow { color: #9b3f21; }
 .result-overlay h2 { margin: 0; font-size: clamp(1rem, 1.7vw, 1.35rem); }
+.result-clear-stage {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+.result-clear-stage img:first-child { width: clamp(42px, 5.2vw, 60px); aspect-ratio: 1; object-fit: contain; }
+.result-clear-stage img:last-child { width: min(72%, 270px); height: auto; }
+.result-clear-tutorial { width: min(78%, 300px); height: auto; object-fit: contain; }
 .result-overlay button { border: 2px solid #7e4d24; border-radius: 3px; padding: 10px 14px; background: var(--gold); color: #21120a; font-weight: 800; cursor: var(--cursor-hand); }
 
 /* 스테이지 시작 전 정보 화면: 제목 / 맵+TIP / 음식 / 다음 순서를 유지한다. */
@@ -1839,7 +1856,7 @@ img.paper-title { width: 56%; height: 11.4%; top: 4.9%; left: 22%; object-fit: c
   .home-cauldron, .home-cauldron-bubble { animation: none; }
 }
 
-/* 모드 선택: 아르바이트와 무한, 두 판만 놓는다. 나무 판 그림이 버튼이다. */
+/* 모드 선택 뒤 아르바이트는 0~3 스테이지를 고른다. */
 .stage-select {
   position: relative;
   display: grid;
@@ -1855,11 +1872,20 @@ img.paper-title { width: 56%; height: 11.4%; top: 4.9%; left: 22%; object-fit: c
 }
 
 .stage-select h1 {
+  margin: 0;
+  filter: drop-shadow(0 10px 16px #0008);
+}
+
+.stage-select[data-screen="modes"] h1 {
   width: min(420px, 68vw);
   aspect-ratio: 1363 / 432;
-  margin: 0;
   background: url("/ui/mode-select-title.png") center / contain no-repeat;
-  filter: drop-shadow(0 10px 16px #0008);
+}
+
+.stage-select[data-screen="stages"] h1 {
+  width: min(560px, 78vw);
+  aspect-ratio: 1829 / 395;
+  background: url("/ui/stage-select-title.png") center / contain no-repeat;
 }
 
 .stage-select-bar {
@@ -1949,26 +1975,38 @@ img.paper-title { width: 56%; height: 11.4%; top: 4.9%; left: 22%; object-fit: c
 .mode-plate[data-locked] { filter: grayscale(.75) brightness(.6); cursor: var(--cursor-deny); }
 .mode-plate[data-locked]:hover { transform: none; }
 
-.resume-dialog {
-  position: fixed;
-  z-index: 210;
-  inset: 0;
+.stage-cards {
+  display: grid;
+  grid-template-columns: repeat(4, auto);
+  gap: clamp(10px, 2vw, 24px);
+}
+
+.stage-card {
+  position: relative;
   display: grid;
   place-items: center;
-  padding: 20px;
-  background: #160c07d9;
+  width: clamp(116px, 17vw, 176px);
+  aspect-ratio: 1;
+  border: 0;
+  padding: 0;
+  background: none;
+  color: #ffd45a;
+  filter: drop-shadow(0 8px 0 #1b0d05aa) drop-shadow(0 14px 22px #0008);
+  transition: transform 120ms ease, filter 120ms ease;
 }
-.resume-dialog .paper-window { --paper-w: 430px; }
-/* 제목이 리본 위쪽에 붙어 보여서 한 칸 내려 앉힌다. */
-.resume-dialog .paper-title { top: 6.2%; }
-.resume-dialog .paper-body { gap: 18px; }
-.resume-dialog p { margin: 0; font-size: clamp(14px, 2vw, 18px); }
-.resume-actions { display: grid; justify-items: center; gap: 8px; }
-.resume-actions .art-button {
-  width: 128px;
-  aspect-ratio: 758 / 339;
-  padding: 0 10px;
+.stage-card::before {
+  position: absolute;
+  inset: 0;
+  content: "";
+  background: url("/ui/stage-button.png") center / contain no-repeat;
 }
+.stage-card[data-tutorial]::before { filter: hue-rotate(72deg) saturate(1.35) brightness(.92); }
+.stage-card > img { position: relative; width: 54%; height: 54%; object-fit: contain; }
+.stage-card > .stage-lock { width: 48%; height: 48%; }
+.stage-card:hover:not(:disabled) { transform: translateY(-4px) scale(1.03); filter: drop-shadow(0 12px 0 #1b0d05aa) brightness(1.08); }
+.stage-card:focus-visible { outline: 4px solid var(--gold); outline-offset: 4px; border-radius: 22px; }
+.stage-card[data-locked] { filter: grayscale(.75) brightness(.42); cursor: var(--cursor-deny); }
+.stage-card[data-locked]:hover { transform: none; }
 
 /* 행동력 한 줄. 스탯이 여러 개이던 시절의 3열 배치는 한 줄에는 벌어져
    보여서, 아이콘·이름·칸을 가운데로 모은다. */
@@ -2029,16 +2067,31 @@ img.paper-title { width: 56%; height: 11.4%; top: 4.9%; left: 22%; object-fit: c
   }
   .dialogue-screen[data-passive] .dialogue-text,
   .dialogue-screen[data-narration] .dialogue-text { padding-left: 9px; }
+  .dialogue-screen[data-passive] {
+    top: calc(var(--game-top-rail) + 4px);
+    right: 4px;
+    bottom: auto;
+    left: calc(var(--game-side-rail) + 4px);
+    align-items: start;
+  }
+  .dialogue-screen[data-passive][data-speaker="earth"] {
+    top: auto;
+    bottom: var(--game-bottom-rail);
+  }
+  .dialogue-screen[data-passive] .dialogue-bar { padding: 0; }
   .dialogue-companions { right: 14px; bottom: 82px; }
   .dialogue-companions img { width: 68px; }
   .stage-frame .dialogue-skip { top: 43px; right: 5px; width: 100px; min-height: 44px; }
   .action-toast { bottom: 72px; max-width: calc(100vw - 24px); white-space: normal; text-align: center; }
   .stage-banner { width: min(42vw, 320px); }
   .stage-select { gap: 8px; padding: 56px 12px 10px; }
-  .stage-select h1 { width: min(240px, 36vw); }
+  .stage-select[data-screen="modes"] h1 { width: min(240px, 36vw); }
+  .stage-select[data-screen="stages"] h1 { width: min(320px, 46vw); }
   .stage-select-bar { top: 7px; right: 8px; left: 8px; }
   .mode-plates { gap: 5px; }
   .mode-plate { width: min(260px, 44vw); }
+  .stage-cards { gap: 6px; }
+  .stage-card { width: min(19vw, 125px); }
 }
 
 .landscape-gate { display: none; }

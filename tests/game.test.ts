@@ -11,7 +11,7 @@ import stageData from "../game/stages.json" with { type: "json" };
 import { authoredFaceLayout, facingFromDelta, slimeSvg, type Facing } from "../app/slime-art.js";
 import { gameMusicSource } from "../app/music-source.js";
 import { gameSoundCues } from "../app/sound-events.js";
-import { sanitizeProgress } from "../app/progress.js";
+import { sanitizeProgress, stageUnlocked } from "../app/progress.js";
 import { arrowLayoutFor } from "../app/tutorial-arrow-layout.js";
 import {
   INGREDIENT_MAX,
@@ -1379,6 +1379,11 @@ test("튜토리얼은 첫 양배추 제출까지 한 번에 한 가지만 시킨
   assert.equal(handoff.id, "END_TURN_PUT_FOOD_ON_TABLE");
   assert.equal(handoff.endTurn, true);
   assert.equal(handoff.actor, undefined);
+  assert.deepEqual(
+    tutorialMoveOptions(waterOnly, "water-1", handoff),
+    moveOptions(waterOnly, "water-1"),
+  );
+  assert.equal(nextReadyActor(waterOnly, activeActorIds(waterOnly), "earth-1"), "water-1");
   assert.equal(tutorialAllowsStation(waterOnly, handoff, "water-1", target.id), false);
   state = actAt(state, "earth-1", tableId);
   state = nextTurn(state);
@@ -1394,6 +1399,11 @@ test("튜토리얼은 첫 양배추 제출까지 한 번에 한 가지만 시킨
   const dishWait = tutorialCue(spentWater, "water-1", limit)!;
   assert.equal(dishWait.id, "END_TURN_TAKE_CLEAN_DISH");
   assert.equal(dishWait.endTurn, true);
+  assert.deepEqual(
+    tutorialMoveOptions(spentWater, "earth-1", dishWait),
+    moveOptions(spentWater, "earth-1"),
+  );
+  assert.equal(nextReadyActor(spentWater, activeActorIds(spentWater), "water-1"), "earth-1");
   assert.equal(tutorialAllowsStation(spentWater, dishWait, "earth-1", rackId), false);
   state = actAt(state, "water-1", rackId);
   state = nextTurn(state);
@@ -1447,12 +1457,21 @@ test("튜토리얼 화살표와 쿠키 진행도는 조절·검증된 값만 쓴
       stars: { "0": 3, "1": 7, nope: 2 },
       resumeStageId: "2",
     }),
-    { stars: { "0": 3 }, resumeStageId: "2" },
+    { stars: { "0": 3 } },
   );
   assert.deepEqual(
     sanitizeProgress({ stars: { "1": 2 }, resumeStageId: "nope" }),
-    { stars: { "1": 2 }, resumeStageId: null },
+    { stars: { "1": 2 } },
   );
+});
+
+test("아르바이트 스테이지는 직전 판을 깨야 차례로 열린다", () => {
+  assert.equal(stageUnlocked({}, "0"), true);
+  assert.equal(stageUnlocked({}, "1"), false);
+  assert.equal(stageUnlocked({ "0": 3 }, "1"), true);
+  assert.equal(stageUnlocked({ "0": 3 }, "2"), false);
+  assert.equal(stageUnlocked({ "0": 3, "1": 1 }, "2"), true);
+  assert.equal(stageUnlocked({ "0": 3, "1": 1, "2": 2 }, "3"), true);
 });
 
 test("첫 화면이 미리 받는 목록은 public의 그림과 정확히 같다", () => {

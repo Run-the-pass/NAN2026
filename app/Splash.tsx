@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { usePathname } from "next/navigation";
+import { useEffect, useRef, useState } from "react";
 import { assetManifest } from "./asset-manifest";
 import { play } from "./SoundEffects";
 
@@ -14,15 +15,6 @@ const OUT_MS = 520;
 // 기다리고 넘어간다. 못 받은 것은 예전처럼 필요할 때 받는다.
 const MAX_MS = 12000;
 const SPLASH_END_EVENT = "slime-restaurant-splash-end";
-const SPLASH_SEEN = "slime-restaurant-splash-seen";
-const subscribeSeen = () => () => {};
-const hasSeenSplash = () => {
-  try {
-    return sessionStorage.getItem(SPLASH_SEEN) === "1";
-  } catch {
-    return false;
-  }
-};
 
 // 그림 하나를 받아 둔다. 실패해도 첫 화면을 막지 않는다.
 const fetchImage = (src: string) =>
@@ -34,15 +26,18 @@ const fetchImage = (src: string) =>
   });
 
 export default function Splash() {
+  const pathname = usePathname();
+  // 루트 레이아웃은 내부 이동 때 유지된다. 최초 문서 경로만 잡아 두면 홈
+  // 새로고침에는 다시 뜨고 게임→홈 이동이나 /game 직접 진입에는 뜨지 않는다.
+  const [show] = useState(() => pathname === "/" || pathname === "/NAN2026");
   const [done, setDone] = useState(false);
   const [leaving, setLeaving] = useState(false);
   const [ready, setReady] = useState(false);
   const [started, setStarted] = useState(false);
-  const seen = useSyncExternalStore(subscribeSeen, hasSeenSplash, () => false);
   const startedAt = useRef(0);
 
   useEffect(() => {
-    if (seen) return;
+    if (!show) return;
     let alive = true;
 
     // 도장 소리는 그림 7 MB와 같은 줄에서 내려온다. 미리 받아 두지 않으면
@@ -66,11 +61,7 @@ export default function Splash() {
       clearTimeout(cap!);
       warm.src = "";
     };
-  }, [seen]);
-
-  useEffect(() => {
-    if (seen && !done) window.dispatchEvent(new Event(SPLASH_END_EVENT));
-  }, [seen, done]);
+  }, [show]);
 
   useEffect(() => {
     if (!started || !ready) return;
@@ -78,9 +69,6 @@ export default function Splash() {
     const leaveTimer = setTimeout(() => {
       setLeaving(true);
       doneTimer = setTimeout(() => {
-        try {
-          sessionStorage.setItem(SPLASH_SEEN, "1");
-        } catch {}
         setDone(true);
         window.dispatchEvent(new Event(SPLASH_END_EVENT));
       }, OUT_MS);
@@ -98,7 +86,7 @@ export default function Splash() {
     setStarted(true);
   };
 
-  if (seen || done) return null;
+  if (!show || done) return null;
   return (
     <button
       type="button"

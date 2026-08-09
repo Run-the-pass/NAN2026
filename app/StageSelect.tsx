@@ -1,8 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { gameModes, type GameMode } from "../game/core";
-import { endlessUnlocked, shiftStars, type StageProgress } from "./progress";
+import { defaultStages, gameModes, type GameMode } from "../game/core";
+import { endlessUnlocked, shiftStars, stageUnlocked, type StageProgress } from "./progress";
 import { MusicSettings } from "./Music";
 
 // 모드 하나. 나무 판 그림이 버튼 전체이고 글자는 그 위에 얹는다.
@@ -41,53 +41,68 @@ function ModePlate({
 
 export default function StageSelect({
   progress,
-  resumeStageId,
   onPick,
   onBack,
 }: {
   progress: StageProgress;
-  resumeStageId: string | null;
   onPick: (stageId: string) => void;
   onBack: () => void;
 }) {
-  const [resumeOpen, setResumeOpen] = useState(false);
+  const [showStages, setShowStages] = useState(false);
   return (
-    <main className="stage-select">
+    <main className="stage-select" data-screen={showStages ? "stages" : "modes"}>
       <header className="stage-select-bar">
-        <button type="button" className="stage-select-back art-button" onClick={onBack}>
+        <button
+          type="button"
+          className="stage-select-back art-button"
+          onClick={() => showStages ? setShowStages(false) : onBack()}
+        >
           ← 뒤로
         </button>
         <MusicSettings variant="game" />
       </header>
-      <h1><span className="sr-only">모드 선택</span></h1>
-      <div className="mode-plates">
-        {gameModes.map((mode) => (
-          <ModePlate
-            key={mode.id}
-            mode={mode}
-            progress={progress}
-            onPick={() => {
-              if (mode.id !== "shift") return;
-              if (resumeStageId) setResumeOpen(true);
-              else onPick("0");
-            }}
-          />
-        ))}
-      </div>
-      {resumeOpen && (
-        <section className="resume-dialog" role="dialog" aria-modal="true" aria-labelledby="resume-title">
-          <div className="paper-window">
-            <h2 className="paper-title" id="resume-title">하던 영업이 있어요</h2>
-            <div className="paper-body">
-              <p>저장된 스테이지부터 다시 시작합니다.</p>
-              <div className="resume-actions">
-                <button className="art-button" onClick={() => onPick(resumeStageId!)} autoFocus>이어하기</button>
-                <button className="art-button" onClick={() => onPick("0")}>처음부터</button>
-                <button className="art-button" onClick={() => setResumeOpen(false)}>취소</button>
-              </div>
-            </div>
-          </div>
-        </section>
+      <h1><span className="sr-only">{showStages ? "스테이지 선택" : "모드 선택"}</span></h1>
+      {showStages ? (
+        <div className="stage-cards">
+          {defaultStages().map((stage) => {
+            const unlocked = stageUnlocked(progress, stage.id);
+            return (
+              <button
+                type="button"
+                className="stage-card"
+                key={stage.id}
+                data-tutorial={stage.id === "0" ? "" : undefined}
+                data-locked={unlocked ? undefined : ""}
+                disabled={!unlocked}
+                aria-label={unlocked
+                  ? stage.id === "0" ? "튜토리얼 스테이지 0" : `스테이지 ${stage.id}`
+                  : `스테이지 ${stage.id} 잠김`}
+                onClick={() => onPick(stage.id)}
+              >
+                {unlocked ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img className="stage-number" src={`/ui/stage-number-${stage.id}.png`} alt="" aria-hidden />
+                ) : (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img className="stage-lock" src="/ui/stage-lock.png" alt="" aria-hidden />
+                )}
+              </button>
+            );
+          })}
+        </div>
+      ) : (
+        <div className="mode-plates">
+          {gameModes.map((mode) => (
+            <ModePlate
+              key={mode.id}
+              mode={mode}
+              progress={progress}
+              onPick={() => {
+                if (mode.id === "shift") setShowStages(true);
+              }}
+            />
+          ))}
+        </div>
       )}
     </main>
   );

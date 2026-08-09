@@ -85,6 +85,7 @@ sources:
 - [모바일 반응형 레이아웃 계획](plan-mobile-responsive-layout.md) — 휴대폰 가로 화면의 게임 레일·HUD 재배치와 세로 화면 회전 안내 범위.
 - [튜토리얼 턴·화살표 재검증 계획](plan-tutorial-flow-audit-2026-08-09.md) — 지목 슬라임 대체를 막고 접시·테이블 순서와 외곽 화살표를 다시 검증하는 범위.
 - [음식 에셋·테이블 샐러드 조합 보정 계획](plan-food-assets-salad-table-2026-08-09.md) — 에셋3 교체, 접시·음식 표시 확대, 접시 없는 테이블 샐러드 조합과 화살표 재검증 범위.
+- [아르바이트 스테이지 선택 화면 계획](plan-stage-select-2026-08-09.md) — 0~3 선택, 순차 해금, 자물쇠·제목 에셋과 이어하기 팝업 제거 범위.
 - [작업 로그](log.md) — ingest, 계획, 구현, 검증의 시간순 기록.
 
 원문: [감자·도마·접시 에셋](../raw/assets_0/), [화면 문구 이미지](../raw/text/), [추가본 정리](../raw/%EC%B6%94%EA%B0%80%EB%B3%B8_%EC%A0%95%EB%A6%AC/) (덱 `raw/추가본.pptx`의 화면별 기획과 2026-08-02 확정·미정), [클로드 담당 작업: 주문과 화재](../raw/%ED%81%B4%EB%A1%9C%EB%93%9C_%EB%8B%B4%EB%8B%B9_%EC%9E%91%EC%97%85_%EC%A3%BC%EB%AC%B8%EA%B3%BC_%ED%99%94%EC%9E%AC.md), [프로젝트 브리프](../raw/project-brief.md), [홈 화면 v2 참고 이미지](../raw/home%20v2/home_reference.png), [홈 화면 v2 에셋](../raw/home%20v2/), [성장 선택 카드 참고 이미지](../raw/references/upgrade-choice-cards.png), [슬라임 스탯·가격·패널티](../raw/slime-stats-pricing-and-penalties.md), [펀테스트 변경 사항](../raw/fun-test-design-changes.md), [음성인식 시스템 논의](../raw/voice-command-discussion-summary-revised.md), [자원·제작 시스템 기획](../raw/slime-workshop-resource-production-design.md), [그릇·테이블·편의 선택 추가 명세](../raw/%E1%84%80%E1%85%B3%E1%84%85%E1%85%B3%E1%86%BA_%E1%84%90%E1%85%A6%E1%84%8B%E1%85%B5%E1%84%87%E1%85%B3%E1%86%AF_%E1%84%91%E1%85%A7%E1%86%AB%E1%84%8B%E1%85%B4%E1%84%89%E1%85%A5%E1%86%AB%E1%84%90%E1%85%A2%E1%86%A8_%E1%84%8E%E1%85%AE%E1%84%80%E1%85%A1_%E1%84%86%E1%85%A7%E1%86%BC%E1%84%89%E1%85%A6.md)

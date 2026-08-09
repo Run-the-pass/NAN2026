@@ -155,7 +155,8 @@ export function tutorialMoveOptions(
 ) {
   const options = moveOptions(state, actorId);
   if (!onTutorialStage(state) || !cue) return options;
-  if (cue.actor && cue.actor !== actorId) return [];
+  // 화살표가 지목한 슬라임 외에도 공개된 다른 슬라임은 이동할 수 있다.
+  if ((cue.actor && cue.actor !== actorId) || cue.endTurn) return options;
   const target = cue.station
     ? stationInstances.find((station) => station.id === cue.station || station.type === cue.station)
     : null;
@@ -187,7 +188,7 @@ const waitForTurn = (
   return {
     id: `END_TURN_${cue.id}`,
     speaker: actor.typeId,
-    text: `${actor.name}의 행동력을 다 썼어요. 턴 종료를 눌러 다음 턴으로 넘어가세요.`,
+    text: `${actor.name}의 행동력을 다 썼어요. 움직일 수 있는 슬라임이 있으면 자동으로 선택되고, 모두 행동하면 다음 턴으로 넘어가요.`,
     endTurn: true,
   };
 };
@@ -279,7 +280,7 @@ export function tutorialCue(
     return {
       id: "EXPLAIN_AP",
       speaker: "earth",
-      text: "슬라임은 행동력이 있고, 이동이나 상호 작용 시 소모돼요. 매 턴 시작 시 리셋되며 남은 행동력은 추가되지 않아요. 턴 종료를 눌러 다음 턴으로 넘어가주세요.",
+      text: "슬라임은 행동력이 있고, 이동이나 상호 작용 시 소모돼요. 모두 행동하면 다음 턴으로 자동으로 넘어가요.",
       endTurn: true,
     };
   }

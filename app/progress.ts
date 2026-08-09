@@ -1,14 +1,20 @@
 import { defaultStages, shiftCleared } from "../game/core.js";
 
 export type StageProgress = Record<string, number>;
-export type ProgressData = { stars: StageProgress; resumeStageId: string | null };
+export type ProgressData = { stars: StageProgress };
 
 const COOKIE_KEY = "nan2026.progress.v2";
 const OLD_KEY = "nan2026.progress.v1";
 
-export const emptyProgress = (): ProgressData => ({ stars: {}, resumeStageId: null });
+export const emptyProgress = (): ProgressData => ({ stars: {} });
 
 export const endlessUnlocked = (progress: StageProgress) => shiftCleared(progress);
+
+export function stageUnlocked(progress: StageProgress, id: string) {
+  const stages = defaultStages();
+  const index = stages.findIndex((stage) => stage.id === id);
+  return index === 0 || (index > 0 && (progress[stages[index - 1]!.id] ?? 0) > 0);
+}
 
 export function shiftStars(progress: StageProgress) {
   const stages = defaultStages();
@@ -27,19 +33,14 @@ export function withResult(progress: StageProgress, id: string, stars: number): 
 export function sanitizeProgress(raw: unknown): ProgressData {
   if (!raw || typeof raw !== "object") return emptyProgress();
   const ids = new Set(defaultStages().map(({ id }) => id));
-  const value = raw as { stars?: unknown; resumeStageId?: unknown };
+  const value = raw as { stars?: unknown };
   const source = value.stars && typeof value.stars === "object" ? value.stars : {};
   const stars = Object.fromEntries(
     Object.entries(source as Record<string, unknown>).filter(
       ([id, count]) => ids.has(id) && Number.isInteger(count) && (count as number) >= 0 && (count as number) <= 3,
     ),
   ) as StageProgress;
-  return {
-    stars,
-    resumeStageId: typeof value.resumeStageId === "string" && ids.has(value.resumeStageId)
-      ? value.resumeStageId
-      : null,
-  };
+  return { stars };
 }
 
 export function writeProgress(progress: ProgressData) {
@@ -59,7 +60,7 @@ export function readProgress(): ProgressData {
     // 기존 로컬 저장값은 쿠키가 없을 때만 한 번 옮긴다.
     const legacy = localStorage.getItem(OLD_KEY);
     if (!legacy) return emptyProgress();
-    const migrated = sanitizeProgress({ stars: JSON.parse(legacy), resumeStageId: null });
+    const migrated = sanitizeProgress({ stars: JSON.parse(legacy) });
     writeProgress(migrated);
     return migrated;
   } catch {

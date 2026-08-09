@@ -939,12 +939,7 @@ export default function Game() {
         currentStage(state).id,
         roundRank(state),
       );
-      const resumeStageId = state.phase === "lost"
-        ? currentStage(state).id
-        : isLastStage(state)
-          ? null
-          : state.stages[state.stageIndex + 1]!.id;
-      const kept = { stars, resumeStageId };
+      const kept = { stars };
       writeProgress(kept);
       return kept;
     });
@@ -1568,12 +1563,6 @@ export default function Game() {
                 inputEvent.stopPropagation();
                 if (!fromCanvas(pointer)) return;
                 if (!pointer.leftButtonDown()) return;
-                const current = stateRef.current;
-                const guide = tutorialCueRef.current;
-                if (current && onTutorialStage(current) && guide?.actor && guide.actor !== actorId) {
-                  showTutorialBlock();
-                  return;
-                }
                 setSelectedActor((selected) =>
                   selected === actorId ? null : actorId,
                 );
@@ -2086,8 +2075,8 @@ export default function Game() {
     });
   }, []);
 
-  // 방금 행동력을 다 쓴 슬라임에서 다음 마리로 넘긴다. 일반 게임은 모두
-  // 지치면 자동으로 넘기고, 튜토리얼은 목표 슬라임이 지치면 버튼 입력을 기다린다.
+  // 방금 행동력을 다 쓴 슬라임에서 다음 마리로 넘긴다. 모두 지치거나 쉬기로
+  // 했으면 튜토리얼과 일반 게임 모두 다음 턴을 자동으로 시작한다.
   useEffect(() => {
     if (!state || state.phase !== "playing" || !squad || !selectedActor) return;
     if (tutorialDone(state)) return;
@@ -2095,12 +2084,6 @@ export default function Game() {
     if (narrationHolds) return;
     const left = state.actors[selectedActor]?.actionPoints ?? 0;
     if (left > 0) return;
-    // 튜토리얼은 지금 필요한 슬라임이 행동력을 다 쓰면 다른 슬라임에게
-    // 같은 일을 떠넘기지 않는다. 턴 종료 안내를 그대로 기다린다.
-    if (
-      onTutorialStage(state) &&
-      tutorialCue(state, selectedActor, currentStage(state).turnLimit)?.endTurn
-    ) return;
     const next = nextReadyActor(
       state,
       activeActorIds(state),
@@ -2169,17 +2152,13 @@ export default function Game() {
         <Music src="/music/home.mp3" />
         <StageSelect
           progress={progress.stars}
-          resumeStageId={progress.resumeStageId}
-          // 아르바이트는 첫 스테이지부터 끝까지 이어서 돈다.
+          // 열린 스테이지를 직접 골라 시작하고, 승리하면 다음 판으로 이어 간다.
           onPick={(id) => {
-            const resumed = { ...progress, resumeStageId: id };
-            setProgress(resumed);
-            writeProgress(resumed);
             setIntro(id === "0");
             startRound(allTypeIds, id);
             if (id !== "0") setStageIntro(true);
           }}
-          onBack={() => router.push(new URL("../", window.location.href).pathname)}
+          onBack={() => router.push("/")}
         />
       </>
     );
@@ -2189,9 +2168,7 @@ export default function Game() {
     state.phase === "lost"
       ? "영업 종료. 주문을 다 채우지 못했습니다."
       : currentStage(state).id === "0"
-        ? "튜토리얼 완료!"
-      : isLastStage(state)
-        ? "모든 스테이지를 클리어했습니다!"
+        ? "튜토리얼 클리어!"
         : `${currentStage(state).id} 스테이지 클리어!`;
   // 튜토리얼 중에는 아직 소개하지 않은 슬라임을 버튼에서도 지도에서도 뺀다.
   // 한 번에 하나씩 알려 주기 위해서다.
@@ -2417,13 +2394,7 @@ export default function Game() {
                   data-spent={actor.actionPoints === 0 || skippedActors.current.has(actorId) ? "" : undefined}
                   aria-label={`${actor.name} 선택, 남은 행동력 ${actor.actionPoints}`}
                   aria-pressed={selectedActor === actorId}
-                  onClick={() => {
-                    if (cue?.actor && cue.actor !== actorId) {
-                      showTutorialBlock();
-                      return;
-                    }
-                    setSelectedActor((current) => (current === actorId ? null : actorId));
-                  }}
+                  onClick={() => setSelectedActor((current) => (current === actorId ? null : actorId))}
                 >
                   {/* 슬라임 몸이 버튼 배경이다. 얼굴 그대로 두고 위에는
                       남은 에너지만 얹는다. */}
@@ -2490,12 +2461,29 @@ export default function Game() {
           <div className="paper-window">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
-              className={`result-title-art paper-title${state.phase === "lost" ? " result-title-art-game-over" : ""}`}
+              className={`result-title-art paper-title${state.phase === "lost" ? " result-title-art-game-over" : " result-title-art-business-end"}`}
               src={state.phase === "lost" ? "/text/game-over-title.png" : "/text/business-end-title.png"}
               alt={state.phase === "lost" ? "게임 오버" : "영업 종료"}
             />
             <div className="paper-body">
-            <h2 id="result-title">{result}</h2>
+            <h2 id="result-title">
+              {state.phase === "won" ? (
+                <>
+                  <span className="sr-only">{result}</span>
+                  {currentStage(state).id === "0" ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img className="result-clear-tutorial" src="/ui/tutorial-clear.png" alt="" aria-hidden />
+                  ) : (
+                    <span className="result-clear-stage" aria-hidden>
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={`/ui/stage-number-${currentStage(state).id}.png`} alt="" />
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src="/ui/stage-clear-title.png" alt="" />
+                    </span>
+                  )}
+                </>
+              ) : result}
+            </h2>
             {/* 별은 하나씩 차례로 찍힌다. 받은 개수만 밝다. */}
             <p className="stage-rank" aria-label={`스테이지 랭크 별 ${rank}개`}>
               {[0, 1, 2].map((index) => (
