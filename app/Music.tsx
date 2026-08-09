@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 
 const storageKey = "slime-restaurant-music";
@@ -207,9 +208,9 @@ export function MusicSettings({
             onVolume={(sfxVolume) => saveSettings({ ...settings, sfxVolume })}
           />
           {variant === "game" && (
-            <a className="settings-home-link art-button" href="../">
+            <Link className="settings-home-link art-button" href="../">
               홈 화면으로
-            </a>
+            </Link>
           )}
         </section>
       </div>

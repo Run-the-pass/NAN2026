@@ -31,25 +31,25 @@ const left = (offsetCol = 0, offsetRow = 0): TutorialArrowLayout => ({
 });
 
 export const tutorialArrowLayout: Record<TutorialCue["id"], TutorialArrowLayout> = {
-  SELECT_EARTH: left(0, -1),
+  SELECT_EARTH: left(0, -0.2),
   MOVE_TO_CABBAGE: left(),
   PICK_CABBAGE: left(),
   MOVE_TO_CUTTING_BOARD: top(),
   PLACE_CABBAGE: top(),
   CHOP_CABBAGE: top(),
   TAKE_FINISHED_FOOD: top(),
-  PUT_FOOD_ON_TABLE: { side: "bottom", offsetCol: 0, offsetRow: 0, rotate: 180, bobX: 0, bobY: -12 },
-  TAKE_CLEAN_DISH: top(-1.35),
+  PUT_FOOD_ON_TABLE: { side: "bottom", offsetCol: 0, offsetRow: 0.8, rotate: 180, bobX: 0, bobY: -12 },
+  TAKE_CLEAN_DISH: left(),
   PLATE_AT_TABLE: left(),
   TAKE_PLATED_FOOD: left(),
-  SUBMIT_ORDER: top(),
+  SUBMIT_ORDER: top(0, -0.8),
 };
 
 // waitForTurn은 원래 안내 id 앞에 꼬리표를 붙여 새 안내를 만든다.
-// END_TURN_은 화살표를 안 쓰고, USE_<슬라임>_은 그 슬라임을 짚으므로
-// 푸름이를 고르라고 할 때와 같은 자리에 둔다. 여기서 못 걸러내면 자리를
+// END_TURN_은 화살표를 안 쓰고, USE_<슬라임>_은 지도 대신 하단 로스터에서
+// 짚는다. 여기서 못 걸러내면 자리를
 // 못 찾은 화살표가 지도 왼쪽 위 구석에 그대로 붙는다.
 export const arrowLayoutFor = (id: string) =>
   id.startsWith("USE_")
-    ? left()
+    ? undefined
     : tutorialArrowLayout[id.replace(/^END_TURN_/, "")];

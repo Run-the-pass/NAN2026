@@ -3,7 +3,7 @@ import { readdirSync } from "node:fs";
 import test from "node:test";
 import { assetManifest } from "../app/asset-manifest.js";
 import { simulate, actAt } from "../game/cli.js";
-import { activeActorIds, finishTutorial, prepareTutorialState, roundRank, tutorialCue, tutorialDone } from "../app/tutorial.js";
+import { activeActorIds, finishTutorial, prepareTutorialState, roundRank, tutorialAllowsStation, tutorialCue, tutorialDone, tutorialMoveOptions } from "../app/tutorial.js";
 import { dialogueParts, finalLines, stageOpeningLines } from "../app/dialogue-script.js";
 import { parseSession } from "../game/session.js";
 import recipeData from "../game/recipes.json" with { type: "json" };
@@ -1300,6 +1300,18 @@ test("튜토리얼은 첫 양배추 제출까지 한 번에 한 가지만 시킨
   assert.deepEqual(activeActorIds(state), ["earth-1"]);
   assert.equal(step(state, null), "SELECT_EARTH");
   assert.equal(step(state, "earth-1"), "MOVE_TO_CABBAGE");
+  const firstCue = tutorialCue(state, "earth-1", limit)!;
+  const guided = tutorialMoveOptions(state, "earth-1", firstCue);
+  const box = stationInstancesByType["cabbage-box"][0];
+  const before = Math.min(...box.tiles.map((tile) =>
+    Math.abs(state.actors["earth-1"]!.col - tile.col) + Math.abs(state.actors["earth-1"]!.row - tile.row)
+  ));
+  assert.ok(guided.length > 0);
+  assert.ok(guided.every((option) => box.tiles.some((tile) =>
+    Math.abs(option.col - tile.col) + Math.abs(option.row - tile.row) < before
+  )));
+  assert.equal(tutorialAllowsStation(state, firstCue, "earth-1", cabbageBoxId), true);
+  assert.equal(tutorialAllowsStation(state, firstCue, "earth-1", stoveId), false);
   const firstMove = moveOptions(state, "earth-1").find(({ col, row }) => col === 3 && row === 3)!;
   const afterFirstMove = moveActor(state, "earth-1", firstMove);
   assert.equal(step(afterFirstMove, "earth-1"), "EXPLAIN_AP");
@@ -1349,6 +1361,16 @@ test("튜토리얼은 첫 양배추 제출까지 한 번에 한 가지만 시킨
   const handoff = tutorialCue(waterOnly, "earth-1", limit)!;
   assert.equal(handoff.endTurn, undefined);
   assert.equal(handoff.actor, "water-1");
+  assert.equal(handoff.station, pointed);
+  // 퐁당이의 행동력만 0이면 푸름이를 골라야 하지 턴을 넘기면 안 된다.
+  const earthReady = {
+    ...state,
+    actors: {
+      ...state.actors,
+      "water-1": { ...state.actors["water-1"]!, actionPoints: 0 },
+    },
+  };
+  assert.equal(nextReadyActor(earthReady, activeActorIds(earthReady), "water-1"), "earth-1");
   state = actAt(state, "earth-1", tableId);
   state = nextTurn(state);
   assert.equal(step(state, "water-1"), "TAKE_CLEAN_DISH");
@@ -1389,11 +1411,12 @@ test("다이얼로그는 확정된 음식·도구·슬라임 이름만 구분한
 });
 
 test("튜토리얼 화살표와 쿠키 진행도는 조절·검증된 값만 쓴다", () => {
-  // 푸름이 타일과 겹치지 않도록 왼쪽 위에서 오른쪽을 본다.
+  // 푸름이 몸을 가리지 않고 왼쪽 가장자리에서 짚는다.
   const selectEarth = arrowLayoutFor("SELECT_EARTH")!;
   assert.equal(selectEarth.side, "left");
-  assert.equal(selectEarth.offsetRow, -1);
+  assert.equal(selectEarth.offsetRow, -0.2);
   assert.equal(selectEarth.bobY, 0);
+  assert.equal(arrowLayoutFor("USE_water-1_PUT_FOOD_ON_TABLE"), undefined);
   assert.equal(arrowLayoutFor("PICK_CABBAGE")!.bobX > 0, true);
   assert.deepEqual(
     sanitizeProgress({

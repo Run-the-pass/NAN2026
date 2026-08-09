@@ -3,8 +3,10 @@ import {
   currentStage,
   isBesideStation,
   isDish,
+  moveOptions,
   squadActorIds,
   stageRank,
+  stationInstances,
   stationInstancesByType,
   type ActorId,
   type Carried,
@@ -13,6 +15,7 @@ import {
   type SlimeTypeId,
   type StationId,
   type StationInstanceId,
+  type TilePosition,
 } from "../game/core.js";
 
 // 1스테이지만 튜토리얼을 붙인다. 2·3스테이지는 새 요소가 나올 때 짧은 대사만
@@ -138,6 +141,42 @@ export function activeActorIds(state: GameState): ActorId[] {
   return squadActorIds(state.squad).filter((id) => shown.includes(state.actors[id]!.typeId));
 }
 
+const distanceTo = (tile: TilePosition, targets: TilePosition[]) =>
+  Math.min(...targets.map((target) =>
+    Math.abs(tile.col - target.col) + Math.abs(tile.row - target.row)
+  ));
+
+// 튜토리얼에서는 화살표 목표에 가까워지는 칸만 보여 준다.
+// 일반 스테이지의 이동 규칙은 그대로다.
+export function tutorialMoveOptions(
+  state: GameState,
+  actorId: ActorId,
+  cue: TutorialCue | null,
+) {
+  const options = moveOptions(state, actorId);
+  if (!onTutorialStage(state) || !cue) return options;
+  if (cue.actor && cue.actor !== actorId) return [];
+  const target = cue.station
+    ? stationInstances.find((station) => station.id === cue.station || station.type === cue.station)
+    : null;
+  const actor = state.actors[actorId];
+  if (!target || !actor) return [];
+  const before = distanceTo(actor, target.tiles);
+  return options.filter((tile) => distanceTo(tile, target.tiles) < before);
+}
+
+export function tutorialAllowsStation(
+  state: GameState,
+  cue: TutorialCue | null,
+  actorId: ActorId | null,
+  stationId: StationInstanceId,
+) {
+  if (!onTutorialStage(state) || !cue) return true;
+  if (!actorId || (cue.actor && cue.actor !== actorId) || !cue.station) return false;
+  const station = stationInstances.find((candidate) => candidate.id === stationId);
+  return cue.station === stationId || cue.station === station?.type;
+}
+
 const waitForTurn = (
   state: GameState,
   actorId: ActorId,
@@ -155,6 +194,7 @@ const waitForTurn = (
       speaker: next.typeId,
       text: `${next.name}의 행동력이 남아 있어요. 움직이거나 Space로 쉬게 해주세요.`,
       actor: ready,
+      station: cue.station,
     };
   }
   return {

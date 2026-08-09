@@ -76,17 +76,6 @@ button:disabled { cursor: var(--cursor-arrow); }
   appearance: none;
   background: radial-gradient(120% 90% at 50% 42%, #fbf6ec, #e7ddcc 60%, #cfc2ac);
 }
-.splash[data-started] {
-  /* 효과음의 첫 타격과 맞춰 도장이 거의 바로 종이에 닿는다. */
-  animation: splash-recoil 900ms ease-out both;
-}
-@keyframes splash-recoil {
-  0%, 10% { translate: 0 0; }
-  11% { translate: 0 6px; }
-  20% { translate: -3px -2px; }
-  29% { translate: 2px 1px; }
-  100% { translate: 0 0; }
-}
 /* 위에서 크게 내려와 한 번에 멈춘다. 내려오는 동안 가속해야 "쾅"이 되므로
    구간마다 곡선을 따로 준다. 전체를 감속 곡선 하나로 두면 첫 순간에 다 와
    버려서 떨어지는 게 안 보인다. 멈춘 뒤 살짝 커지는 건 눌린 잉크가 번지는 것. */
@@ -141,7 +130,7 @@ button:disabled { cursor: var(--cursor-arrow); }
 @media (prefers-reduced-motion: reduce) {
   /* 튀고 커지는 것만 없앤다. 종이가 걷히는 건 자리가 안 움직여 남겨 둔다.
      이걸 빼면 나가는 연출이 통째로 죽어 홈 화면이 툭 튀어나온다. */
-  .splash[data-started], .splash[data-started] .splash-logo,
+  .splash[data-started] .splash-logo,
   .splash[data-leaving] .splash-logo { animation: none; }
   .splash[data-started] .splash-logo {
     opacity: 1;
@@ -449,7 +438,7 @@ button:disabled { cursor: var(--cursor-arrow); }
 .coach-map-over-dialogue { z-index: 42; }
 .coach-map-arrow {
   position: absolute;
-  width: clamp(42px, 4.4vw, 58px);
+  width: clamp(36px, 3.5vw, 44px);
   translate: -50% -50%;
   filter: drop-shadow(0 4px 0 #3c260d) drop-shadow(0 7px 8px #0008);
   animation: coach-arrow 650ms ease-in-out infinite alternate;
@@ -1004,6 +993,20 @@ button:disabled { cursor: var(--cursor-arrow); }
   border-color: var(--gold);
   animation: coach-pulse 1.1s ease-in-out infinite;
 }
+.roster-button[data-use-coach]::after {
+  content: "";
+  position: absolute;
+  bottom: calc(100% + 16px);
+  left: 50%;
+  width: clamp(36px, 3.5vw, 44px);
+  aspect-ratio: 1;
+  background: url("/ui/tutorial-arrow.png") center / contain no-repeat;
+  translate: -50% 0;
+  filter: drop-shadow(0 4px 0 #3c260d) drop-shadow(0 7px 8px #0008);
+  animation: roster-coach-arrow 650ms ease-in-out infinite alternate;
+  pointer-events: none;
+}
+@keyframes roster-coach-arrow { to { translate: -50% 10px; } }
 
 @keyframes coach-pulse {
   0%, 100% { box-shadow: 0 0 0 0 #ffd46b00; }
@@ -1012,6 +1015,7 @@ button:disabled { cursor: var(--cursor-arrow); }
 
 @media (prefers-reduced-motion: reduce) {
   .stage-frame [data-coach] { animation: none; box-shadow: 0 0 0 4px #ffd46b66; }
+  .roster-button[data-use-coach]::after { animation: none; }
 }
 
 .action-toast {

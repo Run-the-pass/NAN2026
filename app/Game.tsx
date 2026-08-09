@@ -1,6 +1,7 @@
 "use client";
 
 import * as Phaser from "phaser";
+import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
 import {
   TILE_SIZE,
@@ -11,7 +12,6 @@ import {
   interactActor,
   isBesideStation,
   moveActor,
-  moveOptions,
   nextReadyActor,
   endTurn,
   pixelToTile,
@@ -67,7 +67,7 @@ import { GameSoundEffects } from "./SoundEffects";
 import StageSelect from "./StageSelect";
 import Dialogue from "./Dialogue";
 import { actionPointLines, earthInfoLines, finalLines, openingLines, platedFoodLines, stageOpeningLines, tutorialCompleteLines, waterArrivalLines, type DialogueFocus } from "./dialogue-script";
-import { activeActorIds, finishTutorial, onTutorialStage, platedIntroReady, prepareTutorialState, roundRank, tutorialCue, tutorialDone, waterIntroReady } from "./tutorial";
+import { activeActorIds, finishTutorial, onTutorialStage, platedIntroReady, prepareTutorialState, roundRank, tutorialAllowsStation, tutorialCue, tutorialDone, tutorialMoveOptions, waterIntroReady, type TutorialCue } from "./tutorial";
 import { arrowLayoutFor, type TutorialArrowLayout } from "./tutorial-arrow-layout";
 import { emptyProgress, readProgress, withResult, writeProgress, type ProgressData } from "./progress";
 
@@ -133,6 +133,22 @@ function coachArrowStyle(
     "--arrow-x": `${layout.bobX}px`,
     "--arrow-y": `${layout.bobY}px`,
   } as CSSProperties;
+}
+
+function FixedCoachArrow({
+  layout,
+  tiles,
+}: {
+  layout: TutorialArrowLayout | undefined;
+  tiles: { col: number; row: number }[];
+}) {
+  // 부모의 key가 안내 단계가 바뀔 때만 이 컴포넌트를 새로 만든다.
+  // 그 전에는 슬라임과 상태가 움직여도 처음 계산한 좌표를 그대로 쓴다.
+  const [style] = useState(() => coachArrowStyle(layout, tiles));
+  return (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img className="coach-map-arrow" src="/ui/tutorial-arrow.png" alt="" style={style} />
+  );
 }
 const workStatusLabels = {
   IDLE: "대기",
@@ -717,6 +733,7 @@ function GameInspector({
 }
 
 export default function Game() {
+  const router = useRouter();
   const [squad, setSquad] = useState<SlimeTypeId[] | null>(null);
   const [progress, setProgress] = useState<ProgressData>(emptyProgress());
   const [stageId, setStageId] = useState<string | null>(null);
@@ -750,12 +767,11 @@ export default function Game() {
   const selectedActorRef = useRef(selectedActor);
   // 캔버스가 이름표를 띄울지 판단하는 데 쓴다.
   const inspectedRef = useRef(inspected);
-  // 행동력이 떨어져 자동으로 넘긴 슬라임. 같은 마리를 되풀이해 뺏지 않는다.
-  const handedOff = useRef<ActorId | null>(null);
   // Space로 넘긴 슬라임은 이번 턴의 자동 선택에서 다시 부르지 않는다.
   const skippedActors = useRef(new Set<ActorId>());
   // 튜토리얼이 지금 짚는 설비. 캔버스가 그 자리에 표시를 그린다.
   const coachRef = useRef<StationId | StationInstanceId | null>(null);
+  const tutorialCueRef = useRef<TutorialCue | null>(null);
   // 도입 대사가 짚는 슬라임. Phaser의 어두운 막보다 앞으로 올린다.
   const dialogueActorRef = useRef<ActorId | null>(null);
   // 화살표를 지도 위 실제 타일에 붙이려면 렌더에서도 알아야 해서 ref와 함께 둔다.
@@ -764,6 +780,14 @@ export default function Game() {
   const metrics = useRef<Metrics>(emptyMetrics());
   const savedRef = useRef(false);
   const roundSeed = useRef(0);
+  const closingBannerShown = useRef(false);
+  const tutorialBlockTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const showTutorialBlock = useCallback(() => {
+    if (tutorialBlockTimer.current) clearTimeout(tutorialBlockTimer.current);
+    setToast("지금은 노란색 화살표가 가리키는 곳부터 해볼까요?");
+    tutorialBlockTimer.current = setTimeout(() => setToast(null), 2_200);
+  }, []);
 
   useEffect(() => {
     stateRef.current = state;
@@ -804,8 +828,9 @@ export default function Game() {
   const cueStation = cue?.station ?? null;
   useEffect(() => {
     coachRef.current = cueStation;
+    tutorialCueRef.current = cue;
     if (stateRef.current) view.current?.sync(stateRef.current);
-  }, [cueStation]);
+  }, [cue, cueStation]);
 
   useEffect(() => {
     if (!state || !tutorialDone(state) || tutorialComplete) return;
@@ -859,13 +884,20 @@ export default function Game() {
   const startedStageId =
     state?.phase === "playing" ? currentStage(state).id : null;
   const closingSoon = state?.phase === "playing" && state.turnsLeft <= RUSH_TURNS_LEFT;
+  const blockingNarration = intro || earthInfo || actionPointInfo || waterIntro ||
+    platedIntro || tutorialOutro || stageIntro || finalOutro;
+  useEffect(() => {
+    closingBannerShown.current = false;
+  }, [startedStageId]);
   // 인사가 끝난 뒤에 "영업 시작"을 띄운다. 대사 위에 겹쳐 뜨면 둘 다 묻힌다.
   useEffect(() => {
     if (startedStageId && !intro && !stageIntro) setBanner("start");
   }, [startedStageId, intro, stageIntro]);
   useEffect(() => {
-    if (closingSoon) setBanner("closing");
-  }, [closingSoon]);
+    if (!closingSoon || closingBannerShown.current || banner || blockingNarration) return;
+    closingBannerShown.current = true;
+    setBanner("closing");
+  }, [closingSoon, banner, blockingNarration]);
   useEffect(() => {
     if (!banner) return;
     const timer = setTimeout(() => setBanner(null), BANNER_MS);
@@ -1470,8 +1502,13 @@ export default function Game() {
                 inputEvent.stopPropagation();
                 if (!fromCanvas(pointer)) return;
                 if (!pointer.leftButtonDown()) return;
-                setInspected({ kind: "station", id });
                 const actorId = selectedActorRef.current;
+                const current = stateRef.current;
+                if (current && !tutorialAllowsStation(current, tutorialCueRef.current, actorId, id)) {
+                  showTutorialBlock();
+                  return;
+                }
+                setInspected({ kind: "station", id });
                 if (!actorId) return;
                 // 선택한 슬라임이 있으면 거리와 무관하게 상호작용 시도다.
                 // 멀면 코어의 기존 거절 이유를 띄우고 선택은 유지한다.
@@ -1531,6 +1568,12 @@ export default function Game() {
                 inputEvent.stopPropagation();
                 if (!fromCanvas(pointer)) return;
                 if (!pointer.leftButtonDown()) return;
+                const current = stateRef.current;
+                const guide = tutorialCueRef.current;
+                if (current && onTutorialStage(current) && guide?.actor && guide.actor !== actorId) {
+                  showTutorialBlock();
+                  return;
+                }
                 setSelectedActor((selected) =>
                   selected === actorId ? null : actorId,
                 );
@@ -1618,15 +1661,22 @@ export default function Game() {
           const tile = pixelToTile(point.x, point.y);
           const current = stateRef.current;
           const actorId = selectedActorRef.current;
+          const guided = current && actorId
+            ? tutorialMoveOptions(current, actorId, tutorialCueRef.current)
+            : [];
           if (
             current &&
             actorId &&
-            moveOptions(current, actorId).some(
+            guided.some(
               (target) => target.col === tile.col && target.row === tile.row,
             )
           ) {
             metrics.current.buttonCommands += 1;
             setState((value) => (value ? moveActor(value, actorId, tile) : value));
+            return;
+          }
+          if (current && actorId && onTutorialStage(current) && tutorialCueRef.current) {
+            showTutorialBlock();
             return;
           }
           setSelectedActor(null);
@@ -1791,7 +1841,7 @@ export default function Game() {
             if (selected) {
               // 번개 슬라임은 행동력이 2라 두 칸까지 닿는다. 한 칸 더 가는
               // 자리는 조금 옅게 그려 몇 칸짜리인지 눈으로 알게 한다.
-              for (const tile of moveOptions(current, selected)) {
+              for (const tile of tutorialMoveOptions(current, selected, tutorialCueRef.current)) {
                 const { x, y } = tileCenter(tile);
                 const far = tile.cost > actionCost.move;
                 markAt(y)
@@ -1801,8 +1851,9 @@ export default function Game() {
                   .strokeRect(x - 24, y - 24, 48, 48);
               }
               const actor = current.actors[selected];
-              for (const station of stationInstances) {
+              for (const station of actor && actor.actionPoints > 0 ? stationInstances : []) {
                 if (!actor || !isBesideStation(actor, station)) continue;
+                if (!tutorialAllowsStation(current, tutorialCueRef.current, selected, station.id)) continue;
                 const after = interactActor(current, selected, station.id);
                 const ok = (after.refusal?.seq ?? -1) === (current.refusal?.seq ?? -1);
                 this.usable[station.id] = ok;
@@ -1971,7 +2022,7 @@ export default function Game() {
       view.current = null;
       game.destroy(true);
     };
-  }, [squad]);
+  }, [squad, showTutorialBlock]);
 
   // 저장된 별은 브라우저에만 있어 첫 렌더 뒤에 읽는다.
   useEffect(() => {
@@ -2042,13 +2093,10 @@ export default function Game() {
   useEffect(() => {
     if (!state || state.phase !== "playing" || !squad || !selectedActor) return;
     if (tutorialDone(state)) return;
-    // 대사가 붙잡고 있는 동안에는 handedOff도 건드리지 않는다. 여기서 지우면
-    // 대사가 끝난 뒤에 넘길 차례를 잃어버려 턴이 멈춰 선다.
+    // 소개 대사가 떠 있는 동안에는 선택도 턴도 넘기지 않는다.
     if (narrationHolds) return;
     const left = state.actors[selectedActor]?.actionPoints ?? 0;
-    const had = handedOff.current;
-    handedOff.current = left > 0 ? selectedActor : null;
-    if (left > 0 || had !== selectedActor) return;
+    if (left > 0) return;
     const next = nextReadyActor(
       state,
       activeActorIds(state),
@@ -2127,7 +2175,7 @@ export default function Game() {
             startRound(allTypeIds, id);
             if (id !== "0") setStageIntro(true);
           }}
-          onBack={() => window.location.assign("../")}
+          onBack={() => router.push(new URL("../", window.location.href).pathname)}
         />
       </>
     );
@@ -2327,12 +2375,10 @@ export default function Game() {
         {dialogueActor && state.actors[dialogueActor] && (
           <span className="coach-map coach-map-over-dialogue" aria-hidden>
             <i className="coach-map-stage">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                className="coach-map-arrow"
-                src="/ui/tutorial-arrow.png"
-                alt=""
-                style={coachArrowStyle(arrowLayoutFor("SELECT_EARTH"), [state.actors[dialogueActor]!])}
+              <FixedCoachArrow
+                key={dialogueActor}
+                layout={arrowLayoutFor("SELECT_EARTH")}
+                tiles={[state.actors[dialogueActor]!]}
               />
             </i>
           </span>
@@ -2343,12 +2389,10 @@ export default function Game() {
         {cue && coachTiles.length > 0 && !cue.endTurn && arrowLayoutFor(cue.id) && (
           <span className="coach-map" aria-hidden>
             <i className="coach-map-stage">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                className="coach-map-arrow"
-                src="/ui/tutorial-arrow.png"
-                alt=""
-                style={coachArrowStyle(arrowLayoutFor(cue.id), coachTiles)}
+              <FixedCoachArrow
+                key={cue.id}
+                layout={arrowLayoutFor(cue.id)}
+                tiles={coachTiles}
               />
             </i>
           </span>
@@ -2366,12 +2410,17 @@ export default function Game() {
                   key={actorId}
                   data-type={actor.typeId}
                   data-coach={cue?.actor === actorId ? "" : undefined}
+                  data-use-coach={cue?.id.startsWith("USE_") && cue.actor === actorId ? "" : undefined}
                   data-spent={actor.actionPoints === 0 || skippedActors.current.has(actorId) ? "" : undefined}
                   aria-label={`${actor.name} 선택, 남은 행동력 ${actor.actionPoints}`}
                   aria-pressed={selectedActor === actorId}
-                  onClick={() =>
-                    setSelectedActor((current) => (current === actorId ? null : actorId))
-                  }
+                  onClick={() => {
+                    if (cue?.actor && cue.actor !== actorId) {
+                      showTutorialBlock();
+                      return;
+                    }
+                    setSelectedActor((current) => (current === actorId ? null : actorId));
+                  }}
                 >
                   {/* 슬라임 몸이 버튼 배경이다. 얼굴 그대로 두고 위에는
                       남은 에너지만 얹는다. */}
@@ -2402,7 +2451,13 @@ export default function Game() {
               type="button"
               className="turn-end art-button"
               data-coach={cue?.endTurn ? "" : undefined}
-              onClick={finishTurn}
+              onClick={() => {
+                if (cue && !cue.endTurn) {
+                  showTutorialBlock();
+                  return;
+                }
+                finishTurn();
+              }}
               aria-label={`턴 종료, 행동력이 남은 슬라임 ${readyCount}마리`}
             >
               <b>턴 종료</b>
@@ -2452,7 +2507,7 @@ export default function Game() {
                 />
               ))}
             </p>
-            {/* 정산: 채운 주문과 실수를 횟수로 센다. 숫자는 올라간다. */}
+            {/* 정산: 채운 주문과 남은 턴을 보여 준다. */}
             <dl className="settle">
               <div>
                 <dt>주문 성공</dt>
@@ -2460,9 +2515,9 @@ export default function Game() {
                 <dd><CountUp value={state.filled} />번</dd>
               </div>
               <div>
-                <dt>주문 실수</dt>
+                <dt>남은 턴</dt>
                 <dd />
-                <dd><CountUp value={state.misses} delay={420} />번</dd>
+                <dd><CountUp value={state.turnsLeft} delay={420} />턴</dd>
               </div>
             </dl>
             <div className="result-actions">
