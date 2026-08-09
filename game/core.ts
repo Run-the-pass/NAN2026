@@ -1829,8 +1829,19 @@ function atTable(
       item === "shredded-carrot" || item === "shredded-cabbage"
     );
 
-  // 썬 당근과 썬 양배추를 같은 접시에 올리면 샐러드가 된다.
   const looseItem = actor.carrying.findIndex((carried) => !isDish(carried));
+  // 접시는 제출할 때만 필요하다. 썬 재료 둘은 테이블에서 먼저 샐러드로 합친다.
+  if (
+    tableItem && !isDish(tableItem) && looseItem >= 0 &&
+    saladPair(tableItem, actor.carrying[looseItem] as ItemId)
+  ) {
+    return put(
+      `${actor.name}이(가) 샐러드를 완성했습니다.`,
+      actor.carrying.filter((_, index) => index !== looseItem),
+      ["salad"],
+    );
+  }
+  // 한 재료가 이미 담긴 접시와 나머지 재료를 합쳐도 샐러드가 된다.
   if (
     tableItem && isDish(tableItem) && tableItem.status === "filled" &&
     looseItem >= 0 && saladPair(tableItem.content, actor.carrying[looseItem] as ItemId)

@@ -8,5 +8,12 @@ const Game = dynamic(() => import("../Game"), {
 });
 
 export default function GamePage() {
-  return <Game />;
+  return (
+    <>
+      <p className="landscape-gate" role="status">
+        휴대폰을 가로로 돌려주세요.
+      </p>
+      <Game />
+    </>
+  );
 }

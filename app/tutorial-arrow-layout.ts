@@ -29,6 +29,12 @@ const top = (offsetCol = 0, offsetRow = 0): TutorialArrowLayout => ({
 const left = (offsetCol = 0, offsetRow = 0): TutorialArrowLayout => ({
   side: "left", offsetCol, offsetRow, rotate: -90, bobX: 12, bobY: 0,
 });
+const right = (offsetCol = 0, offsetRow = 0): TutorialArrowLayout => ({
+  side: "right", offsetCol, offsetRow, rotate: 90, bobX: -12, bobY: 0,
+});
+const bottom = (offsetCol = 0, offsetRow = 0): TutorialArrowLayout => ({
+  side: "bottom", offsetCol, offsetRow, rotate: 180, bobX: 0, bobY: -12,
+});
 
 export const tutorialArrowLayout: Record<TutorialCue["id"], TutorialArrowLayout> = {
   SELECT_EARTH: left(0, -0.2),
@@ -38,18 +44,14 @@ export const tutorialArrowLayout: Record<TutorialCue["id"], TutorialArrowLayout>
   PLACE_CABBAGE: top(),
   CHOP_CABBAGE: top(),
   TAKE_FINISHED_FOOD: top(),
-  PUT_FOOD_ON_TABLE: { side: "bottom", offsetCol: 0, offsetRow: 0.8, rotate: 180, bobX: 0, bobY: -12 },
-  TAKE_CLEAN_DISH: left(),
-  PLATE_AT_TABLE: left(),
-  TAKE_PLATED_FOOD: left(),
+  PUT_FOOD_ON_TABLE: bottom(0, 0.8),
+  TAKE_CLEAN_DISH: bottom(0, -0.2),
+  PLATE_AT_TABLE: right(),
+  TAKE_PLATED_FOOD: right(),
   SUBMIT_ORDER: top(0, -0.8),
 };
 
-// waitForTurn은 원래 안내 id 앞에 꼬리표를 붙여 새 안내를 만든다.
-// END_TURN_은 화살표를 안 쓰고, USE_<슬라임>_은 지도 대신 하단 로스터에서
-// 짚는다. 여기서 못 걸러내면 자리를
-// 못 찾은 화살표가 지도 왼쪽 위 구석에 그대로 붙는다.
+// END_TURN_은 지도 대신 턴 종료 버튼을 짚는다. 원래 목표 배치를 돌려줘도
+// Game.tsx가 endTurn 안내의 지도 화살표를 그리지 않는다.
 export const arrowLayoutFor = (id: string) =>
-  id.startsWith("USE_")
-    ? undefined
-    : tutorialArrowLayout[id.replace(/^END_TURN_/, "")];
+  tutorialArrowLayout[id.replace(/^END_TURN_/, "")];

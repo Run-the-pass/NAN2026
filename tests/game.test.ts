@@ -664,6 +664,23 @@ test("썬 당근과 썬 양배추를 한 접시에 올리면 샐러드가 된다
   assert.equal(submitted.filled, 1);
 });
 
+test("썬 당근과 썬 양배추는 접시 없이 테이블에서 샐러드로 합쳐진다", () => {
+  const base = initialState(1, ["lightning"], oneStage([
+    { id: "salad", foodId: "salad", targetCount: 1, submittedCount: 0 },
+  ]));
+  const state: GameState = {
+    ...base,
+    actors: {
+      ...base.actors,
+      "lightning-1": { ...base.actors["lightning-1"]!, carrying: ["shredded-carrot"] },
+    },
+    tables: { ...base.tables, [tableId]: ["shredded-cabbage"] },
+  };
+  const mixed = actAt(state, "lightning-1", tableId);
+  assert.deepEqual(mixed.tables[tableId], ["salad"]);
+  assert.deepEqual(mixed.actors["lightning-1"]!.carrying, []);
+});
+
 test("남은 턴이 얼마 없으면 러쉬 음악을 사용한다", () => {
   assert.equal(gameMusicSource(RUSH_TURNS_LEFT + 1, "playing"), "/music/main.mp3");
   assert.equal(gameMusicSource(RUSH_TURNS_LEFT, "playing"), "/music/rush.mp3");
@@ -1350,7 +1367,7 @@ test("튜토리얼은 첫 양배추 제출까지 한 번에 한 가지만 시킨
     }
   }
   assert.deepEqual([...pointedWhileWalking], [pointed]);
-  // 다른 슬라임의 행동력이 남았으면 턴 종료를 재촉하지 않는다.
+  // 목표 슬라임의 행동력이 없다고 다른 슬라임에게 같은 일을 떠넘기지 않는다.
   const waterOnly = {
     ...state,
     actors: {
@@ -1359,22 +1376,25 @@ test("튜토리얼은 첫 양배추 제출까지 한 번에 한 가지만 시킨
     },
   };
   const handoff = tutorialCue(waterOnly, "earth-1", limit)!;
-  assert.equal(handoff.endTurn, undefined);
-  assert.equal(handoff.actor, "water-1");
-  assert.equal(handoff.station, pointed);
-  // 퐁당이의 행동력만 0이면 푸름이를 골라야 하지 턴을 넘기면 안 된다.
-  const earthReady = {
+  assert.equal(handoff.id, "END_TURN_PUT_FOOD_ON_TABLE");
+  assert.equal(handoff.endTurn, true);
+  assert.equal(handoff.actor, undefined);
+  assert.equal(tutorialAllowsStation(waterOnly, handoff, "water-1", target.id), false);
+  state = actAt(state, "earth-1", tableId);
+  state = nextTurn(state);
+  assert.equal(step(state, "water-1"), "TAKE_CLEAN_DISH");
+  assert.match(tutorialCue(state, "water-1", limit)!.text, /그릇 상자.*물 슬라임/);
+  const spentWater = {
     ...state,
     actors: {
       ...state.actors,
       "water-1": { ...state.actors["water-1"]!, actionPoints: 0 },
     },
   };
-  assert.equal(nextReadyActor(earthReady, activeActorIds(earthReady), "water-1"), "earth-1");
-  state = actAt(state, "earth-1", tableId);
-  state = nextTurn(state);
-  assert.equal(step(state, "water-1"), "TAKE_CLEAN_DISH");
-  assert.match(tutorialCue(state, "water-1", limit)!.text, /그릇 상자.*물 슬라임/);
+  const dishWait = tutorialCue(spentWater, "water-1", limit)!;
+  assert.equal(dishWait.id, "END_TURN_TAKE_CLEAN_DISH");
+  assert.equal(dishWait.endTurn, true);
+  assert.equal(tutorialAllowsStation(spentWater, dishWait, "earth-1", rackId), false);
   state = actAt(state, "water-1", rackId);
   state = nextTurn(state);
   assert.equal(step(state, "water-1"), "PLATE_AT_TABLE");
@@ -1416,8 +1436,12 @@ test("튜토리얼 화살표와 쿠키 진행도는 조절·검증된 값만 쓴
   assert.equal(selectEarth.side, "left");
   assert.equal(selectEarth.offsetRow, -0.2);
   assert.equal(selectEarth.bobY, 0);
-  assert.equal(arrowLayoutFor("USE_water-1_PUT_FOOD_ON_TABLE"), undefined);
   assert.equal(arrowLayoutFor("PICK_CABBAGE")!.bobX > 0, true);
+  assert.equal(arrowLayoutFor("PUT_FOOD_ON_TABLE")!.side, "bottom");
+  assert.equal(arrowLayoutFor("TAKE_CLEAN_DISH")!.side, "bottom");
+  assert.equal(arrowLayoutFor("TAKE_CLEAN_DISH")!.offsetRow, -0.2);
+  assert.equal(arrowLayoutFor("PLATE_AT_TABLE")!.side, "right");
+  assert.equal(arrowLayoutFor("TAKE_PLATED_FOOD")!.bobX < 0, true);
   assert.deepEqual(
     sanitizeProgress({
       stars: { "0": 3, "1": 7, nope: 2 },

@@ -1428,7 +1428,7 @@ export default function Game() {
           if (isCooktop(type) || type === "table" || type === "washer") {
             // 기구 그림이 칸 한가운데에서 밀려 있으면 올려 둔 것도 같이
             // 밀려야 기구 위에 놓인 것처럼 보인다.
-            const room = TILE_SIZE * (type === "table" ? 0.5 : 0.42);
+            const room = TILE_SIZE * (type === "table" ? 0.66 : 0.42);
             const spot = { x: art.x, y: art.y - (isCooktop(type) ? 2 : 0) };
             this.holdings[id] = {
               bg: this.add.image(spot.x, spot.y, DIRTY_PLATE_ART).setDepth(y + 2.2).setVisible(false),
@@ -1794,9 +1794,9 @@ export default function Game() {
                 const held = actor.carrying[index];
                 const art = held ? carriedArt(held) : null;
                 slot.bg.setVisible(Boolean(art?.bg));
-                if (art?.bg) this.fitInto(slot.bg.setTexture(art.bg), 18);
+                if (art?.bg) this.fitInto(slot.bg.setTexture(art.bg), 24);
                 slot.fg.setVisible(Boolean(art?.fg));
-                if (art?.fg) this.fitInto(slot.fg.setTexture(art.fg), art.bg ? 13 : 17);
+                if (art?.fg) this.fitInto(slot.fg.setTexture(art.fg), art.bg ? 17 : 22);
               });
               sprite.selected.setVisible(selectedActorRef.current === actorId);
               // 이름표는 정보 패널이 보고 있는 대상에만 붙인다. 슬라임을 고른
@@ -1936,15 +1936,13 @@ export default function Game() {
                       ? current.washers[id]!.dishes[0]
                       : current.stoves[id]![0];
                 const art = held ? carriedArt(held) : null;
-                for (const [slot, key] of [
-                  [holding.bg, art?.bg],
-                  [holding.fg, art?.fg],
-                ] as const) {
-                  slot.setVisible(Boolean(key));
-                  if (!key) continue;
-                  slot.setTexture(key);
-                  this.fitInto(slot, holding.room);
-                }
+                holding.bg.setVisible(Boolean(art?.bg));
+                if (art?.bg) this.fitInto(holding.bg.setTexture(art.bg), holding.room);
+                holding.fg.setVisible(Boolean(art?.fg));
+                if (art?.fg) this.fitInto(
+                  holding.fg.setTexture(art.fg),
+                  art.bg ? holding.room * 0.64 : holding.room,
+                );
               }
             }
             // 설비에서 무슨 일이 일어났는지 파티클로 한 번 보여 준다.
@@ -2088,8 +2086,8 @@ export default function Game() {
     });
   }, []);
 
-  // 방금 행동력을 다 쓴 슬라임에서 다음 마리로 넘긴다. 아무도 남지 않으면
-  // 튜토리얼과 일반 게임 모두 기다리지 않고 다음 턴을 시작한다.
+  // 방금 행동력을 다 쓴 슬라임에서 다음 마리로 넘긴다. 일반 게임은 모두
+  // 지치면 자동으로 넘기고, 튜토리얼은 목표 슬라임이 지치면 버튼 입력을 기다린다.
   useEffect(() => {
     if (!state || state.phase !== "playing" || !squad || !selectedActor) return;
     if (tutorialDone(state)) return;
@@ -2097,6 +2095,12 @@ export default function Game() {
     if (narrationHolds) return;
     const left = state.actors[selectedActor]?.actionPoints ?? 0;
     if (left > 0) return;
+    // 튜토리얼은 지금 필요한 슬라임이 행동력을 다 쓰면 다른 슬라임에게
+    // 같은 일을 떠넘기지 않는다. 턴 종료 안내를 그대로 기다린다.
+    if (
+      onTutorialStage(state) &&
+      tutorialCue(state, selectedActor, currentStage(state).turnLimit)?.endTurn
+    ) return;
     const next = nextReadyActor(
       state,
       activeActorIds(state),
@@ -2410,7 +2414,6 @@ export default function Game() {
                   key={actorId}
                   data-type={actor.typeId}
                   data-coach={cue?.actor === actorId ? "" : undefined}
-                  data-use-coach={cue?.id.startsWith("USE_") && cue.actor === actorId ? "" : undefined}
                   data-spent={actor.actionPoints === 0 || skippedActors.current.has(actorId) ? "" : undefined}
                   aria-label={`${actor.name} 선택, 남은 행동력 ${actor.actionPoints}`}
                   aria-pressed={selectedActor === actorId}
