@@ -21,6 +21,10 @@
       "fire"
     ]
   },
+  "endless": {
+    "turnLimit": 40,
+    "orderTurnBonus": 3
+  },
   "ingredients": {
     "max": 4,
     "perTurn": 1
