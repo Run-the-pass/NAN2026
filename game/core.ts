@@ -1682,6 +1682,17 @@ function atWasher(
       washers: put(washer.dishes.filter((_, index) => index !== washed), washer.progress),
     });
   }
+  else if (actor.carrying.length > 0) {
+    if (typeof actor.carrying[0] === "string") {
+      return event(state, `${actor.name}이(가) 씻은 그릇을 꺼냈습니다.`, {
+      actors: patchActor(state, actorId, {
+        ...spend(actor, actionCost.carry, "CARRYING"),
+        carrying: [...actor.carrying, washer.dishes[washed]],
+      }),
+      washers: put(washer.dishes.filter((_, index) => index !== washed), washer.progress),
+    });
+    }
+  }
 
   // 손에 든 그릇을 넣으러 온 쪽이 먼저다. 자리가 없다는 말이 더 쓸모 있다.
   if (dirty >= 0) return refuse(state, actor, "세척대가 가득 찼습니다.");

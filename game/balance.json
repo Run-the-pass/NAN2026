@@ -22,7 +22,7 @@
     ]
   },
   "endless": {
-    "turnLimit": 40,
+    "turnLimit": 20,
     "orderTurnBonus": 3
   },
   "ingredients": {
