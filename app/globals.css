@@ -1003,16 +1003,33 @@ button:disabled { cursor: var(--cursor-arrow); }
   from { opacity: 0; transform: translateY(18px) scale(.72); }
   to { opacity: 1; transform: none; }
 }
-.turn-bar .turn-end b { color: #26160b; font-size: clamp(13px, 1.5vw, 18px); }
-.stage-frame .turn-bar .turn-end {
+.turn-bar .turn-control b {
+  color: #26160b;
+  font-size: clamp(12px, 1.35vw, 17px);
+  line-height: 1;
+}
+.turn-bar .turn-control small {
+  color: #5b351e;
+  font-size: clamp(8px, .8vw, 10px);
+  font-weight: 800;
+  line-height: 1;
+}
+.stage-frame .turn-bar .turn-control {
   display: grid;
   place-items: center;
+  align-content: center;
+  gap: 3px;
   width: clamp(88px, 9vw, 116px);
   min-height: 0;
   aspect-ratio: 758 / 339;
   border: 0;
   border-radius: 0;
   background: url("/ui/button.png") center / 100% 100% no-repeat;
+}
+.stage-frame .turn-bar .turn-undo:disabled {
+  opacity: 1;
+  filter: brightness(.38) saturate(.45);
+  cursor: var(--cursor-arrow);
 }
 
 /* 튜토리얼이 지금 누르라고 짚는 버튼. */
@@ -1334,7 +1351,7 @@ img.paper-title { width: 56%; height: 11.4%; top: 4.9%; left: 22%; object-fit: c
   justify-content: center;
   gap: 6px;
 }
-.result-clear-stage img:first-child { width: clamp(42px, 5.2vw, 60px); aspect-ratio: 1; object-fit: contain; }
+.result-clear-stage img:first-child { width: min(13.05%, 49px); height: auto; object-fit: contain; }
 .result-clear-stage img:last-child { width: min(72%, 270px); height: auto; }
 .result-clear-tutorial { display: block; width: min(78%, 300px); height: auto; margin-inline: auto; object-fit: contain; }
 .result-overlay button { border: 2px solid #7e4d24; border-radius: 3px; padding: 10px 14px; background: var(--gold); color: #21120a; font-weight: 800; cursor: var(--cursor-hand); }
@@ -1376,7 +1393,7 @@ img.paper-title { width: 56%; height: 11.4%; top: 4.9%; left: 22%; object-fit: c
   .order-cards { top: 5px; left: 5px; gap: 5px; transform: scale(.62); transform-origin: top left; }
   .hud-bottom { right: calc(var(--game-info-rail) + 7px); bottom: 7px; left: 167px; }
   .stage-frame .turn-bar button { width: 44px; border-width: 2px; }
-  .stage-frame .turn-bar .turn-end { width: 74px; min-height: 0; }
+  .stage-frame .turn-bar .turn-control { width: 74px; min-height: 0; gap: 1px; }
   .turn-bar b { font-size: 11px; }
   .game-inspector { width: 100%; padding: 9px 14px; }
   .stage-frame .inspector-close { width: 32px; height: 32px; font-size: 23px; }

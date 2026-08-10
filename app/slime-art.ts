@@ -1,6 +1,6 @@
-import type { SlimeTypeId } from "../game/core.js";
+import type { ActorState, SlimeTypeId } from "../game/core.js";
 
-export type Facing = "down" | "up" | "left" | "right";
+export type Facing = ActorState["facing"];
 
 // 방향별 게임 텍스처가 없는 속성은 같은 형태에 속성색을 적용한다.
 const palettes: Record<SlimeTypeId, { outer: string; inner: string }> = {

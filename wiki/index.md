@@ -95,6 +95,8 @@ sources:
 - [현 단계 코드 정리 감사 보고서](code-cleanup-audit-2026-08-10.md) — dead CSS·옛 백엔드·중복 배포 계층의 삭제 효과, 위험도와 실행 순서.
 - [현 단계 코드 정리 실행 계획](plan-code-cleanup-2026-08-10.md) — 감사 보고서의 저위험 1~3번을 실제 삭제하고 회귀 검증하는 범위.
 - [슬라임 이름·Pages 미리보기 보정 계획](plan-slime-names-pages-preview-2026-08-10.md) — 대본 이름을 게임 전체에 적용하고 옛 3분제 링크 미리보기 문구를 현재 턴제로 교체하는 범위.
+- [마지막 행동 되돌리기·슬라임 방향 초기화 계획](plan-action-undo-facing-2026-08-10.md) — 턴을 넘는 한 단계 되돌리기, 방향 상태 저장과 스테이지 시작 위치 초기화 범위.
+- [스테이지 클리어 제목 크기 보정 계획](plan-result-stage-title-size-2026-08-10.md) — 정산 숫자와 클리어 문구의 시각 높이 정렬 범위.
 - [작업 로그](log.md) — ingest, 계획, 구현, 검증의 시간순 기록.
 
 원문: [감자·도마·접시 에셋](../raw/assets_0/), [화면 문구 이미지](../raw/text/), [추가본 정리](../raw/%EC%B6%94%EA%B0%80%EB%B3%B8_%EC%A0%95%EB%A6%AC/) (덱 `raw/추가본.pptx`의 화면별 기획과 2026-08-02 확정·미정), [클로드 담당 작업: 주문과 화재](../raw/%ED%81%B4%EB%A1%9C%EB%93%9C_%EB%8B%B4%EB%8B%B9_%EC%9E%91%EC%97%85_%EC%A3%BC%EB%AC%B8%EA%B3%BC_%ED%99%94%EC%9E%AC.md), [프로젝트 브리프](../raw/project-brief.md), [홈 화면 v2 참고 이미지](../raw/home%20v2/home_reference.png), [홈 화면 v2 에셋](../raw/home%20v2/), [성장 선택 카드 참고 이미지](../raw/references/upgrade-choice-cards.png), [슬라임 스탯·가격·패널티](../raw/slime-stats-pricing-and-penalties.md), [펀테스트 변경 사항](../raw/fun-test-design-changes.md), [음성인식 시스템 논의](../raw/voice-command-discussion-summary-revised.md), [자원·제작 시스템 기획](../raw/slime-workshop-resource-production-design.md), [그릇·테이블·편의 선택 추가 명세](../raw/%E1%84%80%E1%85%B3%E1%84%85%E1%85%B3%E1%86%BA_%E1%84%90%E1%85%A6%E1%84%8B%E1%85%B5%E1%84%87%E1%85%B3%E1%86%AF_%E1%84%91%E1%85%A7%E1%86%AB%E1%84%8B%E1%85%B4%E1%84%89%E1%85%A5%E1%86%AB%E1%84%90%E1%85%A2%E1%86%A8_%E1%84%8E%E1%85%AE%E1%84%80%E1%85%A1_%E1%84%86%E1%85%A7%E1%86%BC%E1%84%89%E1%85%A6.md)

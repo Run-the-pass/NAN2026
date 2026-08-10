@@ -58,7 +58,7 @@ export default function Dialogue({
       event.stopPropagation();
       advance();
     };
-    // 캡처 단계에서 받아 게임 조작(스페이스=다음 슬라임)까지 가지 않게 한다.
+    // 캡처 단계에서 받아 게임 조작(스페이스=턴 종료)까지 가지 않게 한다.
     window.addEventListener("keydown", down, true);
     return () => window.removeEventListener("keydown", down, true);
   }, [advance, passive]);

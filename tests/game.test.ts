@@ -465,6 +465,12 @@ test("갈 수 있는 칸은 남은 행동력만큼 뻗고 벽·설비 칸은 후
   assert.equal(moved.actors["water-1"]!.col, targets[0].col);
   assert.equal(moved.actors["water-1"]!.row, targets[0].row);
   assert.equal(moved.actors["water-1"]!.actionPoints, 1 - actionCost.move);
+  assert.equal(
+    moved.actors["water-1"]!.facing,
+    targets[0].col === actor.col
+      ? targets[0].row > actor.row ? "down" : "up"
+      : targets[0].col > actor.col ? "right" : "left",
+  );
 
   // 행동력으로 닿지 않는 칸은 거절하고 행동력을 쓰지 않는다.
   const far = { col: actor.col + 2, row: actor.row };
@@ -554,16 +560,6 @@ test("행동력을 다 쓰면 다음으로 넘길 슬라임을 고른다", () =>
   });
   state = spent("fire-1");
   assert.equal(nextReadyActor(state, roster, "water-1"), "lightning-1");
-
-  // Space로 쉬겠다고 한 마리도 이번 턴에는 다시 고르지 않는다.
-  assert.equal(
-    nextReadyActor(state, roster, "water-1", new Set(["lightning-1"])),
-    "earth-1",
-  );
-  assert.equal(
-    nextReadyActor(state, roster, "water-1", new Set(["lightning-1", "earth-1"])),
-    null,
-  );
 
   // 아무도 안 남으면 null이라 선택이 풀린다.
   const empty: GameState = {
@@ -1274,6 +1270,13 @@ test("스테이지를 깨면 스쿼드를 이어 다음 스테이지로 넘어�
 
   state = cookAndSubmit(state);
   assert.equal(state.phase, "won");
+  state = {
+    ...state,
+    actors: {
+      ...state.actors,
+      "earth-1": { ...state.actors["earth-1"]!, facing: "left" },
+    },
+  };
 
   const second = nextStage(state);
   assert.equal(currentStage(second).id, "1-2");
@@ -1284,6 +1287,11 @@ test("스테이지를 깨면 스쿼드를 이어 다음 스테이지로 넘어�
   assert.equal(second.filled, 0);
   assert.equal(second.turnsLeft, 120);
   assert.equal(second.turn, 1);
+  assert.equal(second.actors["earth-1"]!.facing, "down");
+  assert.deepEqual(
+    { col: second.actors["earth-1"]!.col, row: second.actors["earth-1"]!.row },
+    spawnTiles.earth,
+  );
   assert.deepEqual(second.stoves[stoveId], []);
 
   const cleared = cookAndSubmit(second);

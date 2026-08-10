@@ -1,10 +1,10 @@
 {
   "note": "밸런스 수치 원본. `npm run balance:edit`로 고치고, 코드는 이 파일만 읽는다. 값이 규칙에 어긋나면 게임이 시작할 때 오류가 난다.",
   "actionPointsPerTurn": {
-    "water": 1,
-    "fire": 1,
-    "lightning": 2,
-    "earth": 1
+    "water": 2,
+    "fire": 2,
+    "lightning": 4,
+    "earth": 2
   },
   "actionCost": {
     "move": 1,

@@ -460,6 +460,7 @@ export type ActorState = {
   name: string;
   col: number;
   row: number;
+  facing: "down" | "up" | "left" | "right";
   actionPoints: number;
   status: ActorStatus;
   // 이 슬라임이 지금까지 한 행동 수. 화면이 모션을 한 번씩 재생하는 데 쓴다.
@@ -774,6 +775,7 @@ function makeActor(
     name,
     col: spawn.col,
     row: spawn.row,
+    facing: "down",
     actionPoints: maxActionPoints(typeId),
     status: "IDLE",
     acts: 0,
@@ -1197,14 +1199,11 @@ export function nextReadyActor(
   state: GameState,
   roster: ActorId[],
   from: ActorId,
-  skipped?: ReadonlySet<ActorId>,
 ): ActorId | null {
   const at = roster.indexOf(from);
   if (at < 0) return null;
   const order = [...roster.slice(at + 1), ...roster.slice(0, at)];
-  return order.find((id) =>
-    !skipped?.has(id) && (state.actors[id]?.actionPoints ?? 0) > 0
-  ) ?? null;
+  return order.find((id) => (state.actors[id]?.actionPoints ?? 0) > 0) ?? null;
 }
 
 export function moveActor(
@@ -1235,6 +1234,10 @@ export function moveActor(
       ...spend(actor, option.cost, "MOVING"),
       col: to.col,
       row: to.row,
+      facing:
+        to.col === actor.col
+          ? to.row > actor.row ? "down" : "up"
+          : to.col > actor.col ? "right" : "left",
     }),
   };
 }

@@ -17,7 +17,7 @@
     },
     {
       "id": "1",
-      "turnLimit": 40,
+      "turnLimit": 20,
       "stars": [
         2,
         3,
@@ -32,7 +32,7 @@
     },
     {
       "id": "2",
-      "turnLimit": 40,
+      "turnLimit": 18,
       "stars": [
         2,
         3,
@@ -47,7 +47,7 @@
     },
     {
       "id": "3",
-      "turnLimit": 48,
+      "turnLimit": 23,
       "stars": [
         3,
         4,

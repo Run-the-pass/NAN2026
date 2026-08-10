@@ -56,7 +56,6 @@ import {
   type StationInstanceId,
 } from "../game/core";
 import {
-  facingFromDelta,
   facings,
   authoredFaceLayout,
   slimeDataUri,
@@ -76,6 +75,15 @@ type View = {
   sync: (state: GameState) => void;
   pause: () => void;
   resume: () => void;
+};
+
+type UndoSnapshot = {
+  state: GameState;
+  selectedActor: ActorId | null;
+  earthInfoComplete: boolean;
+  actionPointInfoComplete: boolean;
+  waterIntroComplete: boolean;
+  platedIntroComplete: boolean;
 };
 
 const typeColors: Record<SlimeTypeId, number> = {
@@ -739,6 +747,7 @@ export default function Game() {
   const [progress, setProgress] = useState<ProgressData>(emptyProgress());
   const [stageId, setStageId] = useState<string | null>(null);
   const [state, setState] = useState<GameState | null>(null);
+  const [undoSnapshot, setUndoSnapshot] = useState<UndoSnapshot | null>(null);
   // 턴제는 한 마리씩 조작한다. 선택은 늘 0마리 아니면 1마리다.
   const [selectedActor, setSelectedActor] = useState<ActorId | null>(null);
   const [inspected, setInspected] = useState<InspectorTarget | null>(null);
@@ -766,13 +775,17 @@ export default function Game() {
 
   const stateRef = useRef(state);
   const selectedActorRef = useRef(selectedActor);
+  const undoUiRef = useRef({
+    earthInfoComplete,
+    actionPointInfoComplete,
+    waterIntroComplete,
+    platedIntroComplete,
+  });
   // 행동력을 다 쓴 슬라임도 상세 정보를 볼 수 있어야 한다. 수동으로 고른
   // 경우만 자동 넘김을 한 번 멈추고, 실제 행동 소진 뒤 자동 넘김은 유지한다.
   const manuallySelectedSpentActor = useRef<ActorId | null>(null);
   // 캔버스가 이름표를 띄울지 판단하는 데 쓴다.
   const inspectedRef = useRef(inspected);
-  // Space로 넘긴 슬라임은 이번 턴의 자동 선택에서 다시 부르지 않는다.
-  const skippedActors = useRef(new Set<ActorId>());
   // 튜토리얼이 지금 짚는 설비. 캔버스가 그 자리에 표시를 그린다.
   const coachRef = useRef<StationId | StationInstanceId | null>(null);
   const tutorialCueRef = useRef<TutorialCue | null>(null);
@@ -794,13 +807,41 @@ export default function Game() {
     selectedActorRef.current = selectedActor;
   }, [selectedActor]);
 
+  useEffect(() => {
+    undoUiRef.current = {
+      earthInfoComplete,
+      actionPointInfoComplete,
+      waterIntroComplete,
+      platedIntroComplete,
+    };
+  }, [earthInfoComplete, actionPointInfoComplete, waterIntroComplete, platedIntroComplete]);
+
   const chooseActor = useCallback((actorId: ActorId) => {
     setSelectedActor((current) => {
       const next = current === actorId ? null : actorId;
+      selectedActorRef.current = next;
       manuallySelectedSpentActor.current =
         next && (stateRef.current?.actors[next]?.actionPoints ?? 0) === 0 ? next : null;
       return next;
     });
+  }, []);
+
+  const performActorAction = useCallback((
+    actorId: ActorId,
+    action: (current: GameState) => GameState,
+  ) => {
+    const before = stateRef.current;
+    if (!before || before.phase !== "playing") return;
+    const after = action(before);
+    if ((after.actors[actorId]?.acts ?? 0) > (before.actors[actorId]?.acts ?? 0)) {
+      setUndoSnapshot({
+        state: structuredClone(before),
+        selectedActor: selectedActorRef.current,
+        ...undoUiRef.current,
+      });
+    }
+    stateRef.current = after;
+    setState(after);
   }, []);
 
   useEffect(() => {
@@ -1028,6 +1069,7 @@ export default function Game() {
       usable!: Partial<Record<StationInstanceId, boolean>>;
       sparks!: Phaser.GameObjects.Particles.ParticleEmitter;
       tutorialShade!: Phaser.GameObjects.Graphics;
+      shownStageIndex!: number;
 
       // 그림을 정해진 칸 안에 넣는다. 긴 쪽을 기준으로 줄여 비율은
       // 그대로 둔다. 늘리거나 눌러 담지 않는다.
@@ -1517,9 +1559,7 @@ export default function Game() {
                 // 선택한 슬라임이 있으면 거리와 무관하게 상호작용 시도다.
                 // 멀면 코어의 기존 거절 이유를 띄우고 선택은 유지한다.
                 metrics.current.buttonCommands += 1;
-                setState((value) =>
-                  value ? interactActor(value, actorId, id) : value,
-                );
+                performActorAction(actorId, (value) => interactActor(value, actorId, id));
               },
             );
         }
@@ -1541,6 +1581,7 @@ export default function Game() {
 
         this.slimes = {};
         const current = stateRef.current;
+        this.shownStageIndex = current?.stageIndex ?? 0;
         for (const actorId of roster) {
           const actor = current?.actors[actorId];
           if (!actor) continue;
@@ -1619,7 +1660,7 @@ export default function Game() {
             selected,
             idleMark,
             nameTag,
-            facing: "down",
+            facing: actor.facing,
             last: { x: spot.x, y: spot.y },
             acts: actor.acts,
             blinking: false,
@@ -1668,7 +1709,7 @@ export default function Game() {
             )
           ) {
             metrics.current.buttonCommands += 1;
-            setState((value) => (value ? moveActor(value, actorId, tile) : value));
+            performActorAction(actorId, (value) => moveActor(value, actorId, tile));
             return;
           }
           if (current && actorId && onTutorialStage(current) && tutorialCueRef.current) {
@@ -1703,6 +1744,8 @@ export default function Game() {
           sync: (current) => {
             const shown = inspectedRef.current;
             const focusedActor = dialogueActorRef.current;
+            const stageChanged = current.stageIndex !== this.shownStageIndex;
+            this.shownStageIndex = current.stageIndex;
             this.tutorialShade.clear().setVisible(Boolean(focusedActor));
             if (focusedActor) {
               this.tutorialShade
@@ -1728,18 +1771,23 @@ export default function Game() {
                 continue;
               }
               const spot = tileCenter(actor);
-              const facing = facingFromDelta(
-                spot.x - sprite.last.x,
-                spot.y - sprite.last.y,
-                sprite.facing,
-              );
-              if (facing !== sprite.facing) {
-                sprite.facing = facing;
+              const restoring = stageChanged || actor.acts < sprite.acts;
+              if (actor.facing !== sprite.facing) {
+                sprite.facing = actor.facing;
                 this.paintSlime(actorId);
+              }
+              if (restoring) {
+                sprite.walking?.stop();
+                sprite.motion.stop();
+                sprite.visual.setAngle(0).setY(0);
+                sprite.motion = this.breathe(sprite.visual, sprite.scale);
+                sprite.body.setPosition(spot.x, spot.y);
+                sprite.last = { x: spot.x, y: spot.y };
+                sprite.acts = actor.acts;
               }
               // 행동은 즉시 끝나므로 한 번 행동할 때마다 모션을 잠깐 재생하고
               // 숨쉬기로 돌아간다. acts가 늘어난 것이 행동했다는 신호다.
-              if (actor.acts !== sprite.acts) {
+              if (actor.acts > sprite.acts) {
                 sprite.acts = actor.acts;
                 const mode: Motion =
                   actor.status === "MOVING"
@@ -1772,7 +1820,7 @@ export default function Game() {
               }
               // 칸을 뛰어넘지 않고 미끄러지듯 옮긴다. 딸린 표시들은 update가
               // 몸 위치를 따라 붙이므로 여기서는 몸만 움직인다.
-              if (sprite.last.x !== spot.x || sprite.last.y !== spot.y) {
+              if (!restoring && (sprite.last.x !== spot.x || sprite.last.y !== spot.y)) {
                 sprite.walking?.stop();
                 sprite.walking = this.tweens.add({
                   targets: sprite.body,
@@ -2014,7 +2062,7 @@ export default function Game() {
       view.current = null;
       game.destroy(true);
     };
-  }, [squad, chooseActor]);
+  }, [squad, chooseActor, performActorAction]);
 
   // 저장된 별은 브라우저에만 있어 첫 렌더 뒤에 읽는다.
   useEffect(() => {
@@ -2043,7 +2091,7 @@ export default function Game() {
     metrics.current = emptyMetrics();
     savedRef.current = false;
     roundSeed.current = next.seed;
-    skippedActors.current.clear();
+    setUndoSnapshot(null);
     manuallySelectedSpentActor.current = null;
     setSelectedActor(null);
     setInspected(null);
@@ -2066,11 +2114,11 @@ export default function Game() {
   }
 
   const finishTurn = useCallback(() => {
-    skippedActors.current.clear();
     manuallySelectedSpentActor.current = null;
     setState((value) => {
       if (!value) return value;
       const next = endTurn(value);
+      stateRef.current = next;
       // 튜토리얼은 대사가 지목한 슬라임을 이어서 고르고, 일반 판은 첫 번째로
       // 행동할 수 있는 슬라임을 고른다.
       const guided = onTutorialStage(next)
@@ -2083,6 +2131,38 @@ export default function Game() {
       return next;
     });
   }, []);
+
+  const undoLastAction = useCallback(() => {
+    if (
+      !undoSnapshot || stateRef.current?.phase !== "playing" ||
+      settingsOpen || blockingNarration
+    ) return;
+    const restored = undoSnapshot;
+    setUndoSnapshot(null);
+    stateRef.current = restored.state;
+    selectedActorRef.current = restored.selectedActor;
+    manuallySelectedSpentActor.current =
+      restored.selectedActor &&
+      (restored.state.actors[restored.selectedActor]?.actionPoints ?? 0) === 0
+        ? restored.selectedActor
+        : null;
+    setEarthInfo(false);
+    setActionPointInfo(false);
+    setWaterIntro(false);
+    setPlatedIntro(false);
+    setEarthInfoComplete(restored.earthInfoComplete);
+    setActionPointInfoComplete(restored.actionPointInfoComplete);
+    setWaterIntroComplete(restored.waterIntroComplete);
+    setPlatedIntroComplete(restored.platedIntroComplete);
+    setSelectedActor(restored.selectedActor);
+    setInspected(restored.selectedActor ? { kind: "actor", id: restored.selectedActor } : null);
+    setToast(null);
+    setState(restored.state);
+  }, [undoSnapshot, settingsOpen, blockingNarration]);
+
+  useEffect(() => {
+    if (state && state.phase !== "playing") setUndoSnapshot(null);
+  }, [state]);
 
   // 방금 행동력을 다 쓴 슬라임에서 다음 마리로 넘긴다. 모두 지치거나 쉬기로
   // 했으면 튜토리얼과 일반 게임 모두 다음 턴을 자동으로 시작한다.
@@ -2098,7 +2178,6 @@ export default function Game() {
       state,
       activeActorIds(state),
       selectedActor,
-      skippedActors.current,
     );
     if (next) setSelectedActor(next);
     else finishTurn();
@@ -2116,12 +2195,18 @@ export default function Game() {
         setSettingsOpen((open) => !open);
         return;
       }
-      // 스페이스바: 현재 슬라임은 이번 턴에 쉬겠다는 뜻으로 기록하고 다음
-      // 슬라임을 고른다. 모두 행동했거나 쉬기로 했으면 바로 턴을 넘긴다.
+      if (event.code === "KeyZ") {
+        event.preventDefault();
+        undoLastAction();
+        return;
+      }
+      // 스페이스바는 화면의 턴 종료 버튼과 같은 동작만 한다.
       if (event.code === "Space") {
-        if (settingsOpen) return;
+        if (settingsOpen || blockingNarration) return;
         const current = stateRef.current;
         if (!current || current.phase !== "playing") return;
+        const currentCue = tutorialCueRef.current;
+        if (currentCue && !currentCue.endTurn) return;
         event.preventDefault();
         // 버튼에 포커스가 남아 있으면 스페이스가 그 버튼까지 눌러
         // "턴 종료"가 같이 실행된다. 포커스를 먼저 놓는다.
@@ -2129,31 +2214,14 @@ export default function Game() {
         if (active instanceof HTMLElement && active.tagName === "BUTTON") {
           active.blur();
         }
-        const roster = activeActorIds(current);
-        const selected = selectedActorRef.current;
-        if (selected && (current.actors[selected]?.actionPoints ?? 0) > 0) {
-          skippedActors.current.add(selected);
-        }
-        const ready = roster.filter((id) =>
-          !skippedActors.current.has(id) &&
-          (current.actors[id]?.actionPoints ?? 0) > 0
-        );
-        if (ready.length === 0) {
-          finishTurn();
-          return;
-        }
-        setSelectedActor(
-          selected
-            ? (nextReadyActor(current, roster, selected, skippedActors.current) ?? ready[0]!)
-            : ready[0]!,
-        );
+        finishTurn();
       }
     };
     window.addEventListener("keydown", down);
     return () => {
       window.removeEventListener("keydown", down);
     };
-  }, [settingsOpen, squad, finishTurn]);
+  }, [settingsOpen, squad, finishTurn, undoLastAction, blockingNarration]);
 
   // 판을 고르기 전에는 선택 화면을 보여 준다.
   if (!squad || !state) {
@@ -2187,9 +2255,11 @@ export default function Game() {
   const roster = activeActorIds(state);
   // 아직 행동력이 남은 슬라임. 턴 종료 버튼이 이걸 알려 준다.
   const readyCount = roster.filter(
-    (actorId) => !skippedActors.current.has(actorId) &&
-      (state.actors[actorId]?.actionPoints ?? 0) > 0,
+    (actorId) => (state.actors[actorId]?.actionPoints ?? 0) > 0,
   ).length;
+  const canUndo = Boolean(
+    undoSnapshot && state.phase === "playing" && !settingsOpen && !blockingNarration,
+  );
   const rank = roundRank(state);
   const turnAngle = Math.max(0, 360 * (1 - state.turnsLeft / currentStage(state).turnLimit));
   const coachedStation = cue?.station
@@ -2406,7 +2476,7 @@ export default function Game() {
                   key={actorId}
                   data-type={actor.typeId}
                   data-coach={actionPointInfo || cue?.actor === actorId ? "" : undefined}
-                  data-spent={actor.actionPoints === 0 || skippedActors.current.has(actorId) ? "" : undefined}
+                  data-spent={actor.actionPoints === 0 ? "" : undefined}
                   aria-label={`${actor.name} 선택, 남은 행동력 ${actor.actionPoints}`}
                   aria-pressed={selectedActor === actorId}
                   onClick={() => chooseActor(actorId)}
@@ -2438,7 +2508,17 @@ export default function Game() {
             })}
             <button
               type="button"
-              className="turn-end art-button"
+              className="turn-undo turn-control art-button"
+              disabled={!canUndo}
+              onClick={undoLastAction}
+              aria-label="마지막 행동 되돌리기, Z"
+            >
+              <b>되돌리기</b>
+              <small>[Z]</small>
+            </button>
+            <button
+              type="button"
+              className="turn-end turn-control art-button"
               data-coach={cue?.endTurn ? "" : undefined}
               onClick={() => {
                 if (cue && !cue.endTurn) {
@@ -2449,6 +2529,7 @@ export default function Game() {
               aria-label={`턴 종료, 행동력이 남은 슬라임 ${readyCount}마리`}
             >
               <b>턴 종료</b>
+              <small>[Space]</small>
             </button>
           </div>
 
@@ -2534,9 +2615,13 @@ export default function Game() {
                 <button
                   className="art-button result-art-button"
                   onClick={() => {
+                    const next = nextStage(state);
                     savedRef.current = false;
+                    setUndoSnapshot(null);
                     setSelectedActor(null);
-                    setState(nextStage(state));
+                    selectedActorRef.current = null;
+                    stateRef.current = next;
+                    setState(next);
                     setStageIntro(true);
                                   }}
                 >
