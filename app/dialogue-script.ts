@@ -59,9 +59,9 @@ export const earthInfoLines: DialogueLine[] = [
 ];
 
 export const actionPointLines: DialogueLine[] = [
-  { speaker: "earth", text: "슬라임은 행동력이 존재합니다. 행동력은 이동이나 상호 작용 시에 소모됩니다.", focus: "roster" },
-  { speaker: "earth", text: "매 턴 시작 시 행동력은 리셋됩니다. 사용하지 않은 행동력이 다음 턴에 추가되지는 않습니다.", focus: "roster" },
-  { speaker: "earth", text: "행동력을 모두 쓰면 다음 턴으로 자동으로 넘어갑니다.", focus: "roster" },
+  { speaker: "earth", text: "슬라임은 행동력이 존재합니다. 행동력은 이동이나 상호 작용 시에 소모됩니다."},
+  { speaker: "earth", text: "매 턴 시작 시 행동력은 리셋됩니다. 사용하지 않은 행동력이 다음 턴에 추가되지는 않습니다."},
+  { speaker: "earth", text: "행동력을 모두 쓰거나 버튼을 클릭하면 다음 턴으로 자동으로 넘어갑니다.", focus: "roster" },
   { speaker: "earth", text: "방금 행동을 잘못했다면 되돌리기 버튼이나 Z키로 마지막 행동을 한 번 되돌릴 수 있어요.", focus: "undo" },
 ];
 
