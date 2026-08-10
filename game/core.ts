@@ -109,7 +109,7 @@ export const stationLabels: Record<StationId, string> = {
   "strawberry-box": "딸기 상자",
   "mushroom-box": "버섯 상자",
   stove: "도마",
-  oven: "화로",
+  oven: "화덕",
   fryer: "튀김기",
   blender: "믹서기",
   submission: "음식 제출대",
@@ -179,7 +179,7 @@ export const stationTileCount: Partial<Record<StationId, number>> = {
 
 export const tilesFor = (type: StationId) => stationTileCount[type] ?? 1;
 
-// 재료를 하나 올려 두고 조리하는 기구. 도마·화로·튀김기가 같은 규칙으로
+// 재료를 하나 올려 두고 조리하는 기구. 도마·화덕·튀김기가 같은 규칙으로
 // 돈다. 레시피가 무엇을 어디서 만드는지 정한다.
 export const cooktopStations: StationId[] = ["stove", "oven", "fryer"];
 
@@ -220,8 +220,8 @@ function checkBalance() {
       problems.push(`${job}을(를) 맡을 속성이 올바르지 않습니다.`);
     }
   }
-  if (!whole(balanceData.ingredients.max, 1) || !whole(balanceData.ingredients.perTurn, 1)) {
-    problems.push("재료 상자 수치는 1 이상 정수여야 합니다.");
+  if (!whole(balanceData.endless.turnLimit, 1) || !whole(balanceData.endless.orderTurnBonus, 1)) {
+    problems.push("무한 모드 수치는 1 이상 정수여야 합니다.");
   }
   const dish = balanceData.dish;
   if (
@@ -342,7 +342,7 @@ export const slimeTypes: Record<
     name: "이글이",
     trait: "열을 다뤄 굽고 튀기고 태웁니다.",
     traits: [
-      { id: "cook-heat", name: "가열 조리", detail: "화로와 튀김기를 돌려 굽거나 튀깁니다." },
+      { id: "cook-heat", name: "가열 조리", detail: "화덕과 튀김기를 돌려 굽거나 튀깁니다." },
       { id: "burn", name: "소각", detail: "가득 찬 소각기를 한 번에 비웁니다." },
     ],
     element: "fire",
@@ -480,14 +480,12 @@ export type GameState = {
   filled: number;
   goal: number;
   actors: Partial<Record<ActorId, ActorState>>;
-  ingredients: Partial<Record<StationInstanceId, { stock: number }>>;
   stoves: Partial<Record<StationInstanceId, ItemId[]>>;
   // 믹서기. 과일을 넣고(뺄 수 없다) 물을 채운 뒤 번개가 돌린다.
   blenders: Partial<Record<StationInstanceId, BlenderState>>;
   dishRacks: Partial<Record<StationInstanceId, Dish[]>>;
-  // 반납대에 놓인 더러운 그릇과, 이번 턴에 제출돼 다음 턴에 나올 그릇.
+  // 제출 즉시 반납대에 놓인 더러운 그릇.
   dishReturns: Partial<Record<StationInstanceId, Dish[]>>;
-  pendingReturns: Dish[];
   tables: Partial<Record<StationInstanceId, Carried[]>>;
   incinerators: Partial<Record<StationInstanceId, { count: number; progress: number }>>;
   // 세척대. dishConfig.washerCapacity만큼 그릇이 들어가고, progress는 맨 앞
@@ -510,13 +508,10 @@ export type GameState = {
 export const TILE_SIZE = 60;
 export const MAP_WIDTH = 14;
 export const MAP_HEIGHT = 8;
-export const INGREDIENT_MAX = balanceData.ingredients.max;
 // 남은 턴이 이 이하면 마감이 임박한 것으로 본다. 음악·배너가 함께 쓴다.
 export const RUSH_TURNS_LEFT = balanceData.rushTurnsLeft;
-export const ENDLESS_TURN_LIMIT = 80;
-export const ENDLESS_ORDER_TURN_BONUS = 5;
-// 턴이 끝날 때 재료 상자마다 채우는 개수.
-export const INGREDIENT_PER_TURN = balanceData.ingredients.perTurn;
+export const ENDLESS_TURN_LIMIT = balanceData.endless.turnLimit;
+export const ENDLESS_ORDER_TURN_BONUS = balanceData.endless.orderTurnBonus;
 export const STORAGE_MAX = 1;
 
 // I 재료 상자, C 조리 도구, S 제출대, X 쓰레기, D 그릇, W 세척기, T 테이블.
@@ -837,20 +832,12 @@ const newFires = (): Partial<Record<StationInstanceId, FireState>> =>
       .map(({ id }) => [id, { onFire: false }]),
   );
 
-// 맵에 놓인 모든 조리 기구. 도마·화로·튀김기가 같은 상태를 쓴다.
+// 맵에 놓인 모든 조리 기구. 도마·화덕·튀김기가 같은 상태를 쓴다.
 export const cooktopInstances = stationInstances.filter((station) =>
   isCooktop(station.type),
 );
 
-// 맵에 놓인 모든 재료 상자. 감자·당근·양배추 상자를 한데 본다.
-export const boxInstances = stationInstances.filter((station) =>
-  isBoxStation(station.type),
-);
-
 const initialStationState = () => ({
-  ingredients: Object.fromEntries(
-    boxInstances.map(({ id }) => [id, { stock: 1 }]),
-  ),
   stoves: Object.fromEntries(cooktopInstances.map(({ id }) => [id, [] as ItemId[]])),
   blenders: Object.fromEntries(
     stationInstancesByType.blender.map(({ id }) => [
@@ -874,7 +861,6 @@ const initialStationState = () => ({
   dishReturns: Object.fromEntries(
     stationInstancesByType["dish-return"].map(({ id }) => [id, [] as Dish[]]),
   ),
-  pendingReturns: [] as Dish[],
   tables: Object.fromEntries(stationInstancesByType.table.map(({ id }) => [id, [] as Carried[]])),
   incinerators: Object.fromEntries(
     stationInstancesByType.trash.map(({ id }) => [id, { count: 0, progress: 0 }]),
@@ -945,7 +931,7 @@ export const gameModes: GameMode[] = [
   {
     id: "endless",
     name: "무한 모드",
-    detail: "80턴 동안 주문을 최대한 완료합니다.",
+    detail: `${ENDLESS_TURN_LIMIT}턴 동안 주문을 최대한 완료합니다.`,
     ready: true,
   },
 ];
@@ -1164,25 +1150,32 @@ export const occupantOf = (
 // 벽·설비 칸과 다른 슬라임이 선 칸은 지나갈 수도 설 수도 없으므로 명세
 // 7절 충돌 규칙이 여기서 끝난다. 퍼지는 순서가 고정이라 같은 판이면 늘
 // 같은 결과가 나온다.
+export type MoveOption = TilePosition & { cost: number; path: TilePosition[] };
+
 export function moveOptions(
   state: GameState,
   actorId: ActorId,
-): (TilePosition & { cost: number })[] {
+): MoveOption[] {
   const actor = state.actors[actorId];
   if (state.phase !== "playing" || !actor) return [];
   const steps = Math.floor(actor.actionPoints / actionCost.move);
   const seen = new Set([tileKeyOf(actor)]);
-  const found: (TilePosition & { cost: number })[] = [];
-  let edge: TilePosition[] = [actor];
+  const found: MoveOption[] = [];
+  let edge: (TilePosition & { path: TilePosition[] })[] = [{
+    col: actor.col,
+    row: actor.row,
+    path: [{ col: actor.col, row: actor.row }],
+  }];
   for (let step = 1; step <= steps; step += 1) {
-    const next: TilePosition[] = [];
+    const next: (TilePosition & { path: TilePosition[] })[] = [];
     for (const tile of edge) {
       for (const side of neighboursOf(tile)) {
         const key = tileKeyOf(side);
         if (seen.has(key) || !isWalkable(side) || occupantOf(state, side)) continue;
         seen.add(key);
-        next.push(side);
-        found.push({ ...side, cost: step * actionCost.move });
+        const path = [...tile.path, side];
+        next.push({ ...side, path });
+        found.push({ ...side, cost: step * actionCost.move, path });
       }
     }
     edge = next;
@@ -1227,6 +1220,7 @@ export function moveActor(
   if (!option) {
     return refuse(state, actor, "남은 행동력으로 닿지 않는 칸입니다.");
   }
+  const previous = option.path.at(-2) ?? actor;
   return {
     ...state,
     refusal: null,
@@ -1235,9 +1229,9 @@ export function moveActor(
       col: to.col,
       row: to.row,
       facing:
-        to.col === actor.col
-          ? to.row > actor.row ? "down" : "up"
-          : to.col > actor.col ? "right" : "left",
+        to.col === previous.col
+          ? to.row > previous.row ? "down" : "up"
+          : to.col > previous.col ? "right" : "left",
     }),
   };
 }
@@ -1256,12 +1250,26 @@ export function resolveStationTarget(target: StationInstanceId | StationId) {
 // 슬라임이 이 설비를 쓸 수 있는 자리에 서 있는지. 설비 칸에 상하좌우로
 // 붙어 있으면 된다.
 export const isBesideStation = (
-  actor: ActorState,
+  actor: TilePosition,
   station: StationInstance,
 ) =>
   station.tiles.some((tile) =>
     neighboursOf(tile).some((side) => sameTile(side, actor)),
   );
+
+// 지금 서 있는 자리 또는 남은 행동력으로 갈 수 있는 자리에서 닿는 설비.
+// UI가 이동 칸과 설비 하이라이트에 같은 행동력 범위를 쓰게 한다.
+export function stationInActionRange(
+  state: GameState,
+  actorId: ActorId,
+  station: StationInstance,
+) {
+  const actor = state.actors[actorId];
+  return Boolean(
+    actor?.actionPoints &&
+    [actor, ...moveOptions(state, actorId)].some((tile) => isBesideStation(tile, station)),
+  );
+}
 
 export function interactActor(
   state: GameState,
@@ -1318,10 +1326,6 @@ function atIngredientBox(
   station: StationInstanceId,
   item: ItemId,
 ): GameState {
-  const ingredients = state.ingredients[station]!;
-  if (ingredients.stock < 1) {
-    return refuse(state, actor, `${stationLabels[stationType(station)]}가 비어 있습니다.`);
-  }
   const clean = dishIndex(actor, (dish) => dish.status === "clean");
   if (clean < 0 && !canCarry(actor)) {
     return refuse(state, actor, "이미 음식이나 그릇을 들고 있습니다.");
@@ -1342,15 +1346,11 @@ function atIngredientBox(
       : `${actor.name}이(가) ${withParticle(itemLabel(item))} 들었습니다.`,
     {
       actors: patchActor(state, actorId, { ...next, carrying }),
-      ingredients: {
-        ...state.ingredients,
-        [station]: { stock: ingredients.stock - 1 },
-      },
     },
   );
 }
 
-// 도마·화로·튀김기가 함께 쓴다. 무엇을 넣어 무엇이 나오는지는 레시피가
+// 도마·화덕·튀김기가 함께 쓴다. 무엇을 넣어 무엇이 나오는지는 레시피가
 // 정하고, 여기서는 올리기 → 조리 → 회수 순서만 다룬다.
 // 손이 차 있다는 말만 하면 "내려놓으면 되겠구나"로 읽힌다. 대개는 이
 // 기구에서 쓸 수 없는 재료를 들고 온 것이라, 그 사정을 먼저 알려 준다.
@@ -1976,11 +1976,18 @@ function submitFood(
   // 음식 이름이 아니라 ID로 현재 주문과 대조한다.
   const target = activeOrders(state).find((order) => order.foodId === food);
   const label = itemLabel(food);
-  // 제출한 접시는 손을 떠난다. 한 턴 뒤 반납대에 더러운 그릇으로 나온다.
+  // 제출한 접시는 손을 떠나 즉시 첫 반납대에 더러운 그릇으로 나온다.
   const handed = actor.carrying[carriedIndex];
   const returned: Dish[] = isDish(handed)
     ? [{ ...handed, status: "dirty", content: null }]
     : [];
+  const returnStation = stationInstancesByType["dish-return"][0];
+  const dishReturns = returnStation && returned.length > 0
+    ? {
+        ...state.dishReturns,
+        [returnStation.id]: [...(state.dishReturns[returnStation.id] ?? []), ...returned],
+      }
+    : state.dishReturns;
   const emptied = (base: ActorState) => ({
     ...base,
     carrying: base.carrying.filter((_, index) => index !== carriedIndex),
@@ -1999,7 +2006,7 @@ function submitFood(
           actorId,
           emptied(spend(actor, actionCost.carry, "CARRYING")),
         ),
-        pendingReturns: [...state.pendingReturns, ...returned],
+        dishReturns,
       },
     );
   }
@@ -2036,7 +2043,7 @@ function submitFood(
       filled,
       turnsLeft: state.turnsLeft +
         (state.mode === "endless" && completed ? ENDLESS_ORDER_TURN_BONUS : 0),
-      pendingReturns: [...state.pendingReturns, ...returned],
+      dishReturns,
       // 레시피 목록을 다 처리하면 남은 턴과 무관하게 끝난다.
       phase:
         state.mode !== "endless" && allDone && orderConfig.endRoundWhenOrdersDone
@@ -2048,7 +2055,7 @@ function submitFood(
   );
 }
 
-// 턴 종료. 남은 행동력은 소멸하고, 재료가 차고, 스테이지 남은 턴이 준다.
+// 턴 종료. 남은 행동력은 소멸하고 스테이지 남은 턴이 준다.
 export function endTurn(state: GameState): GameState {
   if (state.phase !== "playing") return state;
   const actors: Partial<Record<ActorId, ActorState>> = {};
@@ -2060,28 +2067,10 @@ export function endTurn(state: GameState): GameState {
       status: "IDLE",
     };
   }
-  const ingredients = { ...state.ingredients };
-  for (const { id } of boxInstances) {
-    ingredients[id] = {
-      stock: Math.min(INGREDIENT_MAX, ingredients[id]!.stock + INGREDIENT_PER_TURN),
-    };
-  }
-  // 제출한 그릇은 한 턴 뒤 첫 반납대에 더러운 채로 나온다.
-  const returnStation = stationInstancesByType["dish-return"][0];
-  const dishReturns = { ...state.dishReturns };
-  if (returnStation && state.pendingReturns.length > 0) {
-    dishReturns[returnStation.id] = [
-      ...(dishReturns[returnStation.id] ?? []),
-      ...state.pendingReturns,
-    ];
-  }
   const turnsLeft = state.turnsLeft - 1;
   const played = {
     ...state,
     actors,
-    ingredients,
-    dishReturns,
-    pendingReturns: [],
     turnsLeft,
     turn: state.turn + 1,
   };

@@ -71,8 +71,8 @@ function validate({ balance, recipes, stages }, list) {
       `${job}을(를) 맡을 속성을 하나 이상 골라야 합니다.`,
     );
   }
-  say(whole(balance.ingredients?.max, 1), "재료 상자 최대치는 1 이상이어야 합니다.");
-  say(whole(balance.ingredients?.perTurn, 1), "턴당 재료 보충은 1 이상이어야 합니다.");
+  say(whole(balance.endless?.turnLimit, 1), "무한 모드 시작 턴은 1 이상이어야 합니다.");
+  say(whole(balance.endless?.orderTurnBonus, 1), "무한 모드 주문 보너스는 1 이상이어야 합니다.");
   const dish = balance.dish ?? {};
   say(whole(dish.rackCapacity, 1), "그릇 상자 용량은 1 이상이어야 합니다.");
   say(whole(dish.initialCount, 0) && dish.initialCount <= dish.rackCapacity, "초기 그릇 수는 0 이상이고 상자 용량 이하여야 합니다.");

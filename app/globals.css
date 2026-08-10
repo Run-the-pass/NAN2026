@@ -36,8 +36,8 @@ button, select { font: inherit; }
 :root {
   --cursor-arrow: url("/ui/cursor.png") 2 0, auto;
   --cursor-hand: url("/ui/cursor-click.png") 6 0, pointer;
-  --cursor-deny: url("/ui/cursor.png") 2 0, not-allowed;
-  /* 지금은 쓸 수 없는 것. 금지 표시 대신 "?"를 붙인 화살표를 쓴다. */
+  --cursor-deny: url("/ui/cursor-deny.png") 2 0, not-allowed;
+  /* 설명을 열 수 있는 곳은 "?"를 붙인 화살표를 쓴다. */
   --cursor-ask: url("/ui/cursor-help.png") 2 0, help;
   /* 나뭇결. 원래보다 대비를 크게 낮춰 배경이 튀지 않게 한다. 산만하면
      두 색을 더 가깝게, 밋밋하면 더 벌리면 된다. 여기 한곳만 만진다. */
@@ -209,6 +209,86 @@ button:disabled { cursor: var(--cursor-arrow); }
 
 .home-menu-button img { display: block; width: auto; }
 .home-start img { height: 13.6svh; }
+.home-credits {
+  position: fixed;
+  z-index: 201;
+  top: 78.5svh;
+  right: 0;
+  left: 0;
+  width: min(24svh, 180px);
+  aspect-ratio: 320 / 143;
+  margin: 0 auto;
+  padding: 0 10%;
+  background: url("/ui/button.png") center / 100% 100% no-repeat;
+}
+.home-credits img { width: 100%; height: auto; }
+
+.credits-dialog {
+  width: min(440px, calc(100vw - 24px), calc((100svh - 24px) * .821));
+  border: 0;
+  margin: auto;
+  padding: 0;
+  overflow: visible;
+  color: #3b2112;
+  background: transparent;
+}
+.credits-dialog::backdrop { background: #180b06cc; }
+.credits-card {
+  position: relative;
+  display: grid;
+  box-sizing: border-box;
+  justify-items: center;
+  align-content: start;
+  gap: clamp(4px, 1.2svh, 10px);
+  width: 100%;
+  aspect-ratio: 1055 / 1285;
+  padding: 5% 11% 9%;
+  background: url("/ui/paper-frame.png") center / 100% 100% no-repeat;
+  filter: drop-shadow(0 16px 28px #0009);
+  text-align: center;
+}
+.credits-card h2,
+.credits-card h3,
+.credits-card p,
+.credits-card dl { margin: 0; }
+.credits-card h2 {
+  display: grid;
+  place-items: center;
+  width: 72%;
+  height: 15%;
+  font-size: clamp(22px, 4.5svh, 40px);
+  line-height: 1;
+}
+.credits-card h3 { font-size: clamp(17px, 3svh, 27px); line-height: 1.1; }
+.credits-close {
+  position: absolute;
+  z-index: 2;
+  top: 3%;
+  right: 4%;
+  width: clamp(30px, 6svh, 48px);
+  aspect-ratio: 1;
+  border: 0;
+  padding: 0;
+  background: url("/ui/cancel.png") center / contain no-repeat;
+  font-size: 0;
+  cursor: var(--cursor-hand);
+}
+.credits-close:hover { transform: scale(1.08); }
+.credits-close:focus-visible { outline: 3px solid var(--gold); outline-offset: 2px; border-radius: 8px; }
+.credits-logo-paper {
+  display: grid;
+  place-items: center;
+  width: 48%;
+  aspect-ratio: 1.12;
+  border-radius: 12px;
+  background: radial-gradient(120% 90% at 50% 42%, #fbf6ec, #e7ddcc 60%, #cfc2ac);
+}
+.credits-logo-paper img { width: auto; height: 90%; object-fit: contain; }
+.credits-members { font-size: clamp(14px, 2.3svh, 20px); }
+.credits-tools { display: grid; gap: 4px; width: min(260px, 90%); font-size: clamp(12px, 2svh, 17px); }
+.credits-tools div { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.credits-tools dt { text-align: right; }
+.credits-tools dd { margin: 0; text-align: left; }
 .music-settings-home {
   position: fixed;
   /* 설정 오버레이가 이 안에 있다. 여기서 쌓임 맥락이 생기므로 홈 메뉴
@@ -236,7 +316,7 @@ button:disabled { cursor: var(--cursor-arrow); }
 
 .home-desk {
   z-index: 2;
-  top: 34%;
+  bottom: 0;
   left: -4%;
   width: min(47%, 74svh);
   filter: brightness(.58) saturate(.8);
@@ -727,7 +807,8 @@ button:disabled { cursor: var(--cursor-arrow); }
 .stage-frame:has(> .dialogue-screen[data-focus="clock"]) .hud-top {
   z-index: 41;
 }
-.stage-frame:has(> .dialogue-screen[data-focus="roster"]) .hud-bottom { z-index: 41; }
+.stage-frame:has(> .dialogue-screen[data-focus="roster"]) .hud-bottom,
+.stage-frame:has(> .dialogue-screen[data-focus="undo"]) .hud-bottom { z-index: 41; }
 .stage-frame:has(> .dialogue-screen[data-focus="next-order"]) .order-cards > .order-card {
   filter: brightness(.22) drop-shadow(0 6px 5px #0007);
 }
@@ -1031,6 +1112,7 @@ button:disabled { cursor: var(--cursor-arrow); }
   filter: brightness(.38) saturate(.45);
   cursor: var(--cursor-arrow);
 }
+.stage-frame .turn-bar .turn-undo[data-coach]:disabled { filter: none; }
 
 /* 튜토리얼이 지금 누르라고 짚는 버튼. */
 .stage-frame [data-coach] {
@@ -1049,8 +1131,6 @@ button:disabled { cursor: var(--cursor-arrow); }
 .action-toast {
   position: absolute;
   z-index: 20;
-  bottom: clamp(96px, 13vh, 148px);
-  left: 50%;
   margin: 0;
   border: 9px solid transparent;
   border-image: url("/ui/panel-base2.png") 20 fill / 9px / 0 stretch;
@@ -1059,8 +1139,10 @@ button:disabled { cursor: var(--cursor-arrow); }
   box-shadow: 0 6px 18px #0008;
   color: #ffe9b8;
   font-size: 13px;
-  white-space: nowrap;
-  transform: translateX(-50%);
+  max-width: min(320px, calc(100% - 24px));
+  white-space: normal;
+  text-align: center;
+  transform: translate(-50%, calc(-100% - 10px));
 }
 
 /* 스테이지 랭크 별 */
@@ -1139,7 +1221,14 @@ button:disabled { cursor: var(--cursor-arrow); }
 .game-inspector .stat-gauge i { background: #75502a; }
 .inspector-badges,
 .required-slimes { display: flex; flex-wrap: wrap; justify-content: center; gap: 9px; }
-.required-slimes > span { border: 2px solid #7b4a24; border-radius: 3px; padding: 8px 12px; background: #4b2b17; color: #fff0c8; }
+.required-slimes > span {
+  border: 9px solid transparent;
+  border-radius: 0;
+  border-image: url("/ui/panel-base.png") 20 fill / 9px / 0 stretch;
+  padding: 1px 5px;
+  background: none;
+  color: #33200f;
+}
 /* 슬라임 특징과 설비의 가능한 작업은 같은 판때기 그림 하나를 늘려 쓴다.
    말상자처럼 네 귀퉁이(19px 곡선)를 고정하고 가운데만 늘어나므로 글자 수가
    달라도 테두리가 찌그러지지 않는다. */
@@ -1561,6 +1650,8 @@ img.paper-title { width: 56%; height: 11.4%; top: 4.9%; left: 22%; object-fit: c
 }
 .mode-plate b { font-size: clamp(20px, 2.8vw, 34px); }
 .mode-plate small { color: #ffdca6; font-size: clamp(11px, 1.2vw, 15px); }
+.mode-plate-stars { display: flex; align-items: center; gap: .3em; }
+.mode-plate-stars img { width: 1.4em; height: 1.4em; object-fit: contain; }
 .mode-plate:hover:not(:disabled) { transform: translateY(-4px) scale(1.02); filter: brightness(1.06); }
 .mode-plate:focus-visible { outline: 4px solid var(--gold); outline-offset: 6px; border-radius: 20px; }
 .mode-plate[data-locked] { filter: grayscale(.75) brightness(.6); cursor: var(--cursor-deny); }
@@ -1685,7 +1776,7 @@ img.paper-title { width: 56%; height: 11.4%; top: 4.9%; left: 22%; object-fit: c
   .dialogue-companions { right: 14px; bottom: 82px; }
   .dialogue-companions img { width: 68px; }
   .stage-frame .dialogue-skip { top: 43px; right: 5px; width: 100px; min-height: 44px; }
-  .action-toast { bottom: 72px; max-width: calc(100vw - 24px); white-space: normal; text-align: center; }
+  .action-toast { bottom: auto; max-width: calc(100vw - 24px); }
   .stage-banner { width: min(42vw, 320px); }
   .stage-select { gap: 8px; padding: 56px 12px 10px; }
   .stage-select[data-screen="modes"] h1 { width: min(240px, 36vw); }

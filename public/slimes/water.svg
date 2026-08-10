@@ -4,6 +4,8 @@
      height="800"
      viewBox="88 178 1080 906">
 <style>
+/* Phaser는 방향별 얼굴을 별도 레이어로 그리므로 몸통 텍스처에는 얼굴을 굽지 않는다. */
+svg[width$="px"] .portrait-face { display: none; }
 /* 숨쉬기. img로 띄우는 자리(대사·정보 패널·버튼)에서만 살아 움직인다.
    Phaser는 SVG를 정지 화면으로 굽기 때문에 인게임에는 영향이 없다. */
 .idle { transform-box: fill-box; transform-origin: 50% 94%;
@@ -156,6 +158,7 @@
         stroke-linejoin="round"/>
 
   <!-- Face -->
+  <g class="portrait-face">
   <ellipse cx="523" cy="684" rx="33" ry="33" fill="#050707">
     <animate attributeName="ry"
              dur="4.7s"
@@ -179,5 +182,6 @@
            C672 757 652 777 627 777
            C602 777 582 757 580 726Z"
         fill="#050707"/>
+  </g>
 </g>
 </svg>

@@ -5,7 +5,6 @@ export type GameSoundCue =
   | "game-over"
   | "round-clear"
   | "low-time"
-  | "new-item"
   | "chop"
   | "wash"
   | "pick-item"
@@ -55,9 +54,6 @@ export function gameSoundCues(
   if (previous.turnsLeft > RUSH_TURNS_LEFT && next.turnsLeft <= RUSH_TURNS_LEFT) {
     cues.push("low-time");
   }
-  if (Object.entries(next.ingredients).some(([id, box]) =>
-    box!.stock > (previous.ingredients[id as keyof GameState["ingredients"]]?.stock ?? 0)
-  )) cues.push("new-item");
   // 한 번에 끝나는 작업은 진행도가 0에서 0으로 보이므로 완료 상태도 함께 본다.
   if (
     progressed(previous.workstations, next.workstations) ||

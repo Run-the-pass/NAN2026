@@ -12,6 +12,7 @@ import {
   initialEndlessState,
   interactActor,
   isBesideStation,
+  stationInActionRange,
   moveActor,
   nextReadyActor,
   endTurn,
@@ -22,7 +23,6 @@ import {
   maxActionPoints,
   upcomingOrders,
   RUSH_TURNS_LEFT,
-  INGREDIENT_MAX,
   stationInstances,
   stationType,
   stationLabels,
@@ -37,9 +37,7 @@ import {
   stageIndexOf,
   dishConfig,
   incineratorConfig,
-  isBoxStation,
   isCooktop,
-  boxItems,
   carriedLabel,
   isDish,
   blenderStage,
@@ -53,12 +51,13 @@ import {
   type ItemId,
   type SlimeTypeId,
   type StationId,
+  type StationInstance,
   type StationInstanceId,
+  type TilePosition,
 } from "../game/core";
 import {
-  facings,
   authoredFaceLayout,
-  slimeDataUri,
+  facingFromDelta,
   type Facing,
 } from "./slime-art";
 import Music, { MusicSettings } from "./Music";
@@ -92,7 +91,8 @@ const typeColors: Record<SlimeTypeId, number> = {
   lightning: 0xefb229,
   earth: 0x8b6c42,
 };
-const authoredSlimeAssets: Partial<Record<SlimeTypeId, string>> = {
+const authoredSlimeAssets: Record<SlimeTypeId, string> = {
+  water: "/slimes/water.svg",
   fire: "/slimes/fire.svg",
   lightning: "/slimes/lightning.svg",
   earth: "/slimes/earth.svg",
@@ -104,6 +104,7 @@ const RENDER_SCALE = 3;
 // 텍스처는 world 58x45로 그린다. 확대에 견디도록 넉넉히 구워 둔다.
 const SLIME_TEXTURE = { width: 348, height: 270 };
 const SLIME_SCALE = 58 / SLIME_TEXTURE.width;
+const WATER_TEXTURE = { width: 348, height: 292 };
 const AUTHORED_TEXTURE = { width: 348, height: 301 };
 // 머리 장식 여백을 뺀 원본 몸통 폭이 물 슬라임의 58px 몸통과 맞는다.
 const AUTHORED_SLIME_SCALE = SLIME_SCALE * 1.12;
@@ -112,11 +113,26 @@ type Motion = "idle" | "walk" | "stir" | "pick";
 // 행동 한 번은 즉시 끝나므로 모션도 잠깐만 재생하고 숨쉬기로 돌아간다.
 const MOTION_MS = 320;
 // 커서 그림과 핫스팟. 화살표는 뾰족한 끝, 손은 손가락 끝이 기준점이다.
-// globals.css의 --cursor-arrow / --cursor-hand와 같은 값이어야 한다.
+// globals.css의 기본 커서와 같은 크기다. 설비는 가능 여부를 에셋으로 구분한다.
 const CURSOR_ARROW = 'url("/ui/cursor.png") 2 0, auto';
 const CURSOR_HAND = 'url("/ui/cursor-click.png") 6 0, pointer';
-// 지금은 쓸 수 없는 설비. 금지 표시 대신 "?"를 붙인 화살표로 알린다.
-const CURSOR_ASK = 'url("/ui/cursor-help.png") 2 0, help';
+const CURSOR_INTERACT = 'url("/ui/cursor-energy.png") 2 0, pointer';
+const CURSOR_DENY = 'url("/ui/cursor-deny.png") 2 0, not-allowed';
+
+function canUseStationNow(
+  state: GameState,
+  actorId: ActorId | null,
+  station: StationInstance,
+  cue: TutorialCue | null,
+) {
+  if (!actorId) return undefined;
+  const actor = state.actors[actorId];
+  if (!actor || !tutorialAllowsStation(state, cue, actorId, station.id) || !isBesideStation(actor, station)) {
+    return false;
+  }
+  const after = interactActor(state, actorId, station.id);
+  return (after.refusal?.seq ?? -1) === (state.refusal?.seq ?? -1);
+}
 
 function coachArrowStyle(
   layout: TutorialArrowLayout | undefined,
@@ -298,33 +314,33 @@ const stationPanelInfo: Record<
   { steps: { art: string; text: string; tip: string }[] }
 > = {
   "potato-box": {
-    steps: [{ art: "/food/potato.png", text: "감자 받기", tip: `턴이 끝날 때마다 한 개씩 차고 최대 ${INGREDIENT_MAX}개입니다. 빈손이나 깨끗한 그릇으로 꺼냅니다. (행동력 1)` }],
+    steps: [{ art: "/food/potato.png", text: "감자 받기", tip: "언제든 빈손이나 깨끗한 그릇으로 꺼냅니다. (행동력 1)" }],
   },
   "carrot-box": {
-    steps: [{ art: "/food/carrot.png", text: "당근 받기", tip: `턴이 끝날 때마다 한 개씩 차고 최대 ${INGREDIENT_MAX}개입니다. 빈손이나 깨끗한 그릇으로 꺼냅니다. (행동력 1)` }],
+    steps: [{ art: "/food/carrot.png", text: "당근 받기", tip: "언제든 빈손이나 깨끗한 그릇으로 꺼냅니다. (행동력 1)" }],
   },
   "cabbage-box": {
-    steps: [{ art: "/food/cabbage.png", text: "양배추 받기", tip: `턴이 끝날 때마다 한 개씩 차고 최대 ${INGREDIENT_MAX}개입니다. 빈손이나 깨끗한 그릇으로 꺼냅니다. (행동력 1)` }],
+    steps: [{ art: "/food/cabbage.png", text: "양배추 받기", tip: "언제든 빈손이나 깨끗한 그릇으로 꺼냅니다. (행동력 1)" }],
   },
   "banana-box": {
-    steps: [{ art: "/food/banana.png", text: "바나나 받기", tip: "빈손이나 깨끗한 그릇으로 꺼냅니다. (행동력 1)" }],
+    steps: [{ art: "/food/banana.png", text: "바나나 받기", tip: "언제든 빈손이나 깨끗한 그릇으로 꺼냅니다. (행동력 1)" }],
   },
   "strawberry-box": {
-    steps: [{ art: "/food/strawberry.png", text: "딸기 받기", tip: "빈손이나 깨끗한 그릇으로 꺼냅니다. (행동력 1)" }],
+    steps: [{ art: "/food/strawberry.png", text: "딸기 받기", tip: "언제든 빈손이나 깨끗한 그릇으로 꺼냅니다. (행동력 1)" }],
   },
   "mushroom-box": {
-    steps: [{ art: "/food/mushroom.png", text: "버섯 받기", tip: "빈손이나 깨끗한 그릇으로 꺼냅니다. (행동력 1)" }],
+    steps: [{ art: "/food/mushroom.png", text: "버섯 받기", tip: "언제든 빈손이나 깨끗한 그릇으로 꺼냅니다. (행동력 1)" }],
   },
   oven: {
     steps: [
-      { art: "/food/mushroom.png", text: "버섯", tip: "화로에 올릴 수 있는 재료입니다. 올리고 꺼내는 것은 누구나 합니다." },
+      { art: "/food/mushroom.png", text: "버섯", tip: "화덕에 올릴 수 있는 재료입니다. 올리고 꺼내는 것은 누구나 합니다." },
       { art: "/stations/oven.png", text: "이글이가 굽기", tip: "이글이만 구울 수 있습니다. (행동력 1)" },
       { art: "/food/plate.png", text: "그릇에 담기", tip: "깨끗한 그릇을 들고 오면 다 구운 음식이 담깁니다." },
     ],
   },
   "dish-return": {
     steps: [
-      { art: "/food/dirty-plate.png", text: "더러운 그릇 회수", tip: "제출한 그릇이 한 턴 뒤 더러운 채로 나옵니다. (행동력 1)" },
+      { art: "/food/dirty-plate.png", text: "더러운 그릇 회수", tip: "제출한 그릇이 즉시 더러운 채로 나옵니다. (행동력 1)" },
       { art: "/stations/washer.png", text: "세척대로", tip: "세척대에 맡겨 씻어야 다시 쓸 수 있습니다." },
     ],
   },
@@ -352,7 +368,7 @@ const stationPanelInfo: Record<
   submission: {
     steps: [
       { art: "/food/plate.png", text: "완성 음식", tip: "지금 주문에 있는 음식만 낼 수 있습니다." },
-      { art: "/stations/submission.png", text: "제출", tip: "낸 그릇은 한 턴 뒤 반납대로 돌아옵니다. (행동력 1)" },
+      { art: "/stations/submission.png", text: "제출", tip: "낸 그릇은 즉시 반납대로 돌아옵니다. (행동력 1)" },
     ],
   },
   trash: {
@@ -389,10 +405,7 @@ const traitArt: Record<string, string> = {
   chop: KNIFE_ART,
 };
 
-const slimePortrait = (typeId: SlimeTypeId) =>
-  typeId === "water"
-    ? "/slimes/water.svg"
-    : authoredSlimeAssets[typeId] ?? slimeDataUri(typeId, "down");
+const slimePortrait = (typeId: SlimeTypeId) => authoredSlimeAssets[typeId];
 
 // 정산 숫자는 0에서부터 올라간다. 한 번에 찍히면 정산을 본 느낌이 없다.
 function CountUp({ value, delay = 0, ms = 620 }: { value: number; delay?: number; ms?: number }) {
@@ -577,9 +590,6 @@ function OrderCards({ state }: { state: GameState }) {
 
 function stationStock(state: GameState, id: StationInstanceId) {
   const type = stationType(id);
-  if (isBoxStation(type)) {
-    return { label: itemLabel(boxItems[type]), have: state.ingredients[id]!.stock, max: INGREDIENT_MAX };
-  }
   if (type === "dish-rack") {
     return { label: "깨끗한 그릇", have: state.dishRacks[id]!.length, max: dishConfig.rackCapacity };
   }
@@ -763,12 +773,13 @@ export default function Game() {
   const [waterIntroComplete, setWaterIntroComplete] = useState(false);
   const [platedIntro, setPlatedIntro] = useState(false);
   const [platedIntroComplete, setPlatedIntroComplete] = useState(false);
+  const [dialogueFocus, setDialogueFocus] = useState<DialogueFocus>();
   const [tutorialOutro, setTutorialOutro] = useState(false);
   const [tutorialComplete, setTutorialComplete] = useState(false);
   const [stageIntro, setStageIntro] = useState(false);
   const [finalOutro, setFinalOutro] = useState(false);
   const [finalComplete, setFinalComplete] = useState(false);
-  const [toast, setToast] = useState<string | null>(null);
+  const [toast, setToast] = useState<{ message: string; x: number; y: number } | null>(null);
   // 대사 중에는 장면을 멈추지 않는다. 멈추면 뒤에 보여야 할 주방이 검게
   // 남는다. 조작은 대사 화면이 덮고 있어 어차피 닿지 않는다.
   const paused = settingsOpen;
@@ -791,6 +802,8 @@ export default function Game() {
   const tutorialCueRef = useRef<TutorialCue | null>(null);
   // 도입 대사가 짚는 슬라임. Phaser의 어두운 막보다 앞으로 올린다.
   const dialogueActorRef = useRef<ActorId | null>(null);
+  const toastAnchorRef = useRef<{ x: number; y: number } | null>(null);
+  const movePathRef = useRef<Partial<Record<ActorId, TilePosition[]>>>({});
   // 화살표를 지도 위 실제 타일에 붙이려면 렌더에서도 알아야 해서 ref와 함께 둔다.
   const [dialogueActor, setDialogueActor] = useState<ActorId | null>(null);
   const view = useRef<View | null>(null);
@@ -915,6 +928,7 @@ export default function Game() {
   }, [state, finalComplete]);
 
   const showDialogueFocus = useCallback((focus: DialogueFocus | undefined) => {
+    setDialogueFocus(focus);
     dialogueActorRef.current = focus === "earth" ? "earth-1" : null;
     setDialogueActor(dialogueActorRef.current);
     setInspected(focus === "inspector" ? { kind: "actor", id: "earth-1" } : null);
@@ -961,7 +975,7 @@ export default function Game() {
       setToast(null);
       return;
     }
-    setToast(message);
+    setToast({ message, ...(toastAnchorRef.current ?? { x: 320, y: 320 }) });
     const timer = setTimeout(() => setToast(null), 2_200);
     return () => clearTimeout(timer);
   }, [refusalSeq]);
@@ -1029,7 +1043,7 @@ export default function Game() {
             art: Phaser.GameObjects.Image;
             faceLayer?: Phaser.GameObjects.Graphics;
             carried: { bg: Phaser.GameObjects.Image; fg: Phaser.GameObjects.Image }[];
-            selected: Phaser.GameObjects.Arc;
+            selected: Phaser.GameObjects.Ellipse;
             // 행동력이 남았을 때 머리 위에 뜨는 물음표와, 골랐을 때의 이름표.
             idleMark: Phaser.GameObjects.Image;
             nameTag: Phaser.GameObjects.Text;
@@ -1039,7 +1053,7 @@ export default function Game() {
             blinking: boolean;
             scale: number;
             motion: Phaser.Tweens.Tween;
-            walking?: Phaser.Tweens.Tween;
+            walking?: Phaser.Tweens.BaseTween;
           }
         >
       >;
@@ -1050,10 +1064,12 @@ export default function Game() {
         show: (key: string) => void;
       }>>;
       blenderHints!: Partial<Record<StationInstanceId, Phaser.GameObjects.Image>>;
-      // 설비에 올라와 있는 재료·그릇 그림. 도마·화로·튀김기·테이블이 쓴다.
+      // 설비에 올라와 있는 재료·그릇 그림. 도마·화덕·튀김기·테이블이 쓴다.
       holdings!: Partial<Record<StationInstanceId, {
         bg: Phaser.GameObjects.Image;
         fg: Phaser.GameObjects.Image;
+        cleanBg?: Phaser.GameObjects.Image;
+        cleanFg?: Phaser.GameObjects.Image;
         room: number;
       }>>;
       // 도마 위의 칼. 썰 때만 내려찍는다.
@@ -1207,7 +1223,7 @@ export default function Game() {
       paintSlime(actorId: ActorId) {
         const sprite = this.slimes[actorId];
         if (!sprite) return;
-        if (authoredSlimeAssets[sprite.typeId] && sprite.faceLayer) {
+        if (sprite.faceLayer) {
           sprite.art
             .setTexture(`slime-${sprite.typeId}-art`)
             .setFlipX(sprite.facing === "left");
@@ -1218,8 +1234,23 @@ export default function Game() {
             const mouthY = face.y + face.mouthY;
             sprite.faceLayer.fillStyle(0x020100, 1);
             if (face.blink) {
-              sprite.faceLayer
-                .fillRoundedRect(
+              if (sprite.typeId === "fire") {
+                const blinkY = face.y + face.blinkY;
+                const half = face.blinkWidth / 2;
+                const tilt = 7;
+                sprite.faceLayer
+                  .lineStyle(face.blinkHeight, 0x020100, 1)
+                  .beginPath()
+                  .moveTo(face.x - face.eyeOffsetX - half, blinkY - tilt)
+                  .lineTo(face.x - face.eyeOffsetX + half, blinkY + tilt)
+                  .strokePath()
+                  .beginPath()
+                  .moveTo(face.x + face.eyeOffsetX - half, blinkY + tilt)
+                  .lineTo(face.x + face.eyeOffsetX + half, blinkY - tilt)
+                  .strokePath();
+              } else {
+                sprite.faceLayer
+                  .fillRoundedRect(
                   face.x - face.eyeOffsetX - face.blinkWidth / 2,
                   face.y + face.blinkY,
                   face.blinkWidth,
@@ -1233,8 +1264,9 @@ export default function Game() {
                   face.blinkHeight,
                   face.blinkHeight / 2,
                 );
+              }
             } else if (sprite.typeId === "fire") {
-              // 각 눈은 원호와 사선 한 개로 닫아, 원의 윗부분만 잘라낸다.
+              // 초상화처럼 원의 윗부분만 사선으로 조금 잘라낸다.
               const fireEyeRadius = face.eyeRadius;
               sprite.faceLayer
                 .beginPath()
@@ -1242,8 +1274,8 @@ export default function Game() {
                   face.x - face.eyeOffsetX,
                   eyeY,
                   fireEyeRadius,
-                  -Math.PI / 15,
-                  7 * Math.PI / 6,
+                  -Math.PI / 36,
+                  47 * Math.PI / 36,
                 )
                 .closePath()
                 .fillPath()
@@ -1252,8 +1284,8 @@ export default function Game() {
                   face.x + face.eyeOffsetX,
                   eyeY,
                   fireEyeRadius,
-                  -Math.PI / 6,
-                  16 * Math.PI / 15,
+                  -11 * Math.PI / 36,
+                  37 * Math.PI / 36,
                 )
                 .closePath()
                 .fillPath();
@@ -1284,7 +1316,7 @@ export default function Game() {
           if (!sprite) continue;
           const { x, y } = sprite.body;
           sprite.body.setDepth(dialogueActorRef.current === actorId ? 9001 : y);
-          sprite.selected.setPosition(x, y + 14).setDepth(y - 1);
+          sprite.selected.setPosition(x, y + 17).setDepth(y - 1);
           sprite.nameTag.setPosition(x, y + 26).setDepth(1000);
           // 위아래로 살랑이게 한다. 몸을 따라다녀야 해서 tween 대신 계산한다.
           const markY = y - 30 + Math.sin(this.time.now / 320) * 3;
@@ -1314,19 +1346,11 @@ export default function Game() {
         }
         for (const typeId of kinds) {
           const asset = authoredSlimeAssets[typeId];
-          if (asset) {
-            this.load.svg(`slime-${typeId}-art`, asset, AUTHORED_TEXTURE);
-            continue;
-          }
-          for (const facing of facings) {
-            for (const blink of [false, true]) {
-              this.load.svg(
-                `slime-${typeId}-${facing}${blink ? "-blink" : ""}`,
-                slimeDataUri(typeId, facing, { blink }),
-                SLIME_TEXTURE,
-              );
-            }
-          }
+          this.load.svg(
+            `slime-${typeId}-art`,
+            asset,
+            typeId === "water" ? WATER_TEXTURE : AUTHORED_TEXTURE,
+          );
         }
       }
 
@@ -1472,14 +1496,22 @@ export default function Game() {
           }
           // 재료·완성품·그릇을 올려 두는 설비는 올라온 것을 그림으로 보여
           // 준다. 그릇은 접시 위에 음식을 얹어 두 장으로 그린다.
-          if (isCooktop(type) || type === "table" || type === "washer") {
+          if (isCooktop(type) || type === "table" || type === "washer" || type === "dish-return") {
             // 기구 그림이 칸 한가운데에서 밀려 있으면 올려 둔 것도 같이
             // 밀려야 기구 위에 놓인 것처럼 보인다.
-            const room = TILE_SIZE * (type === "table" ? 0.66 : 0.42);
-            const spot = { x: art.x, y: art.y - (isCooktop(type) ? 2 : 0) };
+            const room = TILE_SIZE * (type === "table" ? 0.66 : type === "dish-return" ? 0.58 : 0.42);
+            const spot = type === "washer"
+              ? last
+              : { x: art.x, y: art.y - (isCooktop(type) ? 2 : 0) };
             this.holdings[id] = {
               bg: this.add.image(spot.x, spot.y, DIRTY_PLATE_ART).setDepth(y + 2.2).setVisible(false),
               fg: this.add.image(spot.x, spot.y, DIRTY_PLATE_ART).setDepth(y + 2.3).setVisible(false),
+              cleanBg: type === "washer"
+                ? this.add.image(first.x, first.y, DIRTY_PLATE_ART).setDepth(y + 2.2).setVisible(false)
+                : undefined,
+              cleanFg: type === "washer"
+                ? this.add.image(first.x, first.y, DIRTY_PLATE_ART).setDepth(y + 2.3).setVisible(false)
+                : undefined,
               room,
             };
           }
@@ -1529,12 +1561,11 @@ export default function Game() {
             .zone(x, y, width, height)
             .setDepth(4)
             .setInteractive()
-            // 쓸 수 있으면 손, 옆에 서 있는데 안 되면 "?", 그 밖에는 기본
-            // 화살표. 상호작용 테두리 색과 같은 판정을 쓴다.
+            // 쓸 수 있으면 행동력 번개, 쓸 수 없으면 X. 선택 전에는 기본 화살표다.
             .on("pointerover", () => {
               const ok = this.usable[id];
               this.input.setDefaultCursor(
-                ok === undefined ? CURSOR_ARROW : ok ? CURSOR_HAND : CURSOR_ASK,
+                ok === undefined ? CURSOR_ARROW : ok ? CURSOR_INTERACT : CURSOR_DENY,
               );
             })
             .on("pointerout", () => this.input.setDefaultCursor(CURSOR_ARROW))
@@ -1551,15 +1582,33 @@ export default function Game() {
                 if (!pointer.leftButtonDown()) return;
                 const actorId = selectedActorRef.current;
                 const current = stateRef.current;
-                if (current && !tutorialAllowsStation(current, tutorialCueRef.current, actorId, id)) {
+                if (!current) return;
+                if (!tutorialAllowsStation(current, tutorialCueRef.current, actorId, id)) {
+                  this.usable[id] = false;
+                  this.input.setDefaultCursor(CURSOR_DENY);
                   return;
                 }
                 setInspected({ kind: "station", id });
-                if (!actorId) return;
+                if (!actorId) {
+                  this.input.setDefaultCursor(CURSOR_ARROW);
+                  return;
+                }
+                const native = pointer.event as PointerEvent;
+                const frame = this.game.canvas.closest(".stage-frame")?.getBoundingClientRect();
+                if (frame && Number.isFinite(native.clientX) && Number.isFinite(native.clientY)) {
+                  toastAnchorRef.current = {
+                    x: Math.min(Math.max(native.clientX - frame.left, 170), frame.width - 170),
+                    y: Math.min(Math.max(native.clientY - frame.top - 8, 70), frame.height - 70),
+                  };
+                }
                 // 선택한 슬라임이 있으면 거리와 무관하게 상호작용 시도다.
                 // 멀면 코어의 기존 거절 이유를 띄우고 선택은 유지한다.
                 metrics.current.buttonCommands += 1;
-                performActorAction(actorId, (value) => interactActor(value, actorId, id));
+                const after = interactActor(current, actorId, id);
+                performActorAction(actorId, () => after);
+                const usable = canUseStationNow(after, actorId, station, tutorialCueRef.current) ?? false;
+                this.usable[id] = usable;
+                this.input.setDefaultCursor(usable ? CURSOR_INTERACT : CURSOR_DENY);
               },
             );
         }
@@ -1585,13 +1634,13 @@ export default function Game() {
         for (const actorId of roster) {
           const actor = current?.actors[actorId];
           if (!actor) continue;
-          const authored = Boolean(authoredSlimeAssets[actor.typeId]);
-          const scale = authored ? AUTHORED_SLIME_SCALE : SLIME_SCALE;
+          const water = actor.typeId === "water";
+          const scale = water ? SLIME_SCALE : AUTHORED_SLIME_SCALE;
           const art = this.add
-            .image(0, 0, authored ? `slime-${actor.typeId}-art` : `slime-${actor.typeId}-down`)
-            .setOrigin(0.5, authored ? 0.62 : 0.5);
-          const faceLayer = authored ? this.add.graphics() : undefined;
-          const visual = this.add.container(0, 0, faceLayer ? [art, faceLayer] : [art]);
+            .image(0, 0, `slime-${actor.typeId}-art`)
+            .setOrigin(0.5, water ? 0.5 : 0.62);
+          const faceLayer = this.add.graphics();
+          const visual = this.add.container(0, 0, [art, faceLayer]);
           const spot = tileCenter(actor);
           const container = this.add
             .container(spot.x, spot.y, [visual])
@@ -1625,7 +1674,7 @@ export default function Game() {
             fg: this.add.image(spot.x, spot.y, stationBadgeArt["dish-rack"]!).setOrigin(0.5).setVisible(false),
           }));
           const selected = this.add
-            .circle(spot.x, spot.y + 14, 30)
+            .ellipse(spot.x, spot.y + 17, 58, 28)
             .setStrokeStyle(3, typeColors[actor.typeId], 0.95)
             .setFillStyle(typeColors[actor.typeId], 0.12)
             .setDepth(spot.y - 1)
@@ -1701,14 +1750,12 @@ export default function Game() {
           const guided = current && actorId
             ? tutorialMoveOptions(current, actorId, tutorialCueRef.current)
             : [];
-          if (
-            current &&
-            actorId &&
-            guided.some(
-              (target) => target.col === tile.col && target.row === tile.row,
-            )
-          ) {
+          const destination = guided.find(
+            (target) => target.col === tile.col && target.row === tile.row,
+          );
+          if (current && actorId && destination) {
             metrics.current.buttonCommands += 1;
+            movePathRef.current[actorId] = destination.path;
             performActorAction(actorId, (value) => moveActor(value, actorId, tile));
             return;
           }
@@ -1777,6 +1824,7 @@ export default function Game() {
                 this.paintSlime(actorId);
               }
               if (restoring) {
+                delete movePathRef.current[actorId];
                 sprite.walking?.stop();
                 sprite.motion.stop();
                 sprite.visual.setAngle(0).setY(0);
@@ -1818,17 +1866,46 @@ export default function Game() {
                   back.motion = this.breathe(back.visual, back.scale);
                 });
               }
-              // 칸을 뛰어넘지 않고 미끄러지듯 옮긴다. 딸린 표시들은 update가
-              // 몸 위치를 따라 붙이므로 여기서는 몸만 움직인다.
+              // BFS가 고른 상하좌우 경로의 타일 중심을 차례로 지난다. 딸린
+              // 표시들은 update가 몸 위치를 따라 붙이므로 몸만 움직인다.
               if (!restoring && (sprite.last.x !== spot.x || sprite.last.y !== spot.y)) {
                 sprite.walking?.stop();
-                sprite.walking = this.tweens.add({
-                  targets: sprite.body,
-                  x: spot.x,
-                  y: spot.y,
-                  duration: MOTION_MS,
-                  ease: "Sine.easeInOut",
-                });
+                const path = movePathRef.current[actorId];
+                delete movePathRef.current[actorId];
+                if (path && path.length > 1) {
+                  const duration = MOTION_MS / (path.length - 1);
+                  sprite.walking = this.tweens.chain({
+                    targets: sprite.body,
+                    tweens: path.slice(1).map((tile, index) => {
+                      const previous = path[index]!;
+                      const point = tileCenter(tile);
+                      return {
+                        x: point.x,
+                        y: point.y,
+                        duration,
+                        ease: "Sine.easeInOut",
+                        onStart: () => {
+                          const facing = facingFromDelta(
+                            tile.col - previous.col,
+                            tile.row - previous.row,
+                            sprite.facing,
+                          );
+                          if (facing === sprite.facing) return;
+                          sprite.facing = facing;
+                          this.paintSlime(actorId);
+                        },
+                      };
+                    }),
+                  });
+                } else {
+                  sprite.walking = this.tweens.add({
+                    targets: sprite.body,
+                    x: spot.x,
+                    y: spot.y,
+                    duration: MOTION_MS,
+                    ease: "Sine.easeInOut",
+                  });
+                }
               }
               sprite.last = { x: spot.x, y: spot.y };
               sprite.carried.forEach((slot, index) => {
@@ -1893,12 +1970,12 @@ export default function Game() {
                   .lineStyle(2, moveColor, far ? 0.5 : 0.85)
                   .strokeRect(x - 24, y - 24, 48, 48);
               }
-              for (const station of actor && actor.actionPoints > 0 ? stationInstances : []) {
-                if (!actor || !isBesideStation(actor, station)) continue;
-                if (!tutorialAllowsStation(current, tutorialCueRef.current, selected, station.id)) continue;
-                const after = interactActor(current, selected, station.id);
-                const ok = (after.refusal?.seq ?? -1) === (current.refusal?.seq ?? -1);
+              for (const station of actor ? stationInstances : []) {
+                if (!actor) continue;
+                const allowed = tutorialAllowsStation(current, tutorialCueRef.current, selected, station.id);
+                const ok = canUseStationNow(current, selected, station, tutorialCueRef.current) ?? false;
                 this.usable[station.id] = ok;
+                if (!allowed || !stationInActionRange(current, selected, station)) continue;
                 const first = tileCenter(station.tiles[0]);
                 const last = tileCenter(station.tiles[station.tiles.length - 1]);
                 const x = (first.x + last.x) / 2;
@@ -1907,10 +1984,10 @@ export default function Game() {
                 const height = Math.abs(last.y - first.y) + TILE_SIZE - 8;
                 // 여러 칸을 차지하는 기구는 제일 아래 칸을 기준으로 삼는다.
                 markAt(Math.max(first.y, last.y))
-                  .lineStyle(3, ok ? 0x8ed07a : 0xd75f4c, 0.95)
-                  .strokeRect(x - width / 2, y - height / 2, width, height)
-                  .lineStyle(1, 0x1c0f07, 0.5)
-                  .strokeRect(x - width / 2 - 2, y - height / 2 - 2, width + 4, height + 4);
+                  .fillStyle(moveColor, 0.18)
+                  .fillRect(x - width / 2, y - height / 2, width, height)
+                  .lineStyle(2, moveColor, 0.82)
+                  .strokeRect(x - width / 2, y - height / 2, width, height);
               }
             }
             for (const station of stationInstances) {
@@ -1939,9 +2016,7 @@ export default function Game() {
                     : "";
               this.stations[id].setText(label);
               // 재고가 있는 설비만 게이지를 띄운다.
-              const stock = isBoxStation(type)
-                ? ([current.ingredients[id]!.stock, INGREDIENT_MAX] as const)
-                : type === "dish-rack"
+              const stock = type === "dish-rack"
                   ? ([current.dishRacks[id]!.length, dishConfig.rackCapacity] as const)
                   : type === "trash"
                     ? ([incinerator!.count, incineratorConfig.capacity] as const)
@@ -1975,8 +2050,10 @@ export default function Game() {
                   type === "table"
                     ? current.tables[id]![0]
                     : type === "washer"
-                      ? current.washers[id]!.dishes[0]
-                      : current.stoves[id]![0];
+                      ? current.washers[id]!.dishes.find((dish) => dish.status === "dirty")
+                      : type === "dish-return"
+                        ? current.dishReturns[id]![0]
+                        : current.stoves[id]![0];
                 const art = held ? carriedArt(held) : null;
                 holding.bg.setVisible(Boolean(art?.bg));
                 if (art?.bg) this.fitInto(holding.bg.setTexture(art.bg), holding.room);
@@ -1985,6 +2062,17 @@ export default function Game() {
                   holding.fg.setTexture(art.fg),
                   art.bg ? holding.room * 0.64 : holding.room,
                 );
+                if (type === "washer") {
+                  const clean = current.washers[id]!.dishes.find((dish) => dish.status === "clean");
+                  const cleanArt = clean ? carriedArt(clean) : null;
+                  holding.cleanBg!.setVisible(Boolean(cleanArt?.bg));
+                  if (cleanArt?.bg) this.fitInto(holding.cleanBg!.setTexture(cleanArt.bg), holding.room);
+                  holding.cleanFg!.setVisible(Boolean(cleanArt?.fg));
+                  if (cleanArt?.fg) this.fitInto(
+                    holding.cleanFg!.setTexture(cleanArt.fg),
+                    cleanArt.bg ? holding.room * 0.64 : holding.room,
+                  );
+                }
               }
             }
             // 설비에서 무슨 일이 일어났는지 파티클로 한 번 보여 준다.
@@ -2422,8 +2510,13 @@ export default function Game() {
         </div>
 
         {toast && (
-          <p className="action-toast" role="status" aria-live="polite">
-            {toast}
+          <p
+            className="action-toast"
+            role="status"
+            aria-live="polite"
+            style={{ left: toast.x, top: toast.y }}
+          >
+            {toast.message}
           </p>
         )}
 
@@ -2475,7 +2568,7 @@ export default function Game() {
                   className="roster-button"
                   key={actorId}
                   data-type={actor.typeId}
-                  data-coach={actionPointInfo || cue?.actor === actorId ? "" : undefined}
+                  data-coach={dialogueFocus === "roster" || cue?.actor === actorId ? "" : undefined}
                   data-spent={actor.actionPoints === 0 ? "" : undefined}
                   aria-label={`${actor.name} 선택, 남은 행동력 ${actor.actionPoints}`}
                   aria-pressed={selectedActor === actorId}
@@ -2509,6 +2602,7 @@ export default function Game() {
             <button
               type="button"
               className="turn-undo turn-control art-button"
+              data-coach={dialogueFocus === "undo" ? "" : undefined}
               disabled={!canUndo}
               onClick={undoLastAction}
               aria-label="마지막 행동 되돌리기, Z"

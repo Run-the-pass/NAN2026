@@ -13,7 +13,6 @@ const files: Record<GameSoundCue, string | string[]> = {
   "game-over": "06_game_over.mp3",
   "round-clear": "07_round_clear.mp3",
   "low-time": "08_only_have_little_time.mp3",
-  "new-item": "03_new_item.mp3",
   chop: ["A04_chopping_0.mp3", "A05_chopping_1.mp3"],
   wash: "A00_washing_dish.mp3",
   "pick-item": ["A02_pick_item_0.mp3", "A03_pick_item_1.mp3"],

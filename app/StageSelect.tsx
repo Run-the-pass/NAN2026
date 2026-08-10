@@ -1,7 +1,13 @@
 "use client";
 
 import { useState } from "react";
-import { defaultStages, gameModes, type GameMode } from "../game/core";
+import {
+  defaultStages,
+  ENDLESS_ORDER_TURN_BONUS,
+  ENDLESS_TURN_LIMIT,
+  gameModes,
+  type GameMode,
+} from "../game/core";
 import { endlessUnlocked, shiftStars, stageUnlocked, type StageProgress } from "./progress";
 import { MusicSettings } from "./Music";
 
@@ -21,7 +27,7 @@ function ModePlate({
     mode.id === "shift"
       ? `별 ${stars.have} / ${stars.max}`
       : open
-        ? "80턴 · 주문마다 +5턴"
+        ? `${ENDLESS_TURN_LIMIT}턴 · 주문마다 +${ENDLESS_ORDER_TURN_BONUS}턴`
         : "아르바이트를 끝내면 열립니다";
   return (
     <button
@@ -34,7 +40,13 @@ function ModePlate({
       onClick={() => onPick(mode.id)}
     >
       <b>{mode.name}</b>
-      <small>{note}</small>
+      {mode.id === "shift" ? (
+        <small className="mode-plate-stars" aria-hidden>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/ui/star-yellow.png" alt="" />
+          <span>{stars.have} / {stars.max}</span>
+        </small>
+      ) : <small>{note}</small>}
     </button>
   );
 }

@@ -88,17 +88,16 @@ export function slimeDataUri(
 
 export const facings: Facing[] = ["down", "up", "left", "right"];
 
-// 물 슬라임 얼굴을 원본 에셋 배율로 환산한 공통 좌표.
-// 원본 에셋 3종은 1.12배 크게 그리므로 각 수치를 그만큼 줄였다.
+// 물 초상화의 얼굴을 348×292 게임 텍스처로 환산한 값이다.
 const authoredFaceGeometry = {
-  eyeOffsetX: 31,
-  eyeY: 18,
-  eyeRadius: 10,
+  eyeOffsetX: 33,
+  eyeY: 17,
+  eyeRadius: 11,
   blinkY: 16,
-  blinkWidth: 20,
+  blinkWidth: 22,
   blinkHeight: 5,
-  mouthY: 30,
-  mouthRadius: 14,
+  mouthY: 31,
+  mouthRadius: 15,
 } as const;
 
 // 불은 원본 아트의 눈·입이 다른 슬라임보다 크고 넓다. 아래 값은 fire.svg에서
@@ -115,6 +114,27 @@ const fireFaceGeometry = {
   mouthRadius: 17,
 } as const;
 
+// public 초상화의 눈·입 비율을 348×301 게임 텍스처로 환산한 값이다.
+const lightningFaceGeometry = {
+  ...authoredFaceGeometry,
+  eyeOffsetX: 42,
+  eyeY: 16,
+  eyeRadius: 14,
+  blinkWidth: 28,
+  mouthY: 28,
+  mouthRadius: 17,
+} as const;
+
+const earthFaceGeometry = {
+  ...authoredFaceGeometry,
+  eyeOffsetX: 41,
+  eyeY: 17,
+  eyeRadius: 13,
+  blinkWidth: 26,
+  mouthY: 24,
+  mouthRadius: 15,
+} as const;
+
 // 원본 슬라임 몸통 위에 그릴 얼굴 위치. 위를 볼 때는 얼굴을 숨긴다.
 export function authoredFaceLayout(
   facing: Facing,
@@ -122,8 +142,15 @@ export function authoredFaceLayout(
   typeId?: SlimeTypeId,
 ) {
   if (facing === "up") return null;
+  const geometry = typeId === "fire"
+    ? fireFaceGeometry
+    : typeId === "lightning"
+      ? lightningFaceGeometry
+      : typeId === "earth"
+        ? earthFaceGeometry
+        : authoredFaceGeometry;
   return {
-    ...(typeId === "fire" ? fireFaceGeometry : authoredFaceGeometry),
+    ...geometry,
     x: facing === "left" ? -30 : facing === "right" ? 29 : -1,
     y: facing === "down" ? 0 : 2,
     blink,

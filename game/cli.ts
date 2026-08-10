@@ -213,7 +213,6 @@ export function simulate(args: string[]) {
       turnsLeft: state.turnsLeft,
       event: state.lastEvent,
       refusal: state.refusal?.message ?? null,
-      ingredients: state.ingredients,
       stoves: state.stoves,
       workstations: state.workstations,
       filled: state.filled,

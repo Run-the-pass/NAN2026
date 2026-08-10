@@ -37,7 +37,7 @@ const stationLabels = {
   "strawberry-box": "딸기 상자",
   "mushroom-box": "버섯 상자",
   stove: "도마",
-  oven: "화로",
+  oven: "화덕",
   fryer: "튀김기",
   blender: "믹서기",
   submission: "음식 제출대",

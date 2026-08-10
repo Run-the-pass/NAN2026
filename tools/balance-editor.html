@@ -139,9 +139,9 @@ function drawBalance() {
     group("기구를 돌리는 속성 (여러 개 고를 수 있음)", Object.keys(b.stationElements).map((job) =>
       elementPicks({ wash: "세척대·믹서기 물", burn: "소각기" }[job] ?? job,
         () => b.stationElements[job], (v) => { b.stationElements[job] = v; }))),
-    group("재료 상자", [
-      numberField("최대 보관", () => b.ingredients.max, (v) => { b.ingredients.max = v; }, 1),
-      numberField("턴마다 보충", () => b.ingredients.perTurn, (v) => { b.ingredients.perTurn = v; }, 1),
+    group("무한 모드", [
+      numberField("시작 턴", () => b.endless.turnLimit, (v) => { b.endless.turnLimit = v; }, 1),
+      numberField("주문 완료 보너스 턴", () => b.endless.orderTurnBonus, (v) => { b.endless.orderTurnBonus = v; }, 1),
     ]),
     group("그릇", [
       numberField("시작 개수", () => b.dish.initialCount, (v) => { b.dish.initialCount = v; }),

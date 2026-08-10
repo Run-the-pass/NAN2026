@@ -14,8 +14,6 @@ import { gameSoundCues } from "../app/sound-events.js";
 import { sanitizeProgress, stageUnlocked } from "../app/progress.js";
 import { arrowLayoutFor, dialogueArrowLayout } from "../app/tutorial-arrow-layout.js";
 import {
-  INGREDIENT_MAX,
-  INGREDIENT_PER_TURN,
   ENDLESS_ORDER_TURN_BONUS,
   ENDLESS_TURN_LIMIT,
   KITCHEN_ROWS,
@@ -28,6 +26,7 @@ import {
   initialState,
   initialEndlessState,
   interactActor,
+  isBesideStation,
   isWalkable,
   maxActionPoints,
   moveActor,
@@ -64,6 +63,7 @@ import {
   stationElements,
   stationInstances,
   stationInstancesByType,
+  stationInActionRange,
   type ActorId,
   type GameState,
   type Order,
@@ -74,6 +74,7 @@ const potatoBoxId = stationInstancesByType["potato-box"][0].id;
 const carrotBoxId = stationInstancesByType["carrot-box"][0].id;
 const stoveId = stationInstancesByType.stove[0].id;
 const dishRackId = stationInstancesByType["dish-rack"][0].id;
+const dishReturnId = stationInstancesByType["dish-return"][0].id;
 const washerId = stationInstancesByType.washer[0].id;
 const tableId = stationInstancesByType.table[0].id;
 const secondTableId = stationInstancesByType.table[1].id;
@@ -258,7 +259,7 @@ test("재료 상자마다 다른 재료를 꺼낸다", () => {
   assert.deepEqual(other.actors["water-1"]!.carrying, ["carrot"]);
 });
 
-test("튀김기와 화로는 도마와 같은 규칙으로 돈다", () => {
+test("튀김기와 화덕은 도마와 같은 규칙으로 돈다", () => {
   const fryerId = stationInstancesByType.fryer[0].id;
   const ovenId = stationInstancesByType.oven[0].id;
   const mushroomBoxId = stationInstancesByType["mushroom-box"][0].id;
@@ -273,7 +274,7 @@ test("튀김기와 화로는 도마와 같은 규칙으로 돈다", () => {
   state = actAt(state, "lightning-1", fryerId);
   assert.deepEqual(state.stoves[fryerId], ["fried-mushroom"]);
 
-  // 같은 버섯이 화로에서는 구이가 된다.
+  // 같은 버섯이 화덕에서는 구이가 된다.
   let oven = initialState(1, ["fire"], oneStage([
     { id: "a", foodId: "grilled-mushroom", targetCount: 1, submittedCount: 0 },
   ]));
@@ -394,7 +395,7 @@ test("스무디는 그릇 없이 손에 들고 제출한다", () => {
   assert.equal(state.filled, 1);
   assert.deepEqual(state.actors["lightning-1"]!.carrying, []);
   // 그릇을 낸 것이 아니므로 반납대로 돌아갈 그릇도 없다.
-  assert.deepEqual(state.pendingReturns, []);
+  assert.deepEqual(state.dishReturns[dishReturnId], []);
   assert.equal(recipes["banana-smoothie"]!.requiresCleanDish, false);
   // 도마 음식은 그대로 그릇이 필요하다.
   assert.equal(recipes["shredded-potato"]!.requiresCleanDish, true);
@@ -476,6 +477,20 @@ test("갈 수 있는 칸은 남은 행동력만큼 뻗고 벽·설비 칸은 후
   assert.ok(refused.refusal !== null);
 });
 
+test("행동력으로 인접 칸까지 갈 수 있는 설비도 상호작용 범위에 든다", () => {
+  const state = initialState(1, ["lightning"]);
+  const bananaBox = stationInstancesByType["banana-box"][0];
+  assert.equal(isBesideStation(state.actors["lightning-1"]!, bananaBox), false);
+  assert.equal(stationInActionRange(state, "lightning-1", bananaBox), true);
+  assert.equal(stationInActionRange({
+    ...state,
+    actors: {
+      ...state.actors,
+      "lightning-1": { ...state.actors["lightning-1"]!, actionPoints: 0 },
+    },
+  }, "lightning-1", bananaBox), false);
+});
+
 // 번개 슬라임은 행동력이 4라 네 칸까지 표시되고, 한 번에 갈 수 있다.
 test("행동력이 4면 네 칸 범위가 후보에 들어오고 한 번에 간다", () => {
   const state = initialState(1, ["lightning"]);
@@ -487,11 +502,28 @@ test("행동력이 4면 네 칸 범위가 후보에 들어오고 한 번에 간�
     assert.ok(away <= 4 && tile.cost <= 4);
     // 돌아가야 하는 칸은 거리보다 비용이 클 수 있지만 그 반대는 없다.
     assert.ok(tile.cost >= away);
+    assert.equal(tile.path.length, tile.cost / actionCost.move + 1);
+    assert.deepEqual(tile.path[0], { col: actor.col, row: actor.row });
+    assert.deepEqual(tile.path.at(-1), { col: tile.col, row: tile.row });
+    for (let index = 1; index < tile.path.length; index += 1) {
+      const before = tile.path[index - 1]!;
+      const after = tile.path[index]!;
+      assert.equal(Math.abs(after.col - before.col) + Math.abs(after.row - before.row), 1);
+      assert.ok(isWalkable(after));
+      assert.equal(occupantOf(state, after), null);
+    }
   }
   const fourAway = options.find((tile) => tile.cost === 4)!;
   const moved = moveActor(state, "lightning-1", fourAway);
   assert.equal(moved.actors["lightning-1"]!.col, fourAway.col);
   assert.equal(moved.actors["lightning-1"]!.actionPoints, 0);
+  const previous = fourAway.path.at(-2)!;
+  assert.equal(
+    moved.actors["lightning-1"]!.facing,
+    fourAway.col === previous.col
+      ? fourAway.row > previous.row ? "down" : "up"
+      : fourAway.col > previous.col ? "right" : "left",
+  );
   // 행동력을 다 쓰면 갈 수 있는 칸이 사라진다.
   assert.equal(moveOptions(moved, "lightning-1").length, 0);
 });
@@ -575,7 +607,7 @@ test("행동력을 다 쓰면 다음으로 넘길 슬라임을 고른다", () =>
 
 test("유효하지 않은 상호작용은 행동력을 쓰지 않고 이유를 남긴다", () => {
   const state = initialState(1, ["water"]);
-  // 옆 칸에 서지 않고 설비를 쓰려 할 때. 화로는 물 슬라임 자리에서 멀다.
+  // 옆 칸에 서지 않고 설비를 쓰려 할 때. 화덕은 물 슬라임 자리에서 멀다.
   const far = interactActor(state, "water-1", "oven");
   assert.equal(far.actors["water-1"]!.actionPoints, 2);
   assert.ok(far.refusal?.message.includes("옆 칸"));
@@ -591,16 +623,19 @@ test("유효하지 않은 상호작용은 행동력을 쓰지 않고 이유를 �
   assert.deepEqual(ok.actors["water-1"]!.carrying, ["potato"]);
 });
 
-test("재료 상자는 턴마다 한 개씩 최대치까지 채운다", () => {
+test("재료 상자는 재고 소진 없이 계속 꺼낸다", () => {
   let state = initialState(1, ["water"]);
-  const start = state.ingredients[potatoBoxId]!.stock;
-  state = endTurn(state);
-  assert.equal(
-    state.ingredients[potatoBoxId]!.stock,
-    start + INGREDIENT_PER_TURN,
-  );
-  for (let count = 0; count < 10; count += 1) state = endTurn(state);
-  assert.equal(state.ingredients[potatoBoxId]!.stock, INGREDIENT_MAX);
+  for (let count = 0; count < 10; count += 1) {
+    state = {
+      ...state,
+      actors: {
+        ...state.actors,
+        "water-1": { ...state.actors["water-1"]!, carrying: [], actionPoints: 1 },
+      },
+    };
+    state = actAt(state, "water-1", potatoBoxId);
+    assert.deepEqual(state.actors["water-1"]!.carrying, ["potato"]);
+  }
 });
 
 test("같은 종류 설비는 좌표 ID별로 내용물을 따로 보관한다", () => {
@@ -732,14 +767,10 @@ test("감자를 썰어 제출하면 주문 수가 오른다", () => {
     ], 400, 2)),
   );
   assert.equal(state.filled, 1);
-  // 제출한 그릇은 손을 떠나 다음 턴 반납대로 나온다.
+  // 제출한 그릇은 손을 떠나 즉시 반납대로 나온다.
   assert.deepEqual(state.actors["earth-1"]!.carrying, []);
-  assert.equal(state.pendingReturns.length, 1);
-  const returned = endTurn(state);
-  const bin = stationInstancesByType["dish-return"][0].id;
-  assert.equal(returned.dishReturns[bin]!.length, 1);
-  assert.equal(returned.dishReturns[bin]![0].status, "dirty");
-  assert.deepEqual(returned.pendingReturns, []);
+  assert.equal(state.dishReturns[dishReturnId]!.length, 1);
+  assert.equal(state.dishReturns[dishReturnId]![0].status, "dirty");
 });
 
 test("빈 접시 없이 음식은 꺼내도 제출은 접시에 담아야 한다", () => {
@@ -998,14 +1029,14 @@ test("슬라임 아트는 네 속성색과 방향별 얼굴을 만든다", () =>
   assert.equal(Number(face("water", "right")) > 0, true);
   assert.equal(facingFromDelta(9, -2, "down"), "right");
   assert.deepEqual(authoredFaceLayout("down"), {
-    eyeOffsetX: 31,
-    eyeY: 18,
-    eyeRadius: 10,
+    eyeOffsetX: 33,
+    eyeY: 17,
+    eyeRadius: 11,
     blinkY: 16,
-    blinkWidth: 20,
+    blinkWidth: 22,
     blinkHeight: 5,
-    mouthY: 30,
-    mouthRadius: 14,
+    mouthY: 31,
+    mouthRadius: 15,
     x: -1,
     y: 0,
     blink: false,
@@ -1014,6 +1045,23 @@ test("슬라임 아트는 네 속성색과 방향별 얼굴을 만든다", () =>
   assert.equal(authoredFaceLayout("right")!.x, 29);
   assert.equal(authoredFaceLayout("down", true)!.blink, true);
   assert.equal(authoredFaceLayout("up"), null);
+  assert.deepEqual(
+    {
+      offset: authoredFaceLayout("down", false, "lightning")!.eyeOffsetX,
+      radius: authoredFaceLayout("down", false, "lightning")!.eyeRadius,
+      mouthY: authoredFaceLayout("down", false, "lightning")!.mouthY,
+    },
+    { offset: 42, radius: 14, mouthY: 28 },
+  );
+  assert.deepEqual(
+    {
+      offset: authoredFaceLayout("down", false, "earth")!.eyeOffsetX,
+      radius: authoredFaceLayout("down", false, "earth")!.eyeRadius,
+      mouthY: authoredFaceLayout("down", false, "earth")!.mouthY,
+    },
+    { offset: 41, radius: 13, mouthY: 24 },
+  );
+  assert.match(slimeSvg("water"), /stroke-width="49"/);
 });
 
 test("그릇은 고유 ID로 생성되고 누구나 하나씩 든다", () => {
@@ -1060,10 +1108,9 @@ test("그릇은 조리·제출·오염·세척 동안 ID를 보존한다", () =>
   ));
   state = actAt(state, "earth-1", "submission");
   assert.equal(state.filled, 1);
-  // 제출한 그릇은 손을 떠나 한 턴 뒤 반납대에 더러운 채로 나온다.
+  // 제출한 그릇은 손을 떠나 즉시 반납대에 더러운 채로 나온다.
   assert.equal(state.actors["earth-1"]!.carrying.length, 0);
-  assert.deepEqual(state.pendingReturns.map((dish) => dish.id), [id]);
-  state = endTurn(state);
+  assert.deepEqual(state.dishReturns[dishReturnId]!.map((dish) => dish.id), [id]);
   state = actAt(state, "earth-1", "dish-return");
   assert.ok(state.actors["earth-1"]!.carrying.some(
     (carried) => isDish(carried) && carried.id === id && carried.status === "dirty",
@@ -1135,9 +1182,9 @@ test("주문에 없는 음식은 설정대로 처리하고 진행도를 올리�
   try {
     orderConfig.invalidSubmission = "discard";
     const discarded = actAt(state, "lightning-1", "submission");
-    // 처분한 그릇도 손을 떠나 다음 턴 반납대로 간다.
+    // 처분한 그릇도 손을 떠나 즉시 반납대로 간다.
     assert.deepEqual(discarded.actors["lightning-1"]!.carrying, []);
-    assert.equal(discarded.pendingReturns.length, 1);
+    assert.equal(discarded.dishReturns[dishReturnId]!.length, 1);
     assert.equal(discarded.orders[0].submittedCount, 0);
     assert.equal(discarded.filled, 0);
   } finally {
@@ -1199,7 +1246,7 @@ test("턴을 다 쓰면 스테이지가 판정으로 끝난다", () => {
   assert.equal(moveActor(state, "water-1", moveTargets(state, "water-1")[0] ?? spawnTiles.water), state);
 });
 
-test("무한 모드는 레시피 묶음을 섞어 반복하고 주문마다 5턴을 준다", () => {
+test("무한 모드는 레시피 묶음을 섞어 반복하고 주문마다 보너스 턴을 준다", () => {
   let state = initialEndlessState(7, ["earth"]);
   const same = initialEndlessState(7, ["earth"]);
   const recipeIds = allRecipes.map(({ foodId }) => foodId).sort();
@@ -1482,7 +1529,8 @@ test("다이얼로그는 확정된 음식·도구·슬라임 이름만 구분한
   assert.match(stageOpeningLines("2")[1]!.text, /화덕과 튀김기/);
   assert.match(stageOpeningLines("3")[1]!.text, /과일.*물.*전기/);
   assert.match(finalLines.at(-1)!.text, /무한 모드/);
-  assert.ok(actionPointLines.every(({ focus }) => focus === "roster"));
+  assert.deepEqual(actionPointLines.map(({ focus }) => focus), ["roster", "roster", "roster", "undo"]);
+  assert.match(actionPointLines.at(-1)!.text, /되돌리기.*Z/);
 });
 
 test("튜토리얼 화살표와 쿠키 진행도는 조절·검증된 값만 쓴다", () => {
