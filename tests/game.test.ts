@@ -421,20 +421,20 @@ test("도마와 믹서기는 서로의 재료를 받지 않는다", () => {
 
 test("턴이 끝나면 행동력이 초기화되고 전기만 두 번 움직인다", () => {
   assert.deepEqual(actionPointsPerTurn, {
-    water: 1,
-    fire: 1,
-    lightning: 2,
-    earth: 1,
+    water: 2,
+    fire: 2,
+    lightning: 4,
+    earth: 2,
   });
   let state = initialState(1, ["lightning", "water"]);
-  assert.equal(state.actors["lightning-1"]!.actionPoints, 2);
-  assert.equal(state.actors["water-1"]!.actionPoints, 1);
+  assert.equal(state.actors["lightning-1"]!.actionPoints, 4);
+  assert.equal(state.actors["water-1"]!.actionPoints, 2);
   assert.equal(state.turn, 1);
 
   // 전기는 한 턴에 두 칸을 간다.
-  state = moveActor(state, "lightning-1", moveTargets(state, "lightning-1")[0]);
-  assert.equal(state.actors["lightning-1"]!.actionPoints, 1);
-  state = moveActor(state, "lightning-1", moveTargets(state, "lightning-1")[0]);
+  for (let i = 0; i < 4; i += 1) {
+    state = moveActor(state, "lightning-1", moveTargets(state, "lightning-1")[0]);
+  }
   assert.equal(state.actors["lightning-1"]!.actionPoints, 0);
   // 다 쓰면 갈 수 있는 칸이 사라진다.
   assert.deepEqual(moveTargets(state, "lightning-1"), []);
@@ -443,8 +443,8 @@ test("턴이 끝나면 행동력이 초기화되고 전기만 두 번 움직인�
   const turned = endTurn(state);
   assert.equal(turned.turn, 2);
   assert.equal(turned.turnsLeft, state.turnsLeft - 1);
-  assert.equal(turned.actors["lightning-1"]!.actionPoints, 2);
-  assert.equal(turned.actors["water-1"]!.actionPoints, 1);
+  assert.equal(turned.actors["lightning-1"]!.actionPoints, 4);
+  assert.equal(turned.actors["water-1"]!.actionPoints, 2);
 });
 
 test("갈 수 있는 칸은 남은 행동력만큼 뻗고 벽·설비 칸은 후보에 없다", () => {
@@ -452,19 +452,16 @@ test("갈 수 있는 칸은 남은 행동력만큼 뻗고 벽·설비 칸은 후
   const actor = state.actors["water-1"]!;
   const targets = moveTargets(state, "water-1");
   assert.ok(targets.length > 0);
-  // 행동력이 1인 슬라임은 한 칸까지만 닿는다.
+  // 행동력 2인 슬라임은 두 칸까지 닿는다.
   for (const tile of targets) {
-    assert.equal(
-      Math.abs(tile.col - actor.col) + Math.abs(tile.row - actor.row),
-      1,
-    );
+    assert.ok(Math.abs(tile.col - actor.col) + Math.abs(tile.row - actor.row) <= 2);
     assert.ok(isWalkable(tile));
   }
 
   const moved = moveActor(state, "water-1", targets[0]);
   assert.equal(moved.actors["water-1"]!.col, targets[0].col);
   assert.equal(moved.actors["water-1"]!.row, targets[0].row);
-  assert.equal(moved.actors["water-1"]!.actionPoints, 1 - actionCost.move);
+  assert.equal(moved.actors["water-1"]!.actionPoints, 2 - actionCost.move);
   assert.equal(
     moved.actors["water-1"]!.facing,
     targets[0].col === actor.col
@@ -473,27 +470,27 @@ test("갈 수 있는 칸은 남은 행동력만큼 뻗고 벽·설비 칸은 후
   );
 
   // 행동력으로 닿지 않는 칸은 거절하고 행동력을 쓰지 않는다.
-  const far = { col: actor.col + 2, row: actor.row };
+  const far = { col: actor.col + 3, row: actor.row };
   const refused = moveActor(state, "water-1", far);
-  assert.equal(refused.actors["water-1"]!.actionPoints, 1);
+  assert.equal(refused.actors["water-1"]!.actionPoints, 2);
   assert.ok(refused.refusal !== null);
 });
 
-// 번개 슬라임은 행동력이 2라 두 칸까지 표시되고, 한 번에 갈 수 있다.
-test("행동력이 2면 두 칸 범위가 후보에 들어오고 두 칸을 한 번에 간다", () => {
+// 번개 슬라임은 행동력이 4라 네 칸까지 표시되고, 한 번에 갈 수 있다.
+test("행동력이 4면 네 칸 범위가 후보에 들어오고 한 번에 간다", () => {
   const state = initialState(1, ["lightning"]);
   const actor = state.actors["lightning-1"]!;
   const options = moveOptions(state, "lightning-1");
-  assert.ok(options.some((tile) => tile.cost === 2));
+  assert.ok(options.some((tile) => tile.cost === 4));
   for (const tile of options) {
     const away = Math.abs(tile.col - actor.col) + Math.abs(tile.row - actor.row);
-    assert.ok(away <= 2 && tile.cost <= 2);
+    assert.ok(away <= 4 && tile.cost <= 4);
     // 돌아가야 하는 칸은 거리보다 비용이 클 수 있지만 그 반대는 없다.
     assert.ok(tile.cost >= away);
   }
-  const twoAway = options.find((tile) => tile.cost === 2)!;
-  const moved = moveActor(state, "lightning-1", twoAway);
-  assert.equal(moved.actors["lightning-1"]!.col, twoAway.col);
+  const fourAway = options.find((tile) => tile.cost === 4)!;
+  const moved = moveActor(state, "lightning-1", fourAway);
+  assert.equal(moved.actors["lightning-1"]!.col, fourAway.col);
   assert.equal(moved.actors["lightning-1"]!.actionPoints, 0);
   // 행동력을 다 쓰면 갈 수 있는 칸이 사라진다.
   assert.equal(moveOptions(moved, "lightning-1").length, 0);
@@ -519,7 +516,7 @@ test("다른 슬라임이 선 칸으로는 갈 수 없고 행동력도 줄지 �
     ),
   );
   const refused = moveActor(blocked, "water-1", target);
-  assert.equal(refused.actors["water-1"]!.actionPoints, 1);
+  assert.equal(refused.actors["water-1"]!.actionPoints, 2);
   assert.equal(refused.actors["water-1"]!.col, water.col);
   assert.equal(refused.actors["water-1"]!.row, water.row);
   assert.ok(refused.refusal?.message.includes("다른 슬라임"));
@@ -580,7 +577,7 @@ test("유효하지 않은 상호작용은 행동력을 쓰지 않고 이유를 �
   const state = initialState(1, ["water"]);
   // 옆 칸에 서지 않고 설비를 쓰려 할 때. 화로는 물 슬라임 자리에서 멀다.
   const far = interactActor(state, "water-1", "oven");
-  assert.equal(far.actors["water-1"]!.actionPoints, 1);
+  assert.equal(far.actors["water-1"]!.actionPoints, 2);
   assert.ok(far.refusal?.message.includes("옆 칸"));
 
   // 빈손으로 빈 테이블을 쓸 때.
@@ -916,8 +913,8 @@ test("속성 슬라임은 새 ID와 턴당 행동력을 사용한다", () => {
     assert.ok(type.traits.length > 0);
     for (const one of type.traits) assert.ok(one.name && one.detail.length > 5);
   }
-  assert.equal(maxActionPoints("lightning"), 2);
-  assert.equal(maxActionPoints("earth"), 1);
+  assert.equal(maxActionPoints("lightning"), 4);
+  assert.equal(maxActionPoints("earth"), 2);
   assert.doesNotThrow(() =>
     initialState(1, ["water", "fire", "lightning", "earth"]),
   );
@@ -1378,10 +1375,10 @@ test("튜토리얼은 첫 양배추 제출까지 한 번에 한 가지만 시킨
   assert.equal(tutorialAllowsStation(state, firstCue, "earth-1", stoveId), false);
   const firstMove = moveOptions(state, "earth-1").find(({ col, row }) => col === 3 && row === 3)!;
   const afterFirstMove = moveActor(state, "earth-1", firstMove);
-  assert.equal(step(afterFirstMove, "earth-1"), "EXPLAIN_AP");
+  assert.equal(step(afterFirstMove, "earth-1"), "MOVE_TO_CABBAGE");
   const secondTurn = nextTurn(afterFirstMove);
   const secondMove = moveOptions(secondTurn, "earth-1").find(({ col, row }) => col === 3 && row === 4)!;
-  assert.equal(step(moveActor(secondTurn, "earth-1", secondMove), "earth-1"), "END_TURN_PICK_CABBAGE");
+  assert.equal(step(moveActor(secondTurn, "earth-1", secondMove), "earth-1"), "PICK_CABBAGE");
 
   state = actAt(state, "earth-1", cabbageBoxId);
   assert.ok(state.actors["earth-1"]!.carrying.includes("cabbage"));
@@ -1389,7 +1386,7 @@ test("튜토리얼은 첫 양배추 제출까지 한 번에 한 가지만 시킨
   assert.equal(step(state, "earth-1"), "MOVE_TO_CUTTING_BOARD");
 
   state = actAt(state, "earth-1", stoveId);
-  assert.equal(step(state, "earth-1"), "END_TURN_CHOP_CABBAGE");
+  assert.equal(step(state, "earth-1"), "CHOP_CABBAGE");
   state = actAt(state, "earth-1", stoveId);
   state = nextTurn(state);
   // 음식이 완성되면 물 슬라임이 나오고, 눈앞의 그릇부터 챙긴다.

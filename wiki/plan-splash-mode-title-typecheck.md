@@ -4,6 +4,7 @@ status: current
 updated: 2026-08-09
 sources:
   - raw/team logo 2.png
+  - raw/team_logo_v3.png
   - raw/A_heavy_rubber_stamp.mp3
   - raw/mode-select-title.png
 ---
@@ -13,6 +14,7 @@ sources:
 ## 범위
 
 - Claude가 남긴 팀 로고 도장 스플래시, 효과음, 전용 설정 버튼과 패널 그림을 현재 `main`에 완성한다.
+- 스플래시 팀 로고를 최신 `team_logo_v3.png`로 교체하고 원본 비율을 유지한다.
 - 스플래시는 문서가 홈 URL에서 처음 로드될 때만 표시한다. 홈 새로고침은 새
   문서 로드이므로 다시 표시하고, 게임에서 뒤로·홈으로 내부 이동하거나 게임
   URL로 직접 진입했을 때는 표시하지 않는다.
@@ -43,3 +45,5 @@ sources:
   Pages 기본 경로(`/NAN2026`)에서 홈 새로고침은 스탬프 재표시, 뒤로·설정 홈
   이동은 미표시, `/game/` 직접 진입과 새로고침은 미표시로 확인했다.
 - 테스트 57/57, typecheck, lint, diff 검사와 캐시를 비운 Pages 빌드: `PASS`.
+- 최신 `team_logo_v3.png`를 기존 `/team-logo.png` 경로에 그대로 적용하고,
+  스플래시 이미지 고유 크기를 1024×1722로 맞춰 비율 왜곡을 막았다.

@@ -102,7 +102,7 @@ export default function Splash() {
       }}
     >
       {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img className="splash-logo" src="/team-logo.png" width={720} height={1080} alt="슬라임 노동조합" />
+      <img className="splash-logo" src="/team-logo.png" width={1024} height={1722} alt="슬라임 노동조합" />
       <span className="splash-start">화면을 눌러 시작</span>
     </button>
   );
