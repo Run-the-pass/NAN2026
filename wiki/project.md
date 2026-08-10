@@ -3,6 +3,7 @@ type: project
 status: current
 updated: 2026-08-10
 sources:
+  - https://nan2026.nhn.com/
   - raw/project-brief.md
   - raw/턴제_전환_Claude_구현_명세.md
   - raw/에셋/
@@ -46,6 +47,12 @@ sources:
 ---
 
 # NAN 2026
+
+## 공모전 목적
+
+이 저장소는 **NAN 2026 (Next AI Network) Game × AI 해커톤** 참가·출품을
+위한 프로젝트다. 프로젝트 문서와 외부 소개는 현재 게임의 실제 구현을 근거로 하되,
+공식 사전 과제인 `AI를 활용한 게임 제작`의 맥락을 분명히 한다.
 
 ## 한 문장
 

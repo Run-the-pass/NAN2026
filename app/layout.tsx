@@ -22,9 +22,9 @@ export const metadata: Metadata = {
     type: "website",
     images: [{
       url: "/og.png",
-      width: 1731,
-      height: 909,
-      alt: "슬라임 레스토랑과 네 속성 슬라임",
+      width: 1200,
+      height: 630,
+      alt: "슬라임 레스토랑 홈 화면",
     }],
   },
   twitter: {
