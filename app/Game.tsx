@@ -66,7 +66,7 @@ import { GameSoundEffects } from "./SoundEffects";
 import StageSelect from "./StageSelect";
 import Dialogue from "./Dialogue";
 import { actionPointLines, earthInfoLines, finalLines, openingLines, platedFoodLines, stageOpeningLines, tutorialCompleteLines, waterArrivalLines, type DialogueFocus } from "./dialogue-script";
-import { activeActorIds, finishTutorial, onTutorialStage, platedIntroReady, prepareTutorialState, roundRank, tutorialAllowsStation, tutorialBlockedMessage, tutorialCue, tutorialDone, tutorialMoveOptions, waterIntroReady, type TutorialCue } from "./tutorial";
+import { activeActorIds, finishTutorial, onTutorialStage, platedIntroReady, prepareTutorialState, roundRank, tutorialAllowsStation, tutorialCue, tutorialDone, tutorialMoveOptions, waterIntroReady, type TutorialCue } from "./tutorial";
 import { arrowLayoutFor, type TutorialArrowLayout } from "./tutorial-arrow-layout";
 import { emptyProgress, readProgress, withResult, writeProgress, type ProgressData } from "./progress";
 
@@ -112,7 +112,6 @@ const AUTHORED_SLIME_SCALE = SLIME_SCALE * 1.12;
 type Motion = "idle" | "walk" | "stir" | "pick";
 // 행동 한 번은 즉시 끝나므로 모션도 잠깐만 재생하고 숨쉬기로 돌아간다.
 const MOTION_MS = 320;
-const TILE_MOTION_MS = 120;
 // 커서 그림과 핫스팟. 화살표는 뾰족한 끝, 손은 손가락 끝이 기준점이다.
 // globals.css의 기본 커서와 같은 크기다. 설비는 가능 여부를 에셋으로 구분한다.
 const CURSOR_ARROW = 'url("/ui/cursor.png") 2 0, auto';
@@ -1584,25 +1583,7 @@ export default function Game() {
                 const actorId = selectedActorRef.current;
                 const current = stateRef.current;
                 if (!current) return;
-                const native = pointer.event as PointerEvent;
-                const frame = this.game.canvas.closest(".stage-frame")?.getBoundingClientRect();
-                if (frame && Number.isFinite(native.clientX) && Number.isFinite(native.clientY)) {
-                  toastAnchorRef.current = {
-                    x: Math.min(Math.max(native.clientX - frame.left, 170), frame.width - 170),
-                    y: Math.min(Math.max(native.clientY - frame.top - 8, 70), frame.height - 70),
-                  };
-                }
                 if (!tutorialAllowsStation(current, tutorialCueRef.current, actorId, id)) {
-                  const message = tutorialBlockedMessage(current, tutorialCueRef.current, actorId, id);
-                  if (message && actorId) {
-                    performActorAction(actorId, (value) => ({
-                      ...value,
-                      refusal: {
-                        seq: (value.refusal?.seq ?? 0) + 1,
-                        message: `${value.actors[actorId]!.name}: ${message}`,
-                      },
-                    }));
-                  }
                   this.usable[id] = false;
                   this.input.setDefaultCursor(CURSOR_DENY);
                   return;
@@ -1611,6 +1592,14 @@ export default function Game() {
                 if (!actorId) {
                   this.input.setDefaultCursor(CURSOR_ARROW);
                   return;
+                }
+                const native = pointer.event as PointerEvent;
+                const frame = this.game.canvas.closest(".stage-frame")?.getBoundingClientRect();
+                if (frame && Number.isFinite(native.clientX) && Number.isFinite(native.clientY)) {
+                  toastAnchorRef.current = {
+                    x: Math.min(Math.max(native.clientX - frame.left, 170), frame.width - 170),
+                    y: Math.min(Math.max(native.clientY - frame.top - 8, 70), frame.height - 70),
+                  };
                 }
                 // 선택한 슬라임이 있으면 거리와 무관하게 상호작용 시도다.
                 // 멀면 코어의 기존 거절 이유를 띄우고 선택은 유지한다.
@@ -1869,10 +1858,7 @@ export default function Game() {
                     mode === "stir" ? 80 : 50,
                   );
                 }
-                const motionMs = mode === "walk"
-                  ? Math.max(MOTION_MS, ((movePathRef.current[actorId]?.length ?? 1) - 1) * TILE_MOTION_MS)
-                  : MOTION_MS;
-                this.time.delayedCall(motionMs, () => {
+                this.time.delayedCall(MOTION_MS, () => {
                   const back = this.slimes[actorId];
                   if (!back || back.acts !== actor.acts) return;
                   back.motion.stop();
@@ -1887,6 +1873,7 @@ export default function Game() {
                 const path = movePathRef.current[actorId];
                 delete movePathRef.current[actorId];
                 if (path && path.length > 1) {
+                  const duration = MOTION_MS / (path.length - 1);
                   sprite.walking = this.tweens.chain({
                     targets: sprite.body,
                     tweens: path.slice(1).map((tile, index) => {
@@ -1895,10 +1882,8 @@ export default function Game() {
                       return {
                         x: point.x,
                         y: point.y,
-                        duration: TILE_MOTION_MS,
-                        // 구간마다 감속하면 타일 중심에서 계속 멈칫한다. 일정
-                        // 속도로 이어 붙여 경로는 지키면서 한 번에 걷게 한다.
-                        ease: "Linear",
+                        duration,
+                        ease: "Sine.easeInOut",
                         onStart: () => {
                           const facing = facingFromDelta(
                             tile.col - previous.col,
@@ -2309,7 +2294,7 @@ export default function Game() {
         const current = stateRef.current;
         if (!current || current.phase !== "playing") return;
         const currentCue = tutorialCueRef.current;
-        if (currentCue) return;
+        if (currentCue && !currentCue.endTurn) return;
         event.preventDefault();
         // 버튼에 포커스가 남아 있으면 스페이스가 그 버튼까지 눌러
         // "턴 종료"가 같이 실행된다. 포커스를 먼저 놓는다.
@@ -2560,7 +2545,7 @@ export default function Game() {
 
         {/* 자리를 못 찾으면 아예 그리지 않는다. 빈 style로 그리면 화살표가
             지도 왼쪽 위 구석에 붙는다. */}
-        {cue && coachTiles.length > 0 && arrowLayoutFor(cue.id) && (
+        {cue && coachTiles.length > 0 && !cue.endTurn && arrowLayoutFor(cue.id) && (
           <span className="coach-map" aria-hidden>
             <i className="coach-map-stage">
               <FixedCoachArrow
@@ -2583,7 +2568,7 @@ export default function Game() {
                   className="roster-button"
                   key={actorId}
                   data-type={actor.typeId}
-                  data-coach={dialogueFocus === "roster" ? "" : undefined}
+                  data-coach={dialogueFocus === "roster" || cue?.actor === actorId ? "" : undefined}
                   data-spent={actor.actionPoints === 0 ? "" : undefined}
                   aria-label={`${actor.name} 선택, 남은 행동력 ${actor.actionPoints}`}
                   aria-pressed={selectedActor === actorId}
@@ -2628,8 +2613,9 @@ export default function Game() {
             <button
               type="button"
               className="turn-end turn-control art-button"
+              data-coach={cue?.endTurn ? "" : undefined}
               onClick={() => {
-                if (cue) {
+                if (cue && !cue.endTurn) {
                   return;
                 }
                 finishTurn();
