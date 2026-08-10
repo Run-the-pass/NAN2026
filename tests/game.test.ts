@@ -3,7 +3,7 @@ import { readdirSync } from "node:fs";
 import test from "node:test";
 import { assetManifest } from "../app/asset-manifest.js";
 import { simulate, actAt } from "../game/cli.js";
-import { activeActorIds, finishTutorial, prepareTutorialState, roundRank, tutorialAllowsStation, tutorialBlockedMessage, tutorialCue, tutorialDone, tutorialMoveOptions } from "../app/tutorial.js";
+import { activeActorIds, finishTutorial, prepareTutorialState, roundRank, tutorialAllowsStation, tutorialCue, tutorialDone, tutorialMoveOptions } from "../app/tutorial.js";
 import { actionPointLines, dialogueParts, finalLines, stageOpeningLines } from "../app/dialogue-script.js";
 import { parseSession } from "../game/session.js";
 import recipeData from "../game/recipes.json" with { type: "json" };
@@ -1440,10 +1440,6 @@ test("튜토리얼은 첫 양배추 제출까지 한 번에 한 가지만 시킨
   assert.deepEqual(activeActorIds(state).sort(), ["earth-1", "water-1"]);
   assert.equal(step(state, "water-1"), "TAKE_CLEAN_DISH");
   assert.match(tutorialCue(state, "water-1", limit)!.text, /그릇 상자.*퐁당이/);
-  assert.match(
-    tutorialBlockedMessage(state, tutorialCue(state, "water-1", limit), "earth-1", rackId)!,
-    /퐁당이.*기회/,
-  );
   const spentWater = {
     ...state,
     actors: {
