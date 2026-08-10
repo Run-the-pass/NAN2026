@@ -3,7 +3,7 @@ import { readdirSync } from "node:fs";
 import test from "node:test";
 import { assetManifest } from "../app/asset-manifest.js";
 import { simulate, actAt } from "../game/cli.js";
-import { activeActorIds, finishTutorial, prepareTutorialState, roundRank, tutorialAllowsStation, tutorialCue, tutorialDone, tutorialMoveOptions } from "../app/tutorial.js";
+import { activeActorIds, finishTutorial, prepareTutorialState, roundRank, tutorialAllowsStation, tutorialBlockedMessage, tutorialCue, tutorialDone, tutorialMoveOptions } from "../app/tutorial.js";
 import { actionPointLines, dialogueParts, finalLines, stageOpeningLines } from "../app/dialogue-script.js";
 import { parseSession } from "../game/session.js";
 import recipeData from "../game/recipes.json" with { type: "json" };
@@ -1440,6 +1440,10 @@ test("튜토리얼은 첫 양배추 제출까지 한 번에 한 가지만 시킨
   assert.deepEqual(activeActorIds(state).sort(), ["earth-1", "water-1"]);
   assert.equal(step(state, "water-1"), "TAKE_CLEAN_DISH");
   assert.match(tutorialCue(state, "water-1", limit)!.text, /그릇 상자.*퐁당이/);
+  assert.match(
+    tutorialBlockedMessage(state, tutorialCue(state, "water-1", limit), "earth-1", rackId)!,
+    /퐁당이.*기회/,
+  );
   const spentWater = {
     ...state,
     actors: {
@@ -1448,8 +1452,7 @@ test("튜토리얼은 첫 양배추 제출까지 한 번에 한 가지만 시킨
     },
   };
   const dishWait = tutorialCue(spentWater, "water-1", limit)!;
-  assert.equal(dishWait.id, "END_TURN_TAKE_CLEAN_DISH");
-  assert.equal(dishWait.endTurn, true);
+  assert.equal(dishWait.id, "TAKE_CLEAN_DISH");
   assert.deepEqual(
     tutorialMoveOptions(spentWater, "earth-1", dishWait),
     moveOptions(spentWater, "earth-1"),
@@ -1457,8 +1460,19 @@ test("튜토리얼은 첫 양배추 제출까지 한 번에 한 가지만 시킨
   assert.equal(nextReadyActor(spentWater, activeActorIds(spentWater), "water-1"), "earth-1");
   assert.equal(tutorialAllowsStation(spentWater, dishWait, "earth-1", rackId), false);
   state = actAt(state, "water-1", rackId);
-  state = nextTurn(state);
+  assert.equal(step(state, "water-1"), "MOVE_DISH_TO_TABLE");
+  let dishMove = tutorialCue(state, "water-1", limit)!;
+  while (dishMove.id === "MOVE_DISH_TO_TABLE") {
+    const option = tutorialMoveOptions(state, "water-1", dishMove).at(-1)!;
+    state = moveActor(state, "water-1", option);
+    dishMove = tutorialCue(state, "water-1", limit)!;
+  }
   assert.equal(step(state, "earth-1"), "TAKE_FINISHED_FOOD");
+  // 푸름이가 음식을 가져오는 동안 퐁당이가 먼저 오른쪽으로 빠져나가지 않는다.
+  assert.deepEqual(
+    tutorialMoveOptions(state, "water-1", tutorialCue(state, "earth-1", limit)),
+    [],
+  );
 
   state = actAt(state, "earth-1", stoveId);
   state = nextTurn(state);
@@ -1487,13 +1501,9 @@ test("튜토리얼은 첫 양배추 제출까지 한 번에 한 가지만 시킨
     },
   };
   const handoff = tutorialCue(waterOnly, "earth-1", limit)!;
-  assert.equal(handoff.id, "END_TURN_PUT_FOOD_ON_TABLE");
-  assert.equal(handoff.endTurn, true);
-  assert.equal(handoff.actor, undefined);
-  assert.deepEqual(
-    tutorialMoveOptions(waterOnly, "water-1", handoff),
-    moveOptions(waterOnly, "water-1"),
-  );
+  assert.equal(handoff.id, "PUT_FOOD_ON_TABLE");
+  assert.equal(handoff.actor, "earth-1");
+  assert.deepEqual(tutorialMoveOptions(waterOnly, "water-1", handoff), []);
   assert.equal(nextReadyActor(waterOnly, activeActorIds(waterOnly), "earth-1"), "water-1");
   assert.equal(tutorialAllowsStation(waterOnly, handoff, "water-1", target.id), false);
   state = actAt(state, "earth-1", tableId);

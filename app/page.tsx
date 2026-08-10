@@ -27,9 +27,7 @@ export default function Home() {
           className="home-menu-button home-credits"
           aria-haspopup="dialog"
           onClick={() => creditsRef.current?.showModal()}
-        >
-          <img src="/ui/credits-button-text.png" width={1690} height={731} alt="크레딧" />
-        </button>
+        ></button>
         <dialog
           ref={creditsRef}
           className="credits-dialog"
@@ -47,7 +45,7 @@ export default function Home() {
               <img src="/team-logo.png" width={1024} height={1722} alt="슬라임 노동조합 로고" />
             </div>
             <h3>슬라임 노동조합</h3>
-            <p className="credits-members">이정민 · 윤정호</p>
+            <p className="credits-members">이정민   윤정호</p>
             <dl className="credits-tools">
               <div>
                 <dt>음악 제작</dt>

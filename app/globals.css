@@ -211,17 +211,16 @@ button:disabled { cursor: var(--cursor-arrow); }
 .home-start img { height: 13.6svh; }
 .home-credits {
   position: fixed;
-  z-index: 201;
+  z-index: 6;
   top: 78.5svh;
   right: 0;
   left: 0;
-  width: min(24svh, 180px);
+  width: 250px;
   aspect-ratio: 320 / 143;
   margin: 0 auto;
-  padding: 0 10%;
-  background: url("/ui/button.png") center / 100% 100% no-repeat;
+  background: url("/ui/credits-button-text.png") center / 100% 100% no-repeat;
 }
-.home-credits img { width: 100%; height: auto; }
+.home-credits img { width: 10%; height: auto; }
 
 .credits-dialog {
   width: min(440px, calc(100vw - 24px), calc((100svh - 24px) * .821));
@@ -233,6 +232,14 @@ button:disabled { cursor: var(--cursor-arrow); }
   background: transparent;
 }
 .credits-dialog::backdrop { background: #180b06cc; }
+.credits-dialog[open] .credits-card { animation: credits-drop 180ms ease-out both; }
+@keyframes credits-drop {
+  from { transform: translateY(calc(-50svh - 100%)); }
+  to { transform: translateY(0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .credits-dialog[open] .credits-card { animation: none; }
+}
 .credits-card {
   position: relative;
   display: grid;
@@ -254,7 +261,7 @@ button:disabled { cursor: var(--cursor-arrow); }
 .credits-card h2 {
   display: grid;
   place-items: center;
-  width: 72%;
+  width: 82%;
   height: 15%;
   line-height: 1;
 }
@@ -263,8 +270,8 @@ button:disabled { cursor: var(--cursor-arrow); }
 .credits-close {
   position: absolute;
   z-index: 2;
-  top: 3%;
-  right: 4%;
+  top: 5%;
+  right: 5%;
   width: clamp(30px, 6svh, 48px);
   aspect-ratio: 1;
   border: 0;
@@ -278,12 +285,13 @@ button:disabled { cursor: var(--cursor-arrow); }
 .credits-logo-paper {
   display: grid;
   place-items: center;
+  margin-top: 20px;
   width: 48%;
   aspect-ratio: 1.12;
-  border-radius: 12px;
-  background: radial-gradient(120% 90% at 50% 42%, #fbf6ec, #e7ddcc 60%, #cfc2ac);
+  border-radius: 3px;
+  background: #fbf6ec;
 }
-.credits-logo-paper img { width: auto; height: 54%; object-fit: contain; }
+.credits-logo-paper img { width: auto; height: 80%; object-fit: contain; }
 .credits-members { font-size: clamp(14px, 2.3svh, 20px); }
 .credits-tools { display: grid; gap: 4px; width: min(260px, 90%); font-size: clamp(12px, 2svh, 17px); }
 .credits-tools div { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
@@ -295,7 +303,7 @@ button:disabled { cursor: var(--cursor-arrow); }
   gap: 4px;
   color: inherit;
 }
-.credits-tools a img { width: 1.25em; height: 1.25em; object-fit: contain; }
+.credits-tools a img { width: 2em; object-fit: contain; }
 .music-settings-home {
   position: fixed;
   /* 설정 오버레이가 이 안에 있다. 여기서 쌓임 맥락이 생기므로 홈 메뉴
@@ -1011,7 +1019,7 @@ button:disabled { cursor: var(--cursor-arrow); }
 
 .result-title-art { width: min(72%, 340px); margin: 0 auto 6px; }
 /* 액자 안에서는 리본 자리에 맞춘 크기를 쓴다. */
-.paper-window .result-title-art { width: 56%; margin: 0; }
+.paper-window .result-title-art { width: 56%; margin-top: 5px; }
 
 /* 하단 선택키 + 최근 상황 */
 .hud-bottom {
@@ -1689,7 +1697,7 @@ img.paper-title { width: 56%; height: 11.4%; top: 4.9%; left: 22%; object-fit: c
   background: url("/ui/stage-button.png") center / contain no-repeat;
 }
 .stage-card[data-tutorial]::before { filter: hue-rotate(72deg) saturate(1.35) brightness(.92); }
-.stage-card > img { position: relative; width: 54%; height: 54%; object-fit: contain; }
+.stage-card > img { position: relative; width: 54%; height: 54%; object-fit: contain; margin-bottom: 10px; }
 .stage-card > .stage-lock { width: 48%; height: 48%; }
 .stage-card-stars {
   position: absolute;
