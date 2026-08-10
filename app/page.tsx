@@ -40,15 +40,31 @@ export default function Home() {
         >
           <form method="dialog" className="credits-card">
             <button type="submit" className="credits-close" aria-label="크레딧 닫기">×</button>
-            <h2 id="credits-title">크레딧</h2>
+            <h2 id="credits-title">
+              <img src="/ui/credits-button-text.png" width={1690} height={731} alt="크레딧" />
+            </h2>
             <div className="credits-logo-paper">
               <img src="/team-logo.png" width={1024} height={1722} alt="슬라임 노동조합 로고" />
             </div>
             <h3>슬라임 노동조합</h3>
             <p className="credits-members">이정민 · 윤정호</p>
             <dl className="credits-tools">
-              <div><dt>음악 제작</dt><dd>Suno</dd></div>
-              <div><dt>효과음 제작</dt><dd>ElevenLabs</dd></div>
+              <div>
+                <dt>음악 제작</dt>
+                <dd>
+                  <a href="https://suno.com/" target="_blank" rel="noreferrer">
+                    Suno <img src="/ui/link.png" width={1536} height={1024} alt="" />
+                  </a>
+                </dd>
+              </div>
+              <div>
+                <dt>효과음 제작</dt>
+                <dd>
+                  <a href="https://elevenlabs.io/" target="_blank" rel="noreferrer">
+                    ElevenLabs <img src="/ui/link.png" width={1536} height={1024} alt="" />
+                  </a>
+                </dd>
+              </div>
             </dl>
           </form>
         </dialog>

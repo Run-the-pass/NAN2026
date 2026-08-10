@@ -72,6 +72,7 @@ export const assetManifest = [
   "/ui/energy-off.png",
   "/ui/energy.png",
   "/ui/info-panel.png",
+  "/ui/link.png",
   "/ui/mode-plate.png",
   "/ui/mode-select-title.png",
   "/ui/order-ticket.png",

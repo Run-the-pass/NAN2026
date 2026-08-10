@@ -256,9 +256,9 @@ button:disabled { cursor: var(--cursor-arrow); }
   place-items: center;
   width: 72%;
   height: 15%;
-  font-size: clamp(22px, 4.5svh, 40px);
   line-height: 1;
 }
+.credits-card h2 img { width: 62%; height: auto; max-height: 76%; object-fit: contain; }
 .credits-card h3 { font-size: clamp(17px, 3svh, 27px); line-height: 1.1; }
 .credits-close {
   position: absolute;
@@ -283,12 +283,19 @@ button:disabled { cursor: var(--cursor-arrow); }
   border-radius: 12px;
   background: radial-gradient(120% 90% at 50% 42%, #fbf6ec, #e7ddcc 60%, #cfc2ac);
 }
-.credits-logo-paper img { width: auto; height: 90%; object-fit: contain; }
+.credits-logo-paper img { width: auto; height: 54%; object-fit: contain; }
 .credits-members { font-size: clamp(14px, 2.3svh, 20px); }
 .credits-tools { display: grid; gap: 4px; width: min(260px, 90%); font-size: clamp(12px, 2svh, 17px); }
 .credits-tools div { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
 .credits-tools dt { text-align: right; }
 .credits-tools dd { margin: 0; text-align: left; }
+.credits-tools a {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: inherit;
+}
+.credits-tools a img { width: 1.25em; height: 1.25em; object-fit: contain; }
 .music-settings-home {
   position: fixed;
   /* 설정 오버레이가 이 안에 있다. 여기서 쌓임 맥락이 생기므로 홈 메뉴
