@@ -1672,26 +1672,17 @@ function atWasher(
     });
   }
 
-  // 씻은 그릇 꺼내기.
-  if (washed >= 0 && canCarry(actor)) {
+  // 씻은 그릇 꺼내기. 낱개 음식을 든 슬라임도 그릇을 하나 더 챙길 수 있다.
+  // `washed >= 0`을 빼면 씻은 그릇이 없을 때 undefined를 손에 넣어, 그 뒤
+  // 소지품을 훑는 설비(제출대·테이블·도마)가 모두 죽는다.
+  if (washed >= 0 && (canCarry(actor) || !isDish(actor.carrying[0]!))) {
     return event(state, `${actor.name}이(가) 씻은 그릇을 꺼냈습니다.`, {
       actors: patchActor(state, actorId, {
         ...spend(actor, actionCost.carry, "CARRYING"),
-        carrying: [...actor.carrying, washer.dishes[washed]],
+        carrying: [...actor.carrying, washer.dishes[washed]!],
       }),
       washers: put(washer.dishes.filter((_, index) => index !== washed), washer.progress),
     });
-  }
-  else if (actor.carrying.length > 0) {
-    if (typeof actor.carrying[0] === "string") {
-      return event(state, `${actor.name}이(가) 씻은 그릇을 꺼냈습니다.`, {
-      actors: patchActor(state, actorId, {
-        ...spend(actor, actionCost.carry, "CARRYING"),
-        carrying: [...actor.carrying, washer.dishes[washed]],
-      }),
-      washers: put(washer.dishes.filter((_, index) => index !== washed), washer.progress),
-    });
-    }
   }
 
   // 손에 든 그릇을 넣으러 온 쪽이 먼저다. 자리가 없다는 말이 더 쓸모 있다.

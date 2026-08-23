@@ -932,6 +932,37 @@ test("세척은 물 슬라임만 하고 넣기는 누구나 한다", () => {
   ));
 });
 
+test("씻은 그릇이 없는 세척대는 빈손을 쥐여 주지 않는다", () => {
+  // 예전에는 여기서 carrying에 undefined가 들어가 "씻은 그릇을 꺼냈습니다"라고
+  // 알렸다. 그 뒤 소지품을 훑는 설비(제출대·테이블)를 누르면 게임이 죽었다.
+  let state = initialState(1, ["lightning"]);
+  state = actAt(state, "lightning-1", potatoBoxId);
+  assert.deepEqual(state.actors["lightning-1"]!.carrying, ["potato"]);
+  state = actAt(state, "lightning-1", washerId);
+  assert.deepEqual(state.actors["lightning-1"]!.carrying, ["potato"]);
+  assert.ok(state.refusal?.message.includes("세척할 더러운 그릇이 없습니다"));
+  // 그 뒤 어떤 설비를 눌러도 죽지 않는다.
+  for (const station of stationInstances) {
+    assert.doesNotThrow(() => interactActor(state, "lightning-1", station.id));
+  }
+
+  // 씻은 그릇이 실제로 있으면 낱개 음식을 든 채로도 챙길 수 있다.
+  const base = initialState(1, ["lightning"]);
+  const clean = base.dishRacks[dishRackId]![0]!;
+  let ready: GameState = {
+    ...base,
+    dishRacks: { ...base.dishRacks, [dishRackId]: base.dishRacks[dishRackId]!.slice(1) },
+    washers: { ...base.washers, [washerId]: { dishes: [clean], progress: 0 } },
+  };
+  ready = actAt(ready, "lightning-1", potatoBoxId);
+  ready = actAt(ready, "lightning-1", washerId);
+  assert.equal(ready.actors["lightning-1"]!.carrying.length, 2);
+  assert.ok(ready.actors["lightning-1"]!.carrying.some(
+    (carried) => isDish(carried) && carried.id === clean.id && carried.status === "clean",
+  ));
+  assert.deepEqual(ready.washers[washerId]!.dishes, []);
+});
+
 test("속성 슬라임은 새 ID와 턴당 행동력을 사용한다", () => {
   assert.deepEqual(Object.keys(slimeTypes), ["water", "fire", "lightning", "earth"]);
   assert.deepEqual(
@@ -1448,7 +1479,9 @@ test("튜토리얼은 첫 양배추 제출까지 한 번에 한 가지만 시킨
     },
   };
   const dishWait = tutorialCue(spentWater, "water-1", limit)!;
-  assert.equal(dishWait.id, "TAKE_CLEAN_DISH");
+  // 행동력이 없으면 같은 목표를 유지한 채 턴 종료부터 안내한다.
+  // 화살표는 `arrowLayoutFor`가 접두어를 벗겨 원래 목표를 짚는다.
+  assert.equal(dishWait.id, "END_TURN_TAKE_CLEAN_DISH");
   assert.deepEqual(
     tutorialMoveOptions(spentWater, "earth-1", dishWait),
     moveOptions(spentWater, "earth-1"),
@@ -1456,18 +1489,14 @@ test("튜토리얼은 첫 양배추 제출까지 한 번에 한 가지만 시킨
   assert.equal(nextReadyActor(spentWater, activeActorIds(spentWater), "water-1"), "earth-1");
   assert.equal(tutorialAllowsStation(spentWater, dishWait, "earth-1", rackId), false);
   state = actAt(state, "water-1", rackId);
-  assert.equal(step(state, "water-1"), "MOVE_DISH_TO_TABLE");
-  let dishMove = tutorialCue(state, "water-1", limit)!;
-  while (dishMove.id === "MOVE_DISH_TO_TABLE") {
-    const option = tutorialMoveOptions(state, "water-1", dishMove).at(-1)!;
-    state = moveActor(state, "water-1", option);
-    dishMove = tutorialCue(state, "water-1", limit)!;
-  }
+  // 접시를 집으면 안내는 곧장 푸름이의 음식 회수로 넘어간다. 퐁당이를 테이블
+  // 앞까지 데려가던 `MOVE_DISH_TO_TABLE` 단계는 2026-08-10 튜토리얼 롤백에서 뺐다.
+  assert.equal(step(state, "water-1"), "TAKE_FINISHED_FOOD");
   assert.equal(step(state, "earth-1"), "TAKE_FINISHED_FOOD");
-  // 푸름이가 음식을 가져오는 동안 퐁당이가 먼저 오른쪽으로 빠져나가지 않는다.
+  // 지금 지목된 슬라임이 아니면 안내에 묶이지 않고 자유롭게 움직인다.
   assert.deepEqual(
     tutorialMoveOptions(state, "water-1", tutorialCue(state, "earth-1", limit)),
-    [],
+    moveOptions(state, "water-1"),
   );
 
   state = actAt(state, "earth-1", stoveId);
@@ -1489,6 +1518,8 @@ test("튜토리얼은 첫 양배추 제출까지 한 번에 한 가지만 시킨
   }
   assert.deepEqual([...pointedWhileWalking], [pointed]);
   // 목표 슬라임의 행동력이 없다고 다른 슬라임에게 같은 일을 떠넘기지 않는다.
+  // 대신 "턴을 넘기라"는 안내로 바뀌고, 짚는 자리가 사라지며, 기다리는 동안에는
+  // 누구든 자유롭게 움직인다.
   const waterOnly = {
     ...state,
     actors: {
@@ -1497,11 +1528,16 @@ test("튜토리얼은 첫 양배추 제출까지 한 번에 한 가지만 시킨
     },
   };
   const handoff = tutorialCue(waterOnly, "earth-1", limit)!;
-  assert.equal(handoff.id, "PUT_FOOD_ON_TABLE");
-  assert.equal(handoff.actor, "earth-1");
-  assert.deepEqual(tutorialMoveOptions(waterOnly, "water-1", handoff), []);
+  assert.equal(handoff.id, "END_TURN_PUT_FOOD_ON_TABLE");
+  assert.equal(handoff.endTurn, true);
+  assert.equal(handoff.station, undefined);
+  // 같은 일이 퐁당이에게 넘어가지 않는다. 원래 목표는 화살표에만 남는다.
+  assert.equal(arrowLayoutFor(handoff.id)!.side, arrowLayoutFor("PUT_FOOD_ON_TABLE")!.side);
+  assert.deepEqual(
+    tutorialMoveOptions(waterOnly, "water-1", handoff),
+    moveOptions(waterOnly, "water-1"),
+  );
   assert.equal(nextReadyActor(waterOnly, activeActorIds(waterOnly), "earth-1"), "water-1");
-  assert.equal(tutorialAllowsStation(waterOnly, handoff, "water-1", target.id), false);
   state = actAt(state, "earth-1", tableId);
   state = nextTurn(state);
   assert.equal(step(state, "water-1"), "PLATE_AT_TABLE");
@@ -1535,7 +1571,12 @@ test("다이얼로그는 확정된 음식·도구·슬라임 이름만 구분한
   assert.match(stageOpeningLines("2")[1]!.text, /화덕과 튀김기/);
   assert.match(stageOpeningLines("3")[1]!.text, /과일.*물.*전기/);
   assert.match(finalLines.at(-1)!.text, /무한 모드/);
-  assert.deepEqual(actionPointLines.map(({ focus }) => focus), ["roster", "roster", "roster", "undo"]);
+  // 행동력을 설명하는 앞 두 줄은 짚을 곳이 없다. 자동 턴 넘김만 로스터를,
+  // 마지막 줄이 되돌리기 버튼을 짚는다.
+  assert.deepEqual(
+    actionPointLines.map(({ focus }) => focus),
+    [undefined, undefined, "roster", "undo"],
+  );
   assert.match(actionPointLines.at(-1)!.text, /되돌리기.*Z/);
 });
 
