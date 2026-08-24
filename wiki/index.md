@@ -106,7 +106,7 @@ sources:
 - [타일 경로 이동 애니메이션 계획](plan-grid-movement-path-animation-2026-08-10.md) — BFS 최단 경로를 보존해 슬라임이 설비를 직선으로 관통하지 않고 타일 중심을 따라 이동하는 범위.
 - [홈 크레딧 계획](plan-home-credits-2026-08-10.md) — 홈 크레딧 버튼과 팀·음악·효과음 제작 표기 범위.
 - [튜토리얼 물 이동·크레딧·경로 모션 보정 계획](plan-tutorial-water-credits-motion-2026-08-10.md) — 퐁당이 선행 이동 차단, 크레딧 등장 효과와 연속 경로 모션 범위.
-- [Unity 모바일 포트 계획](plan-unity-mobile-port.md) — Phase 0–2 구현 상태와 남은 모바일 실기기 검증, 이후 이식 단계.
+- [Unity 모바일 포트 계획](plan-unity-mobile-port.md) — Phase 0–3 구현 상태와 남은 모바일 실기기 검증, 이후 이식 단계.
 - [작업 로그](log.md) — ingest, 계획, 구현, 검증의 시간순 기록.
 
 원문: [감자·도마·접시 에셋](../raw/assets_0/), [화면 문구 이미지](../raw/text/), [추가본 정리](../raw/%EC%B6%94%EA%B0%80%EB%B3%B8_%EC%A0%95%EB%A6%AC/) (덱 `raw/추가본.pptx`의 화면별 기획과 2026-08-02 확정·미정), [클로드 담당 작업: 주문과 화재](../raw/%ED%81%B4%EB%A1%9C%EB%93%9C_%EB%8B%B4%EB%8B%B9_%EC%9E%91%EC%97%85_%EC%A3%BC%EB%AC%B8%EA%B3%BC_%ED%99%94%EC%9E%AC.md), [프로젝트 브리프](../raw/project-brief.md), [홈 화면 v2 참고 이미지](../raw/home%20v2/home_reference.png), [홈 화면 v2 에셋](../raw/home%20v2/), [성장 선택 카드 참고 이미지](../raw/references/upgrade-choice-cards.png), [슬라임 스탯·가격·패널티](../raw/slime-stats-pricing-and-penalties.md), [펀테스트 변경 사항](../raw/fun-test-design-changes.md), [음성인식 시스템 논의](../raw/voice-command-discussion-summary-revised.md), [자원·제작 시스템 기획](../raw/slime-workshop-resource-production-design.md), [그릇·테이블·편의 선택 추가 명세](../raw/%E1%84%80%E1%85%B3%E1%84%85%E1%85%B3%E1%86%BA_%E1%84%90%E1%85%A6%E1%84%8B%E1%85%B5%E1%84%87%E1%85%B3%E1%86%AF_%E1%84%91%E1%85%A7%E1%86%AB%E1%84%8B%E1%85%B4%E1%84%89%E1%85%A5%E1%86%AB%E1%84%90%E1%85%A2%E1%86%A8_%E1%84%8E%E1%85%AE%E1%84%80%E1%85%A1_%E1%84%86%E1%85%A7%E1%86%BC%E1%84%89%E1%85%A6.md)
