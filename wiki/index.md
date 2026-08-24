@@ -12,9 +12,9 @@ sources:
   - raw/fun-test-design-changes.md
   - raw/voice-command-discussion-summary-revised.md
   - raw/slime-workshop-resource-production-design.md
-  - raw/조작_방식_변경_명세_수정본.md
-  - raw/다음_개발_작업_상호작용_코어.md
-  - raw/테마_변경_명세_공방에서_식당으로.md
+  - raw/조작_방식_변경_명세_수정본.md
+  - raw/다음_개발_작업_상호작용_코어.md
+  - raw/테마_변경_명세_공방에서_식당으로.md
   - raw/water_slime.svg
   - raw/fire_slime.svg
   - raw/electric.svg
@@ -42,6 +42,8 @@ sources:
 ---
 
 # NAN 2026 Wiki
+
+- [Unity 씬·해상도 재구성 계획](plan-unity-scene-resolution-rebuild.md) — FrontEnd/Game 직렬화, 동적 프리팹 분리와 고해상도 재구성 완료 범위.
 
 - [프로젝트](project.md) — 현재 식당 조리 흐름, 조작 경계, 구현 상태와 제외 범위.
 - [3분 마도서 제작 펀테스트](fun-test.md) — 이전 마도서 프로토타입 기준과 보류 항목.

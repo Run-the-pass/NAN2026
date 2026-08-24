@@ -1,5 +1,26 @@
 # 작업 로그
 
+## [2026-08-25] plan | Unity scene and resolution rebuild
+
+- Replace the runtime-only Phase 2/3 setup with serialized FrontEnd and Game scenes.
+- Keep only data-driven stations, slimes, carried items, and state binding at runtime.
+- Rebuild the 314x225 home background and rerasterize SVG derivatives for the actual output pixel budget.
+
+## [2026-08-25] 구현·검증 | Unity 씬·해상도 재구성
+
+- 고정 UI와 맵을 `FrontEnd`, `Game` 두 씬에 직렬화하고 빌드 순서를
+  FrontEnd→Game으로 바꿨다. 런타임에는 StationView 24개와 SlimeView 4개만
+  프리팹으로 생성하며, 이동 표시는 Highlight Tilemap 셀만 갱신한다.
+- 314×225 홈 배경을 직렬화된 색면·벽선·바닥선으로 교체했다. SVG 파생 PNG
+  12개는 약 2배로 다시 출력하고 실제 사용 Sprite 74개를 무손실·mipmap off로
+  바꿨다. 전체 맵은 2520×1440, PPU 180, max texture 4096을 유지한다.
+- 런타임 UI·맵 생성기, Boot, `DontDestroyOnLoad`, 임시 Sprite 생성 코드를
+  제거했다. 홈 Play에서는 GameView·설비·슬라임이 0개이고 게임→재도전→홈
+  왕복 뒤에도 동적 객체가 남지 않는다.
+- 코어 54/54, Unity 컴파일·씬 구조 검사, 실제 Play 왕복, 2940×1846 Mac Player
+  실행과 296.75MB 빌드가 Console·Player.log 경고·오류 없이 통과해 `PASS`로
+  판정했다. Android·iOS 실기기 검증은 Phase 6에 남겼다.
+
 ## [2026-08-25] 구현·검증 | Unity 웹 시각 구성 Phase 3.1
 
 - 웹판 구성을 따라 홈 레이어, 모드·스테이지 선택, 음식 주문표·슬라임 로스터·턴
@@ -2026,7 +2047,7 @@
 
 - 게임 오버 제목 그림을 리본 안에서 4px 아래로 옮겼다.
 - 설정을 닫으면 `3 → 2 → 1` 표기 없이 Phaser 장면을 바로 재개한다.
-- 원문 `raw/대화 다이얼로그.pdf` 11쪽을 읽었다. 점장 슬라임의 첫날 튜토리얼 대사와 주문·상세 정보 안내 순서를 확인했다.
+- 원문 `raw/대화 다이얼로그.pdf` 11쪽을 읽었다. 점장 슬라임의 첫날 튜토리얼 대사와 주문·상세 정보 안내 순서를 확인했다.
 ## [2026-08-08] 계획 | 튜토리얼 P1·P2 완성
 
 - PDF식 점장 대사와 대상 지목, 테이블 전달, 설거지 직접 체험, 나머지 슬라임·다음 주문·`Space` 안내를 구현 범위로 정했다.

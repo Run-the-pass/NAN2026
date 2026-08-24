@@ -158,6 +158,28 @@ C#·JSON에서 쓰는 한글 394자를 전부 포함하는지 검사했다.
 실행했다. 코어 54/54, 별도 Unity 컴파일, 씬 무결성, 170.36MB Mac Player 빌드가
 오류·경고 없이 통과했다. 노치·실제 모바일 터치 최종 판정은 Phase 6에 남아 있다.
 
+#### Phase 3.2 — 직렬화 씬·해상도 재구성 (구현 완료 2026-08-25)
+
+- 고정 UI와 맵은 Edit Mode에서 보이도록 `FrontEnd.unity`와 `Game.unity`에
+  직렬화하고, 게임 데이터 객체인 설비·슬라임만 두 프리팹으로 생성한다.
+- 112개 이동 표시 오브젝트는 Highlight Tilemap 하나로 바꾼다.
+- 314×225 홈 배경은 색면과 선으로 재구성하고, SVG 파생 런타임 PNG는 약 2배
+  해상도로 다시 출력한다. 실제 사용 Sprite는 mipmap 없이 무손실로 임포트한다.
+
+**결과**: `FrontEnd`에는 홈·모드·스테이지·설정·크레딧만, `Game`에는
+Camera·2520×1440 맵·Highlight Tilemap·HUD·결과·설정·오류 패널만 남겼다.
+런타임 UI·맵 빌더와 Boot·`DontDestroyOnLoad`를 제거했고, `GameUI.cs`는
+894줄에서 459줄로 줄었다. Game 씬 진입 뒤에만 StationView 24개와 SlimeView
+4개가 생기며, 홈으로 돌아오면 GameView와 동적 객체가 0개다.
+
+SVG 파생 PNG 12개를 약 2배로 다시 출력하고, 실제 사용 Sprite 74개의 mipmap과
+압축을 제거했다. 전체 맵은 PPU 180·max texture 4096으로 원본 2520×1440을
+그대로 쓴다. 해상도 문제를 가리는 셰이더나 새 패키지는 추가하지 않았다.
+
+홈→모드→스테이지→게임→설정→재도전→홈을 실제 Play로 왕복했고, 코어 54/54,
+Unity 컴파일·씬 무결성 검사, 2940×1846 surface의 Mac Player 실행과 296.75MB
+빌드가 경고·오류 없이 통과했다. Android·iOS 실기기 검증은 Phase 6에 남아 있다.
+
 ### Phase 4 — 진행 저장·오디오
 
 - 별 진행도: 쿠키 → `PlayerPrefs`
