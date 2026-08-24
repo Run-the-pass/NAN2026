@@ -1,7 +1,7 @@
 ---
 type: plan
 status: current
-updated: 2026-08-24
+updated: 2026-08-25
 sources:
   - wiki/project.md
   - game/core.ts
@@ -50,7 +50,7 @@ sources:
 
 ## 단계
 
-### Phase 0 — 프로젝트 셋업 (완료 2026-08-24)
+### Phase 0 — 프로젝트 셋업 (설정 복구 2026-08-25)
 
 - `unity/SlimeRestaurant/`, Unity 6000.5.4f1, 2D 템플릿 기본값
 - Player Settings: Android + iOS, Landscape Left/Right만 허용
@@ -60,6 +60,10 @@ sources:
 - `public/{food,stations,tiles,ui,text}` → `Assets/Art/`, `public/{sfx,music}` → `Assets/Audio/` 복사
 
 **완료 조건**: 빈 씬이 안드로이드 실기기에서 가로로 실행된다.
+
+**결과**: `Game.unity`를 첫 빌드 씬으로 추가하고 가로 회전 제한과 Custom Axis를
+실제 프로젝트 설정에 반영했다. Mac Player 빌드는 통과했지만 Android·iOS 모듈과
+실기기가 없어 이 완료 조건의 실기기 검증은 남아 있다.
 
 ### Phase 1 — 코어 이식 (완료 2026-08-24)
 
@@ -74,7 +78,7 @@ sources:
 - `tests/game.test.ts`의 67개 케이스를 EditMode 테스트로 이식한다.
   **이식이 맞았는지 증명하는 유일한 장치라 축약하지 않는다.**
 
-**결과**: 코어 테스트 51개 통과. 웹판 `npm run simulate`와 28스텝 시나리오를
+**결과**: 코어 테스트 53개 통과. 웹판 `npm run simulate`와 28스텝 시나리오를
 맞춰 최종 seed·슬라임별 행동 수·그릇 ID까지 일치하는 것을 확인했다.
 
 - 테스트는 Unity Test Framework가 아니라 `dotnet`으로 돈다. 코어가 UnityEngine을
@@ -83,7 +87,7 @@ sources:
   CLI 인자 파싱 테스트는 각 Phase로 미뤘다. 서버 플레이 기록(`parseSession`)은 범위 밖이다.
 - 레시피의 `count`·`submissionStation`은 읽는 곳이 없어 뺐다.
 
-### Phase 2 — 게임 화면
+### Phase 2 — 게임 화면 (구현 완료 2026-08-25)
 
 - `Grid` + `Tilemap` 하나로 바닥·벽을 맵 rows에서 생성
 - 설비·슬라임·소지품은 `SpriteRenderer`. 깊이는 Phase 0의 Custom Axis가 처리
@@ -95,6 +99,12 @@ sources:
 - 이동 가능 칸 하이라이트는 반투명 스프라이트 풀 하나
 
 **완료 조건**: 스테이지 1을 탭만으로 처음부터 끝까지 클리어할 수 있다.
+
+**결과**: 빈 씬에서 `GameView` 하나가 맵·설비·슬라임·소지품·이동 하이라이트를
+만들고 터치/마우스 좌표를 코어 타일 행동으로 연결한다. Mac Universal Player에서
+스테이지 1·슬라임 4마리·설비 24대 초기화를 확인했고, 같은 이동·상호작용 규칙의
+회귀 검사는 14턴에 목표 2건을 채우고 마감 때 `Won`이 됐다. 실제 모바일 터치
+확인은 Phase 6에서 진행한다.
 
 ### Phase 3 — UI
 
@@ -137,8 +147,8 @@ sources:
    `raw/*_slime.svg`에 있다.
 3. **음원 라이선스** — `wiki/project.md`의 미해결 항목. 웹 제출과 달리 앱
    배포는 조건이 더 빡빡하므로 Phase 6 전에 정리해야 한다.
-4. **Unity 배치모드 라이선스가 없다** — `No valid Unity Editor license found`.
-   Unity Hub에서 활성화해야 헤드리스 빌드·에디터 자동화를 쓸 수 있다.
-   Phase 1은 이것 없이 끝냈지만 Phase 6 빌드는 막힌다.
+4. **모바일 빌드 모듈이 없다** — Unity Personal 라이선스와 Mac Standalone 모듈은
+   정상 동작한다. Android·iOS 모듈과 실기기가 없어 Phase 0 실기기 완료 조건과
+   Phase 6 모바일 빌드는 아직 검증할 수 없다.
 5. **IL2CPP 리플렉션** — 되돌리기(Z)가 상태를 JSON으로 통째 복제한다.
    빌드 때 잘려 나가면 `link.xml`이 필요할 수 있다.
