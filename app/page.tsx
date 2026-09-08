@@ -25,6 +25,7 @@ export default function Home() {
         <button
           type="button"
           className="home-menu-button home-credits"
+          aria-label="크레딧"
           aria-haspopup="dialog"
           onClick={() => creditsRef.current?.showModal()}
         ></button>

@@ -1,3 +1,4 @@
+import { pointerToastAnchor, rotatedPointerPosition } from "../app/pointer-position.js";
 import assert from "node:assert/strict";
 import { readdirSync } from "node:fs";
 import test from "node:test";
@@ -1595,7 +1596,7 @@ test("튜토리얼 화살표와 쿠키 진행도는 조절·검증된 값만 쓴
   assert.equal(arrowLayoutFor("TAKE_PLATED_FOOD")!.side, "bottom");
   assert.equal(arrowLayoutFor("TAKE_PLATED_FOOD")!.bobY < 0, true);
   assert.equal(dialogueArrowLayout.clock!.rotate, "180deg");
-  assert.equal(dialogueArrowLayout.clock!.top, "clamp(96px, 14vh, 104px)");
+  assert.equal(dialogueArrowLayout.clock!.top, "var(--clock-arrow-top, clamp(96px, 14vh, 104px))");
   assert.equal(dialogueArrowLayout.clock!["--arrow-y"], "-12px");
   assert.deepEqual(
     sanitizeProgress({
@@ -1631,4 +1632,24 @@ test("첫 화면이 미리 받는 목록은 public의 그림과 정확히 같다
     .filter((file) => file !== "/og.png")
     .sort();
   assert.deepEqual([...assetManifest], onDisk);
+});
+
+// TouchEvent에는 clientX/clientY가 없다. Phaser의 논리 좌표만으로 계산한다.
+test("터치 안내는 축소 캔버스·노치 좌표를 반영하고 화면 안에 머문다", () => {
+  const size = { width: 2520, height: 1440 };
+  const canvas = { left: 240, top: 56, width: 420, height: 240 };
+  const frame = { left: 44, top: 0, width: 800, height: 390 };
+  assert.deepEqual(pointerToastAnchor({ x: 1260, y: 720 }, size, canvas, frame), { x: 406, y: 168 });
+  assert.deepEqual(pointerToastAnchor({ x: 0, y: 0 }, size, { ...canvas, left: 44 }, frame), { x: 170, y: 70 });
+  const narrow = pointerToastAnchor({ x: 2520, y: 1440 }, size, canvas, { ...frame, width: 300 });
+  assert.equal(narrow.x, 150);
+  assert.ok(narrow.y >= 70 && narrow.y <= 320);
+});
+
+test("portrait rotation maps screen touches back to landscape game coordinates", () => {
+  const canvas = { left: 20, top: 100, width: 200, height: 350 };
+  const size = { width: 2520, height: 1440 };
+  assert.deepEqual(rotatedPointerPosition({ x: 220, y: 100 }, canvas, size), { x: 0, y: 0 });
+  assert.deepEqual(rotatedPointerPosition({ x: 20, y: 450 }, canvas, size), { x: 2520, y: 1440 });
+  assert.deepEqual(rotatedPointerPosition({ x: 120, y: 275 }, canvas, size), { x: 1260, y: 720 });
 });

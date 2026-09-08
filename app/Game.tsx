@@ -1,5 +1,6 @@
 "use client";
 
+import { pointerToastAnchor, rotatedPointerPosition } from "./pointer-position";
 import * as Phaser from "phaser";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
@@ -785,6 +786,7 @@ export default function Game() {
   // 남는다. 조작은 대사 화면이 덮고 있어 어차피 닿지 않는다.
   const paused = settingsOpen;
 
+  const inputBlockedRef = useRef(false);
   const stateRef = useRef(state);
   const selectedActorRef = useRef(selectedActor);
   const undoUiRef = useRef({
@@ -831,6 +833,7 @@ export default function Game() {
   }, [earthInfoComplete, actionPointInfoComplete, waterIntroComplete, platedIntroComplete]);
 
   const chooseActor = useCallback((actorId: ActorId) => {
+    if (inputBlockedRef.current || stateRef.current?.phase !== "playing") return;
     setSelectedActor((current) => {
       const next = current === actorId ? null : actorId;
       selectedActorRef.current = next;
@@ -845,7 +848,7 @@ export default function Game() {
     action: (current: GameState) => GameState,
   ) => {
     const before = stateRef.current;
-    if (!before || before.phase !== "playing") return;
+    if (inputBlockedRef.current || !before || before.phase !== "playing") return;
     const after = action(before);
     if ((after.actors[actorId]?.acts ?? 0) > (before.actors[actorId]?.acts ?? 0)) {
       setUndoSnapshot({
@@ -948,6 +951,9 @@ export default function Game() {
   const closingSoon = state?.phase === "playing" && state.turnsLeft <= RUSH_TURNS_LEFT;
   const blockingNarration = intro || earthInfo || actionPointInfo || waterIntro ||
     platedIntro || tutorialOutro || stageIntro || finalOutro;
+  useEffect(() => {
+    inputBlockedRef.current = settingsOpen || blockingNarration || narrationHolds;
+  }, [settingsOpen, blockingNarration, narrationHolds]);
   useEffect(() => {
     closingBannerShown.current = false;
   }, [startedStageId]);
@@ -1356,6 +1362,20 @@ export default function Game() {
       }
 
       create() {
+        // CSS 회전을 히트 테스트보다 먼저 역변환한다. Phaser의 이동 보간은 유지한다.
+        const manager = this.input.manager;
+        const transform = manager.transformPointer.bind(manager);
+        manager.transformPointer = (pointer, pageX, pageY, wasMove) => {
+          if (window.matchMedia("(orientation: portrait)").matches) {
+            const position = rotatedPointerPosition(
+              { x: pageX - window.scrollX, y: pageY - window.scrollY },
+              this.game.canvas.getBoundingClientRect(), this.scale,
+            );
+            pageX = this.scale.canvasBounds.left + position.x / this.scale.displayScale.x;
+            pageY = this.scale.canvasBounds.top + position.y / this.scale.displayScale.y;
+          }
+          transform(pointer, pageX, pageY, wasMove);
+        };
         // 파티클용 점 텍스처. 파일을 더 두지 않고 그려서 만든다.
         if (!this.textures.exists("spark-dot")) {
           const dot = this.make.graphics({ x: 0, y: 0 }, false);
@@ -1579,18 +1599,20 @@ export default function Game() {
                 inputEvent: Phaser.Types.Input.EventData,
               ) => {
                 inputEvent.stopPropagation();
-                if (!fromCanvas(pointer)) return;
+                if (inputBlockedRef.current || !fromCanvas(pointer)) return;
                 if (!pointer.leftButtonDown()) return;
                 const actorId = selectedActorRef.current;
                 const current = stateRef.current;
                 if (!current) return;
-                const native = pointer.event as PointerEvent;
-                const frame = this.game.canvas.closest(".stage-frame")?.getBoundingClientRect();
-                if (frame && Number.isFinite(native.clientX) && Number.isFinite(native.clientY)) {
-                  toastAnchorRef.current = {
-                    x: Math.min(Math.max(native.clientX - frame.left, 170), frame.width - 170),
-                    y: Math.min(Math.max(native.clientY - frame.top - 8, 70), frame.height - 70),
-                  };
+                const canvas = this.game.canvas;
+                const host = canvas.parentElement;
+                const frame = canvas.closest<HTMLElement>(".stage-frame");
+                if (frame && host) {
+                  toastAnchorRef.current = pointerToastAnchor(
+                    pointer, this.scale,
+                    { left: host.offsetLeft + canvas.offsetLeft, top: host.offsetTop + canvas.offsetTop, width: canvas.clientWidth, height: canvas.clientHeight },
+                    { left: 0, top: 0, width: frame.clientWidth, height: frame.clientHeight },
+                  );
                 }
                 if (!tutorialAllowsStation(current, tutorialCueRef.current, actorId, id)) {
                   this.usable[id] = false;
@@ -1661,7 +1683,7 @@ export default function Game() {
                 inputEvent: Phaser.Types.Input.EventData,
               ) => {
                 inputEvent.stopPropagation();
-                if (!fromCanvas(pointer)) return;
+                if (inputBlockedRef.current || !fromCanvas(pointer)) return;
                 if (!pointer.leftButtonDown()) return;
                 chooseActor(actorId);
               },
@@ -1743,7 +1765,7 @@ export default function Game() {
         // 바닥을 클릭했을 때. 이동 가능 표시가 뜬 칸이면 그리로 가고,
         // 아니면 선택을 푼다.
         this.input.on("pointerdown", (pointer: Phaser.Input.Pointer) => {
-          if (!fromCanvas(pointer) || !pointer.leftButtonDown()) return;
+          if (inputBlockedRef.current || !fromCanvas(pointer) || !pointer.leftButtonDown()) return;
           const point = this.cameras.main.getWorldPoint(pointer.x, pointer.y);
           const tile = pixelToTile(point.x, point.y);
           const current = stateRef.current;
@@ -2149,9 +2171,24 @@ export default function Game() {
       audio: { noAudio: true },
       scene: Restaurant,
       render: { antialias: true },
-      scale: { mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.CENTER_HORIZONTALLY },
+      scale: { mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.NO_CENTER },
     });
+    // CSS 회전 후의 외접 사각형 대신 실제 레이아웃 크기로 FIT한다.
+    game.scale.getParentBounds = () => {
+      const parent = game.scale.parent;
+      if (!parent) return false;
+      const changed = game.scale.parentSize.width !== parent.clientWidth || game.scale.parentSize.height !== parent.clientHeight;
+      game.scale.parentSize.setSize(parent.clientWidth, parent.clientHeight);
+      return changed;
+    };
+    // 대사 영역은 창 크기 없이도 지도 높이를 바꾼다. 부모 크기부터 갱신한다.
+    const resize = new ResizeObserver(([entry]) => {
+      game.scale.setParentSize(entry.contentRect.width, entry.contentRect.height);
+    });
+    const canvasHost = document.getElementById("game-canvas");
+    if (canvasHost) resize.observe(canvasHost);
     return () => {
+      resize.disconnect();
       view.current = null;
       game.destroy(true);
     };
@@ -2180,6 +2217,14 @@ export default function Game() {
     const next = id === "endless"
       ? initialEndlessState(2026, list)
       : prepareTutorialState(initialState(2026, list, defaultStages(), index));
+    stateRef.current = next;
+    selectedActorRef.current = null;
+    movePathRef.current = {};
+    toastAnchorRef.current = null;
+    closingBannerShown.current = false;
+    setToast(null);
+    setBanner(id === "0" ? null : "start");
+    setIntro(id === "0");
     setStageId(id);
     metrics.current = emptyMetrics();
     savedRef.current = false;
@@ -2207,6 +2252,7 @@ export default function Game() {
   }
 
   const finishTurn = useCallback(() => {
+    if (inputBlockedRef.current) return;
     manuallySelectedSpentActor.current = null;
     setState((value) => {
       if (!value) return value;
@@ -2228,7 +2274,7 @@ export default function Game() {
   const undoLastAction = useCallback(() => {
     if (
       !undoSnapshot || stateRef.current?.phase !== "playing" ||
-      settingsOpen || blockingNarration
+      inputBlockedRef.current
     ) return;
     const restored = undoSnapshot;
     setUndoSnapshot(null);
@@ -2251,7 +2297,7 @@ export default function Game() {
     setInspected(restored.selectedActor ? { kind: "actor", id: restored.selectedActor } : null);
     setToast(null);
     setState(restored.state);
-  }, [undoSnapshot, settingsOpen, blockingNarration]);
+  }, [undoSnapshot]);
 
   useEffect(() => {
     if (state && state.phase !== "playing") setUndoSnapshot(null);
@@ -2263,7 +2309,7 @@ export default function Game() {
     if (!state || state.phase !== "playing" || !squad || !selectedActor) return;
     if (tutorialDone(state)) return;
     // 소개 대사가 떠 있는 동안에는 선택도 턴도 넘기지 않는다.
-    if (narrationHolds) return;
+    if (settingsOpen || blockingNarration || narrationHolds) return;
     const left = state.actors[selectedActor]?.actionPoints ?? 0;
     if (left > 0) return;
     if (manuallySelectedSpentActor.current === selectedActor) return;
@@ -2274,7 +2320,7 @@ export default function Game() {
     );
     if (next) setSelectedActor(next);
     else finishTurn();
-  }, [state, selectedActor, squad, finishTurn, narrationHolds]);
+  }, [state, selectedActor, squad, finishTurn, narrationHolds, settingsOpen, blockingNarration]);
 
   useEffect(() => {
     if (!squad) return;
@@ -2299,7 +2345,7 @@ export default function Game() {
         const current = stateRef.current;
         if (!current || current.phase !== "playing") return;
         const currentCue = tutorialCueRef.current;
-        if (currentCue) return;
+        if (currentCue && !currentCue.endTurn) return;
         event.preventDefault();
         // 버튼에 포커스가 남아 있으면 스페이스가 그 버튼까지 눌러
         // "턴 종료"가 같이 실행된다. 포커스를 먼저 놓는다.
@@ -2325,7 +2371,6 @@ export default function Game() {
           progress={progress.stars}
           // 열린 스테이지를 직접 골라 시작하고, 승리하면 다음 판으로 이어 간다.
           onPick={(id) => {
-            setIntro(id === "0");
             startRound(allTypeIds, id);
             if (id !== "0" && id !== "endless") setStageIntro(true);
           }}
@@ -2390,6 +2435,7 @@ export default function Game() {
 
         {intro && (
           <Dialogue
+            paused={settingsOpen}
             key="tutorial-opening"
             lines={openingLines}
             portrait={slimePortrait}
@@ -2403,6 +2449,7 @@ export default function Game() {
 
         {earthInfo && (
           <Dialogue
+            paused={settingsOpen}
             key="tutorial-earth-info"
             lines={earthInfoLines}
             portrait={slimePortrait}
@@ -2417,6 +2464,7 @@ export default function Game() {
 
         {actionPointInfo && (
           <Dialogue
+            paused={settingsOpen}
             key="tutorial-action-points"
             lines={actionPointLines}
             portrait={slimePortrait}
@@ -2433,6 +2481,7 @@ export default function Game() {
 
         {waterIntro && (
           <Dialogue
+            paused={settingsOpen}
             key="tutorial-water-arrival"
             lines={waterArrivalLines}
             portrait={slimePortrait}
@@ -2446,6 +2495,7 @@ export default function Game() {
 
         {platedIntro && (
           <Dialogue
+            paused={settingsOpen}
             key="tutorial-plated-food"
             lines={platedFoodLines}
             portrait={slimePortrait}
@@ -2458,6 +2508,7 @@ export default function Game() {
 
         {tutorialOutro && (
           <Dialogue
+            paused={settingsOpen}
             key="tutorial-complete"
             lines={tutorialCompleteLines}
             portrait={slimePortrait}
@@ -2472,6 +2523,7 @@ export default function Game() {
 
         {stageIntro && (
           <Dialogue
+            paused={settingsOpen}
             key={`stage-${currentStage(state).id}`}
             lines={stageOpeningLines(currentStage(state).id)}
             portrait={slimePortrait}
@@ -2485,6 +2537,7 @@ export default function Game() {
 
         {finalOutro && (
           <Dialogue
+            paused={settingsOpen}
             key="final-outro"
             lines={finalLines}
             portrait={slimePortrait}
@@ -2527,6 +2580,7 @@ export default function Game() {
 
         {cue && (
           <Dialogue
+            paused={settingsOpen}
             key={cue.id}
             lines={[{ speaker: cue.speaker, text: cue.text }]}
             portrait={slimePortrait}
@@ -2618,8 +2672,9 @@ export default function Game() {
             <button
               type="button"
               className="turn-end turn-control art-button"
+              disabled={settingsOpen || blockingNarration || Boolean(cue && !cue.endTurn) || state.phase !== "playing"}
               onClick={() => {
-                if (cue) {
+                if (cue && !cue.endTurn) {
                   return;
                 }
                 finishTurn();
@@ -2635,7 +2690,10 @@ export default function Game() {
 
         <div className="info-rail" role="complementary" aria-label="선택 정보 영역">
           {inspected && (
-            <GameInspector state={state} target={inspected} />
+            <>
+              <button type="button" className="inspector-close" aria-label="선택 정보 닫기" onClick={() => setInspected(null)}>×</button>
+              <GameInspector state={state} target={inspected} />
+            </>
           )}
         </div>
 

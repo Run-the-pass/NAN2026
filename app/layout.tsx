@@ -1,9 +1,11 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import { GlobalSoundEffects } from "./SoundEffects";
 import Splash from "./Splash";
 
 const description = "네 슬라임과 함께 제한된 턴 안에 주문을 완성하는 주방 운영 게임";
+
+export const viewport: Viewport = { width: "device-width", initialScale: 1, viewportFit: "cover" };
 
 export const metadata: Metadata = {
   metadataBase: new URL(
@@ -48,8 +50,10 @@ export default function RootLayout({
     <html lang="ko">
       <body>
         <GlobalSoundEffects />
-        <Splash />
-        {children}
+        <div className="game-viewport">
+          <Splash />
+          {children}
+        </div>
       </body>
     </html>
   );

@@ -119,8 +119,15 @@ export function MusicSettings({
   onOpenChange?: (open: boolean) => void;
   onRetry?: () => void;
 }) {
+  const drawerRef = useRef<HTMLElement>(null);
   const [internalOpen, setInternalOpen] = useState(false);
   const open = controlledOpen ?? internalOpen;
+  useEffect(() => {
+    if (!open) return;
+    const previous = document.activeElement;
+    drawerRef.current?.querySelector<HTMLButtonElement>("button")?.focus();
+    return () => { if (previous instanceof HTMLElement && previous.isConnected) previous.focus(); };
+  }, [open]);
   const changeOpen = (next: boolean) => {
     if (controlledOpen === undefined) setInternalOpen(next);
     onOpenChange?.(next);
@@ -173,11 +180,29 @@ export function MusicSettings({
         data-open={open ? "" : undefined}
         aria-hidden={!open}
         inert={!open}
-        onMouseDown={(event) => {
+        onPointerDown={(event) => {
           if (event.target === event.currentTarget) changeOpen(false);
         }}
       >
         <section
+          ref={drawerRef}
+          onKeyDown={(event) => {
+            if (event.key === "Escape") {
+              event.stopPropagation();
+              changeOpen(false);
+            }
+            if (event.key !== "Tab") return;
+            const controls = [...event.currentTarget.querySelectorAll<HTMLElement>("button:not(:disabled), a[href], input:not(:disabled)")];
+            const first = controls[0];
+            const last = controls.at(-1);
+            if (event.shiftKey && document.activeElement === first) {
+              event.preventDefault();
+              last?.focus();
+            } else if (!event.shiftKey && document.activeElement === last) {
+              event.preventDefault();
+              first?.focus();
+            }
+          }}
           id={`${variant}-music-settings`}
           className="settings-drawer"
           role="dialog"

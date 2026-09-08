@@ -50,7 +50,7 @@ button:not(:disabled), a, [role="button"], summary, label, input[type="range"] {
   cursor: var(--cursor-hand);
 }
 button:disabled { cursor: var(--cursor-arrow); }
-.loading { min-height: 100vh; display: grid; place-items: center; font-size: 22px; font-weight: 800; }
+.loading { min-height: 100cqh; display: grid; place-items: center; font-size: 22px; font-weight: 800; }
 
 .sr-only {
   position: absolute;
@@ -71,7 +71,7 @@ button:disabled { cursor: var(--cursor-arrow); }
   display: grid;
   align-content: center;
   justify-items: center;
-  gap: clamp(18px, 3.4svh, 38px);
+  gap: clamp(18px, 3.4cqh, 38px);
   width: auto;
   border: 0;
   padding: 0;
@@ -85,7 +85,7 @@ button:disabled { cursor: var(--cursor-arrow); }
    버려서 떨어지는 게 안 보인다. 멈춘 뒤 살짝 커지는 건 눌린 잉크가 번지는 것. */
 .splash-logo {
   width: auto;
-  height: min(62svh, 58vw);
+  height: min(62cqh, 58cqw);
   transform-origin: 50% 62%;
   opacity: .28;
   scale: .92;
@@ -96,7 +96,7 @@ button:disabled { cursor: var(--cursor-arrow); }
   animation: splash-stamp 900ms linear both;
 }
 .splash-start {
-  font-size: clamp(22px, 3vw, 36px);
+  font-size: clamp(22px, 3cqw, 36px);
   letter-spacing: .08em;
   transition: opacity 120ms ease;
 }
@@ -149,8 +149,8 @@ button:disabled { cursor: var(--cursor-arrow); }
   position: relative;
   isolation: isolate;
   width: 100%;
-  height: 100svh;
-  min-height: 100svh;
+  height: 100cqh;
+  min-height: 100cqh;
   overflow: hidden;
   background:
     linear-gradient(#2f150099, #2f150099),
@@ -169,7 +169,7 @@ button:disabled { cursor: var(--cursor-arrow); }
   z-index: 6;
   top: 6.5%;
   left: 50%;
-  width: min(42%, 58svh);
+  width: min(42%, 58cqh);
   height: auto;
   transform: translateX(-50%);
   pointer-events: none;
@@ -208,11 +208,11 @@ button:disabled { cursor: var(--cursor-arrow); }
 }
 
 .home-menu-button img { display: block; width: auto; }
-.home-start img { height: 13.6svh; }
+.home-start img { height: 13.6cqh; }
 .home-credits {
   position: fixed;
   z-index: 6;
-  top: 78.5svh;
+  top: 78.5cqh;
   right: 0;
   left: 0;
   width: 250px;
@@ -223,7 +223,7 @@ button:disabled { cursor: var(--cursor-arrow); }
 .home-credits img { width: 10%; height: auto; }
 
 .credits-dialog {
-  width: min(440px, calc(100vw - 24px), calc((100svh - 24px) * .821));
+  width: min(440px, calc(100cqw - 24px), calc((100cqh - 24px) * .821));
   border: 0;
   margin: auto;
   padding: 0;
@@ -234,7 +234,7 @@ button:disabled { cursor: var(--cursor-arrow); }
 .credits-dialog::backdrop { background: #180b06cc; }
 .credits-dialog[open] .credits-card { animation: credits-drop 180ms ease-out both; }
 @keyframes credits-drop {
-  from { transform: translateY(calc(-50svh - 100%)); }
+  from { transform: translateY(calc(-50cqh - 100%)); }
   to { transform: translateY(0); }
 }
 @media (prefers-reduced-motion: reduce) {
@@ -246,7 +246,7 @@ button:disabled { cursor: var(--cursor-arrow); }
   box-sizing: border-box;
   justify-items: center;
   align-content: start;
-  gap: clamp(4px, 1.2svh, 10px);
+  gap: clamp(4px, 1.2cqh, 10px);
   width: 100%;
   aspect-ratio: 1055 / 1285;
   padding: 5% 11% 9%;
@@ -266,13 +266,13 @@ button:disabled { cursor: var(--cursor-arrow); }
   line-height: 1;
 }
 .credits-card h2 img { width: 62%; height: auto; max-height: 76%; object-fit: contain; }
-.credits-card h3 { font-size: clamp(17px, 3svh, 27px); line-height: 1.1; }
+.credits-card h3 { font-size: clamp(17px, 3cqh, 27px); line-height: 1.1; }
 .credits-close {
   position: absolute;
   z-index: 2;
   top: 5%;
   right: 5%;
-  width: clamp(30px, 6svh, 48px);
+  width: clamp(30px, 6cqh, 48px);
   aspect-ratio: 1;
   border: 0;
   padding: 0;
@@ -292,8 +292,8 @@ button:disabled { cursor: var(--cursor-arrow); }
   background: #fbf6ec;
 }
 .credits-logo-paper img { width: auto; height: 80%; object-fit: contain; }
-.credits-members { font-size: clamp(14px, 2.3svh, 20px); }
-.credits-tools { display: grid; gap: 4px; width: min(260px, 90%); font-size: clamp(12px, 2svh, 17px); }
+.credits-members { font-size: clamp(14px, 2.3cqh, 20px); }
+.credits-tools { display: grid; gap: 4px; width: min(260px, 90%); font-size: clamp(12px, 2cqh, 17px); }
 .credits-tools div { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
 .credits-tools dt { text-align: right; }
 .credits-tools dd { margin: 0; text-align: left; }
@@ -309,7 +309,7 @@ button:disabled { cursor: var(--cursor-arrow); }
   /* 설정 오버레이가 이 안에 있다. 여기서 쌓임 맥락이 생기므로 홈 메뉴
      (z-index 8)보다 위에 있어야 모달이 버튼에 가리지 않는다. */
   z-index: 200;
-  top: 64.8svh;
+  top: 64.8cqh;
   right: 0;
   left: 0;
   display: grid;
@@ -317,7 +317,7 @@ button:disabled { cursor: var(--cursor-arrow); }
   pointer-events: none;
 }
 .music-settings-home .settings-trigger { pointer-events: auto; }
-.settings-trigger img { height: 12.6svh; }
+.settings-trigger img { height: 12.6cqh; }
 
 .home-desk,
 .home-cauldron,
@@ -333,7 +333,7 @@ button:disabled { cursor: var(--cursor-arrow); }
   z-index: 2;
   bottom: 0;
   left: -4%;
-  width: min(47%, 74svh);
+  width: min(47%, 74cqh);
   filter: brightness(.58) saturate(.8);
 }
 
@@ -342,7 +342,7 @@ button:disabled { cursor: var(--cursor-arrow); }
   top: 34%;
   right: -4%;
   left: auto;
-  width: min(55%, 90svh);
+  width: min(55%, 90cqh);
   transform-origin: 50% 100%;
   filter: brightness(.58) saturate(.8);
   animation: cauldron-breathe 2.8s ease-in-out infinite;
@@ -365,7 +365,7 @@ button:disabled { cursor: var(--cursor-arrow); }
   top: 46.5%;
   right: 2%;
   left: auto;
-  width: min(46%, 75svh);
+  width: min(46%, 75cqh);
   filter: drop-shadow(0 18px 15px #160b0666);
 }
 
@@ -401,14 +401,14 @@ button:disabled { cursor: var(--cursor-arrow); }
 .settings-drawer {
   position: relative;
   display: grid;
-  width: min(460px, calc(100vw - 24px));
+  width: min(460px, calc(100cqw - 24px));
   gap: 14px;
   border: 35px solid transparent;
   border-image: url("/ui/settings-frame.png") 72 fill / 35px / 0 stretch;
   padding: 2px 12px 14px;
   color: var(--paper-ink);
   filter: drop-shadow(0 16px 40px #000b);
-  transform: translateY(calc(-50vh - 100%));
+  transform: translateY(calc(-50cqh - 100%));
   transition: transform 180ms ease;
 }
 
@@ -463,7 +463,7 @@ button:disabled { cursor: var(--cursor-arrow); }
 .sound-row input:disabled { cursor: var(--cursor-deny); }
 
 /* 대사가 화면을 덮고 있어도 설정은 눌러야 한다. 대사(40)보다 위에 둔다. */
-.music-settings-game { position: absolute; z-index: 60; top: 12px; right: 12px; }
+.music-settings-game { position: absolute; z-index: 200; top: 12px; right: 12px; }
 .game-settings-trigger {
   display: grid;
   width: 46px;
@@ -473,10 +473,11 @@ button:disabled { cursor: var(--cursor-arrow); }
 }
 
 .stage {
+  padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
   position: relative;
   width: 100%;
-  height: 100svh;
-  min-height: 100svh;
+  height: 100cqh;
+  min-height: 100cqh;
   overflow: hidden;
   background: var(--wood-dark);
 }
@@ -484,11 +485,11 @@ button:disabled { cursor: var(--cursor-arrow); }
 .stage-frame {
   --game-top-rail: 190px;
   --game-side-rail: 0px;
-  --game-info-rail: clamp(240px, 26vw, 370px);
+  --game-info-rail: clamp(240px, 26cqw, 370px);
   /* 우측 정보 창 액자 두께. 그림(329×640)의 액자 비율을 그대로 따른다. */
-  --panel-frame-x: clamp(22px, 3vw, 38px);
-  --panel-frame-top: clamp(28px, 3.87vw, 49px);
-  --panel-frame-bottom: clamp(26px, 3.55vw, 45px);
+  --panel-frame-x: clamp(22px, 3cqw, 38px);
+  --panel-frame-top: clamp(28px, 3.87cqw, 49px);
+  --panel-frame-bottom: clamp(26px, 3.55cqw, 45px);
   --game-bottom-rail: 112px;
   position: relative;
   width: 100%;
@@ -509,12 +510,15 @@ button:disabled { cursor: var(--cursor-arrow); }
 }
 
 #game-canvas canvas {
+  margin-inline: auto;
+  touch-action: none;
   display: block;
 }
 
 /* 행동 안내도 PDF처럼 실제 대상에 화살표를 붙인다. 캔버스와 같은 영역을
    덮는 좌표계라 화면 크기가 달라져도 타일 중심을 그대로 따른다. */
 .coach-map {
+  container-type: size;
   position: absolute;
   z-index: 32;
   top: var(--game-top-rail);
@@ -531,14 +535,14 @@ button:disabled { cursor: var(--cursor-arrow); }
   position: relative;
   display: block;
   width: 100%;
-  max-width: calc((100svh - var(--game-top-rail) - var(--game-bottom-rail)) * 1.75);
+  max-width: calc(100cqh * 1.75);
   aspect-ratio: 14 / 8;
 }
 /* 대사 화면의 어두운 막(40)보다 위. 다른 화살표(42)와 같은 층에 둔다. */
 .coach-map-over-dialogue { z-index: 42; }
 .coach-map-arrow {
   position: absolute;
-  width: clamp(36px, 3.5vw, 44px);
+  width: clamp(36px, 3.5cqw, 44px);
   translate: -50% -50%;
   filter: drop-shadow(0 4px 0 #3c260d) drop-shadow(0 7px 8px #0008);
   animation: coach-arrow 650ms ease-in-out infinite alternate;
@@ -655,7 +659,7 @@ button:disabled { cursor: var(--cursor-arrow); }
 .order-card {
   display: grid;
   grid-template-rows: 17.4% 36% 22.5% 24.1%;
-  width: clamp(104px, 10.5vw, 122px);
+  width: clamp(104px, 10.5cqw, 122px);
   aspect-ratio: 352 / 512;
   /* 칸 안 그림 크기를 카드 높이(cqh)로 적기 위해 컨테이너로 삼는다.
      퍼센트 높이는 그리드 칸 안에서 기준이 잡히지 않아 어긋난다. */
@@ -679,7 +683,7 @@ button:disabled { cursor: var(--cursor-arrow); }
   position: relative;
   display: grid;
   place-items: center;
-  width: clamp(58px, 5.8vw, 74px);
+  width: clamp(58px, 5.8cqw, 74px);
   aspect-ratio: 1;
   margin-top: 10px;
   border: 3px solid #2b1a0c;
@@ -712,7 +716,7 @@ button:disabled { cursor: var(--cursor-arrow); }
   pointer-events: none;
 }
 .order-next:hover .order-card,
-.order-next:focus-visible .order-card { opacity: 1; }
+.order-next:focus .order-card { opacity: 1; }
 
 /* 각 칸은 흰 접시 같은 원 위에 그림 하나. 원 크기가 정해져 있어 그림이
    들쭉날쭉해 보이지 않는다. */
@@ -803,7 +807,7 @@ button:disabled { cursor: var(--cursor-arrow); }
 .dialogue-arrow {
   position: absolute;
   z-index: 42;
-  width: clamp(58px, 6vw, 86px);
+  width: clamp(58px, 6cqw, 86px);
   height: auto;
   filter: drop-shadow(0 5px 0 #3c260d) drop-shadow(0 9px 10px #0009);
   animation: dialogue-arrow 700ms ease-in-out infinite alternate;
@@ -843,7 +847,7 @@ button:disabled { cursor: var(--cursor-arrow); }
   top: auto;
   right: calc(var(--game-info-rail) + 12px);
   bottom: 8px;
-  left: clamp(330px, 32vw, 430px);
+  left: clamp(330px, 32cqw, 430px);
   height: calc(var(--game-bottom-rail) - 14px);
   align-items: center;
   cursor: default;
@@ -856,17 +860,17 @@ button:disabled { cursor: var(--cursor-arrow); }
 .dialogue-screen[data-passive] .dialogue-text {
   min-height: 0;
   padding: 10px 12px;
-  font-size: clamp(13px, 1.2vw, 17px);
+  font-size: clamp(13px, 1.2cqw, 17px);
   line-height: 1.4;
 }
 .dialogue-screen[data-narration] .dialogue-text {
-  padding-left: clamp(10px, 1.4vw, 22px);
+  padding-left: clamp(10px, 1.4cqw, 22px);
 }
 .dialogue-screen[data-narration] .dialogue-bar {
   position: absolute;
   right: calc(var(--game-info-rail) + 12px);
   bottom: 8px;
-  left: clamp(270px, 28vw, 360px);
+  left: clamp(270px, 28cqw, 360px);
   width: auto;
   padding: 0;
 }
@@ -879,7 +883,7 @@ button:disabled { cursor: var(--cursor-arrow); }
   grid-template-columns: auto 1fr;
   align-items: end;
   width: 100%;
-  padding: 0 clamp(14px, 2.5vw, 34px) clamp(12px, 2.2vh, 26px);
+  padding: 0 clamp(14px, 2.5cqw, 34px) clamp(12px, 2.2cqh, 26px);
 }
 
 /* 말하는 슬라임. 말상자와 이름표보다 앞에 서서 왼쪽 위로 튀어나온다. */
@@ -888,9 +892,9 @@ button:disabled { cursor: var(--cursor-arrow); }
   grid-row: 1 / span 2;
   align-self: end;
   z-index: 2;
-  width: clamp(118px, 16vw, 210px);
+  width: clamp(118px, 16cqw, 210px);
   height: auto;
-  margin-bottom: clamp(28px, 6vh, 64px);
+  margin-bottom: clamp(28px, 6cqh, 64px);
   object-fit: contain;
   filter: drop-shadow(0 6px 10px #0009);
   transform-origin: 50% 100%;
@@ -901,15 +905,15 @@ button:disabled { cursor: var(--cursor-arrow); }
 .dialogue-companions {
   position: absolute;
   z-index: 3;
-  right: clamp(28px, 5vw, 76px);
-  bottom: clamp(104px, 17vh, 154px);
+  right: clamp(28px, 5cqw, 76px);
+  bottom: clamp(104px, 17cqh, 154px);
   display: flex;
   align-items: end;
-  gap: clamp(4px, .8vw, 12px);
+  gap: clamp(4px, .8cqw, 12px);
   pointer-events: none;
 }
 .dialogue-companions img {
-  width: clamp(92px, 12vw, 158px);
+  width: clamp(92px, 12cqw, 158px);
   height: auto;
   filter: drop-shadow(0 6px 10px #0009);
   transform-origin: 50% 100%;
@@ -925,13 +929,13 @@ button:disabled { cursor: var(--cursor-arrow); }
   z-index: 1;
   display: grid;
   place-items: center;
-  min-width: clamp(104px, 13vw, 160px);
+  min-width: clamp(104px, 13cqw, 160px);
   margin: 0 0 -38px 4px;
   border: 15px solid transparent;
   border-image: url("/ui/dialogue-nameplate.png") 38 fill / 15px / 0 stretch;
   padding: 1px 10px 3px;
   color: #3b2210;
-  font-size: clamp(13px, 1.5vw, 19px);
+  font-size: clamp(13px, 1.5cqw, 19px);
   font-weight: 400;
   line-height: 1;
   white-space: nowrap;
@@ -942,13 +946,13 @@ button:disabled { cursor: var(--cursor-arrow); }
   grid-column: 1 / -1;
   grid-row: 2;
   position: relative;
-  min-height: clamp(88px, 15vh, 132px);
+  min-height: clamp(88px, 15cqh, 132px);
   margin: 0;
   border: 20px solid transparent;
   border-image: url("/ui/dialogue-box.png") 44 fill / 20px / 0 stretch;
-  padding: clamp(4px, 1vh, 10px) clamp(10px, 1.4vw, 22px);
+  padding: clamp(4px, 1cqh, 10px) clamp(10px, 1.4cqw, 22px);
   color: #3a2413;
-  font-size: clamp(14px, 1.7vw, 21px);
+  font-size: clamp(14px, 1.7cqw, 21px);
   line-height: 1.55;
   text-align: left;
   word-break: keep-all;
@@ -956,7 +960,7 @@ button:disabled { cursor: var(--cursor-arrow); }
   text-wrap: pretty;
 }
 /* 초상이 상자 왼쪽을 가리므로 글은 그만큼 안쪽에서 시작한다. */
-.dialogue-text { padding-left: clamp(96px, 15vw, 200px); }
+.dialogue-text { padding-left: clamp(96px, 15cqw, 200px); }
 .dialogue-term { font-weight: inherit; }
 .dialogue-term-food { color: #b84e24; }
 .dialogue-term-tool { color: #286b93; }
@@ -965,8 +969,8 @@ button:disabled { cursor: var(--cursor-arrow); }
 /* 다 찍히면 "다음" 표시가 깜빡인다. */
 .dialogue-more {
   position: absolute;
-  right: clamp(22px, 2.6vw, 38px);
-  bottom: clamp(10px, 1.6vh, 18px);
+  right: clamp(22px, 2.6cqw, 38px);
+  bottom: clamp(10px, 1.6cqh, 18px);
   color: #b3703a;
   font-size: 15px;
   font-style: normal;
@@ -1000,7 +1004,7 @@ button:disabled { cursor: var(--cursor-arrow); }
   z-index: 30;
   top: 34%;
   left: 50%;
-  width: min(46vw, 520px);
+  width: min(46cqw, 520px);
   animation: stage-banner 1.6s ease-out forwards;
   pointer-events: none;
 }
@@ -1040,14 +1044,14 @@ button:disabled { cursor: var(--cursor-arrow); }
 .hud-right { display: grid; justify-items: end; gap: 8px; }
 
 /* 슬라임별 남은 행동력과 턴 종료 */
-.turn-bar { display: flex; align-items: end; gap: clamp(11px, 1.5vw, 18px); padding-bottom: 18px; }
+.turn-bar { display: flex; align-items: end; gap: clamp(11px, 1.5cqw, 18px); padding-bottom: 18px; }
 /* 슬라임 몸이 버튼 배경이다. 표정 없이 조금 어둡게 깔고, 그 위에 남은
    에너지만 얹는다. */
 .stage-frame .turn-bar button {
   position: relative;
   display: grid;
   place-items: center;
-  width: clamp(56px, 6.2vw, 80px);
+  width: clamp(56px, 6.2cqw, 80px);
   aspect-ratio: 1;
   border: 3px solid #ffffff8c;
   border-radius: 50%;
@@ -1071,7 +1075,7 @@ button:disabled { cursor: var(--cursor-arrow); }
   border-radius: 3px;
   background: #1a0e06d9;
   color: #ffeecb;
-  font-size: clamp(9px, .92vw, 12px);
+  font-size: clamp(9px, .92cqw, 12px);
   font-weight: 400;
   line-height: 1.35;
   white-space: nowrap;
@@ -1101,12 +1105,12 @@ button:disabled { cursor: var(--cursor-arrow); }
 }
 .turn-bar .turn-control b {
   color: #26160b;
-  font-size: clamp(12px, 1.35vw, 17px);
+  font-size: clamp(12px, 1.35cqw, 17px);
   line-height: 1;
 }
 .turn-bar .turn-control small {
   color: #5b351e;
-  font-size: clamp(8px, .8vw, 10px);
+  font-size: clamp(8px, .8cqw, 10px);
   font-weight: 800;
   line-height: 1;
 }
@@ -1115,7 +1119,7 @@ button:disabled { cursor: var(--cursor-arrow); }
   place-items: center;
   align-content: center;
   gap: 3px;
-  width: clamp(88px, 9vw, 116px);
+  width: clamp(88px, 9cqw, 116px);
   min-height: 0;
   aspect-ratio: 758 / 339;
   border: 0;
@@ -1163,7 +1167,7 @@ button:disabled { cursor: var(--cursor-arrow); }
 /* 스테이지 랭크 별 */
 .stage-rank { display: flex; justify-content: center; gap: 8px; margin: 0; }
 .stage-rank img {
-  width: clamp(38px, 4.5vw, 54px);
+  width: clamp(38px, 4.5cqw, 54px);
   height: auto;
   transform: scale(.6);
   animation: rank-star 320ms cubic-bezier(.2, 1.5, .4, 1) both;
@@ -1198,7 +1202,8 @@ button:disabled { cursor: var(--cursor-arrow); }
   position: relative;
   width: 100%;
   height: 100%;
-  overflow: visible;
+  overflow-y: auto;
+  overscroll-behavior: contain;
   border-width: var(--panel-frame-top) var(--panel-frame-x) var(--panel-frame-bottom);
   border-style: solid;
   border-color: transparent;
@@ -1208,12 +1213,11 @@ button:disabled { cursor: var(--cursor-arrow); }
   color: var(--paper-ink);
   text-align: center;
 }
-/* 패널은 스크롤을 두지 않으므로 세로가 짧은 화면에서는 동그라미부터 줄인다.
-   글이 잘리는 것보다 그림이 작아지는 편이 낫다. */
+/* 작은 화면에서는 그림을 줄이고 긴 설명은 패널 안에서 스크롤한다. */
 .inspector-portrait,
 .inspector-station-icon {
-  width: clamp(74px, 13vh, 132px);
-  height: clamp(74px, 13vh, 132px);
+  width: clamp(74px, 13cqh, 132px);
+  height: clamp(74px, 13cqh, 132px);
   margin: 2px auto 8px;
   border: 5px solid #fff !important;
   border-radius: 50% !important;
@@ -1227,7 +1231,7 @@ button:disabled { cursor: var(--cursor-arrow); }
 .inspector-station-icon img { display: block; width: 100%; height: 100%; padding: 18%; object-fit: contain; box-sizing: border-box; }
 .inspector-station-icon img[data-wide] { padding: 2%; }
 .game-inspector .eyebrow { margin: 0; color: #7d421d; font-size: 11px; letter-spacing: .14em; }
-.game-inspector h2 { margin: 2px 0 10px; font-size: clamp(22px, 2.4vw, 30px); }
+.game-inspector h2 { margin: 2px 0 10px; font-size: clamp(22px, 2.4cqw, 30px); }
 .game-inspector h3 { margin: 14px 0 6px; color: #5c3419; font-size: 14px; }
 .inspector-copy { margin: 0; color: #3c2515; font-size: 13px; line-height: 1.45; }
 .inspector-copy p { margin: 3px 0; }
@@ -1316,17 +1320,16 @@ button:disabled { cursor: var(--cursor-arrow); }
   pointer-events: none;
 }
 .has-tip:hover::after,
-.has-tip:focus-visible::after { opacity: 1; }
+.has-tip:focus::after { opacity: 1; }
 .inspector-hint { display: block; margin-top: 14px; color: #67401f; font-size: 12px; line-height: 1.35; }
 
-/* 세로가 짧은 화면에서는 패널이 통째로 짧아진다. 스크롤을 두지 않으므로
-   안에 든 것을 같이 줄여 잘리지 않게 한다. */
+/* 낮은 화면에서도 제목과 설비 아이콘을 함께 볼 수 있게 간격을 줄인다. */
 @media (max-height: 780px) {
-  .game-inspector h2 { margin: 0 0 6px; font-size: clamp(18px, 2vw, 24px); }
+  .game-inspector h2 { margin: 0 0 6px; font-size: clamp(18px, 2cqw, 24px); }
   .game-inspector h3 { margin: 8px 0 4px; font-size: 12px; }
   .inspector-portrait, .inspector-station-icon {
-    width: clamp(56px, 10.5vh, 104px);
-    height: clamp(56px, 10.5vh, 104px);
+    width: clamp(56px, 10.5cqh, 104px);
+    height: clamp(56px, 10.5cqh, 104px);
     margin: 0 auto 4px;
   }
   .required-slimes > span:not(.any-slime) { grid-template-columns: 24px auto; padding: 4px 8px; font-size: 12px; }
@@ -1392,7 +1395,7 @@ button:disabled { cursor: var(--cursor-arrow); }
 
 .result-overlay {
   position: fixed;
-  z-index: 50;
+  z-index: 300;
   inset: 0;
   display: grid;
   place-items: center;
@@ -1408,7 +1411,7 @@ button:disabled { cursor: var(--cursor-arrow); }
   position: relative;
   /* 세로가 짧은 화면에서는 높이가 먼저 걸린다. 비율을 지키려면 폭을 줄여야
      하므로 화면 높이에서 거꾸로 계산한 폭도 후보에 넣는다. */
-  width: min(var(--paper-w, 520px), 100%, calc((100svh - 40px) * 1055 / 1285));
+  width: min(var(--paper-w, 520px), 100%, calc((100cqh - 40px) * 1055 / 1285));
   aspect-ratio: 1055 / 1285;
   background: url("/ui/paper-frame.png") center / 100% 100% no-repeat;
   color: var(--paper-ink);
@@ -1426,7 +1429,7 @@ button:disabled { cursor: var(--cursor-arrow); }
   height: 13%;
   margin: 0;
   color: #6b3d1a;
-  font-size: clamp(17px, 2vw, 24px);
+  font-size: clamp(17px, 2cqw, 24px);
 }
 /* 제목이 그림이면 리본 안에 꽉 차지 않게 조금 줄여 앉힌다. */
 img.paper-title { width: 56%; height: 11.4%; top: 4.9%; left: 22%; object-fit: contain; }
@@ -1442,13 +1445,13 @@ img.paper-title { width: 56%; height: 11.4%; top: 4.9%; left: 22%; object-fit: c
   left: 8.1%;
   display: grid;
   align-content: center;
-  gap: clamp(6px, 1.4vh, 14px);
+  gap: clamp(6px, 1.4cqh, 14px);
   overflow: hidden;
   padding: 4% 5%;
 }
 
 .result-overlay .eyebrow { color: #9b3f21; }
-.result-overlay h2 { margin: 0; font-size: clamp(1rem, 1.7vw, 1.35rem); }
+.result-overlay h2 { margin: 0; font-size: clamp(1rem, 1.7cqw, 1.35rem); }
 .result-clear-stage {
   display: flex;
   align-items: center;
@@ -1483,62 +1486,6 @@ img.paper-title { width: 56%; height: 11.4%; top: 4.9%; left: 22%; object-fit: c
   .game-inspector { width: 100%; }
 }
 
-@media (orientation: landscape) and (max-height: 520px) {
-  .stage-frame {
-    --game-top-rail: 38px;
-    --game-side-rail: 160px;
-    --game-info-rail: 220px;
-    --game-bottom-rail: 62px;
-  }
-  .hud-top { top: 5px; right: 69px; gap: 4px; }
-  .hud-chip { padding: 4px 9px; font-size: 12px; }
-  /* 낮은 화면에서는 카드를 눕히지 않고 통째로 줄인다. 칸 순서(완성품 →
-     재료 → 조리 방법)는 그대로다. */
-  .order-cards { top: 5px; left: 5px; gap: 5px; transform: scale(.62); transform-origin: top left; }
-  .hud-bottom { right: calc(var(--game-info-rail) + 7px); bottom: 7px; left: 167px; }
-  .stage-frame .turn-bar button { width: 44px; border-width: 2px; }
-  .stage-frame .turn-bar .turn-control { width: 74px; min-height: 0; gap: 1px; }
-  .turn-bar b { font-size: 11px; }
-  .game-inspector { width: 100%; padding: 9px 14px; }
-  .stage-frame .inspector-close { width: 32px; height: 32px; font-size: 23px; }
-  .inspector-portrait, .inspector-station-icon { width: 76px; height: 76px; margin: 0 auto 3px; border-width: 3px !important; padding: 8px !important; }
-  .game-inspector .eyebrow { font-size: 7px; }
-  .game-inspector h2 { margin: 2px 0 5px; font-size: 20px; }
-  .game-inspector h3 { margin: 8px 0 4px; font-size: 10px; }
-  .inspector-copy { font-size: 9px; line-height: 1.25; }
-  .game-inspector .slime-stats { margin-top: 7px; }
-  .required-slimes > span { padding: 3px 7px; font-size: 8px; }
-  /* 판때기 그림은 padding이 아니라 테두리 두께가 여백이라 그쪽을 줄인다. */
-  .inspector-badges span, .station-workflow b {
-    border-width: 6px;
-    border-image-width: 6px;
-    font-size: 8px;
-  }
-  .required-slimes > span:not(.any-slime) { grid-template-columns: 22px auto; }
-  .required-slimes img { width: 22px; height: 22px; }
-  .inspector-hint { margin-top: 8px; font-size: 8px; }
-  .music-settings-game { top: 7px; right: 7px; }
-  .art-button.game-settings-trigger,
-  .stage-frame button.game-settings-trigger { width: 36px; }
-
-  .slime-stats { gap: 2px; margin-top: 0; }
-  .slime-stats li { grid-template-columns: 1fr auto; gap: 2px; font-size: 9px; }
-  .stat-gauge { gap: 1px; }
-  .stat-gauge i { width: 7px; height: 6px; }
-  
-  /* 액자는 비율대로 통째로 줄어든다. 안에 든 글자만 따로 줄인다. */
-  .result-overlay { padding: 6px; }
-  .paper-body { gap: 4px; padding: 3% 4%; }
-  .result-overlay .eyebrow { margin-bottom: 2px; font-size: 9px; }
-  .result-overlay h2 { font-size: 12px; }
-  .result-overlay .settle > div { gap: 7px; padding: 3px; font-size: 10px; }
-  .result-overlay .settle dd:last-child { font-size: 13px; }
-  .result-overlay button { padding: 5px 10px; font-size: 10px; }
-  .settings-drawer { border-width: 24px; border-image-width: 24px; gap: 8px; padding: 2px 6px 8px; }
-  .settings-drawer header strong { font-size: 15px; }
-  .settings-drawer .settings-close { top: -30px; right: -30px; width: 38px; height: 38px; }
-}
-
 @media (min-width: 761px) and (max-width: 900px) {
   .slime-stats li { grid-template-columns: 1fr auto; gap: 4px; }
   .stat-gauge { gap: 2px; }
@@ -1556,9 +1503,9 @@ img.paper-title { width: 56%; height: 11.4%; top: 4.9%; left: 22%; object-fit: c
   display: grid;
   align-content: center;
   justify-items: center;
-  gap: clamp(20px, 4vh, 44px);
+  gap: clamp(20px, 4cqh, 44px);
   width: 100%;
-  min-height: 100svh;
+  min-height: 100cqh;
   padding: 88px 20px 40px;
   background:
     linear-gradient(#2f150099, #2f150099),
@@ -1571,13 +1518,13 @@ img.paper-title { width: 56%; height: 11.4%; top: 4.9%; left: 22%; object-fit: c
 }
 
 .stage-select[data-screen="modes"] h1 {
-  width: min(420px, 68vw);
+  width: min(420px, 68cqw);
   aspect-ratio: 1363 / 432;
   background: url("/ui/mode-select-title.png") center / contain no-repeat;
 }
 
 .stage-select[data-screen="stages"] h1 {
-  width: min(560px, 78vw);
+  width: min(560px, 78cqw);
   aspect-ratio: 1829 / 395;
   background: url("/ui/stage-select-title.png") center / contain no-repeat;
 }
@@ -1647,7 +1594,7 @@ img.paper-title { width: 56%; height: 11.4%; top: 4.9%; left: 22%; object-fit: c
 }
 .stage-select-bar .music-settings-game { position: static; }
 
-.mode-plates { display: grid; gap: clamp(14px, 3vh, 28px); justify-items: center; }
+.mode-plates { display: grid; gap: clamp(14px, 3cqh, 28px); justify-items: center; }
 
 /* 나무 판 그림 하나가 버튼 전체다. 테두리·배경은 그림에 이미 있다. */
 .mode-plate {
@@ -1655,7 +1602,7 @@ img.paper-title { width: 56%; height: 11.4%; top: 4.9%; left: 22%; object-fit: c
   align-content: center;
   justify-items: center;
   gap: 2px;
-  width: clamp(300px, 44vw, 520px);
+  width: clamp(300px, 44cqw, 520px);
   aspect-ratio: 639 / 256;
   border: 0;
   padding: 0 12% 2%;
@@ -1663,8 +1610,8 @@ img.paper-title { width: 56%; height: 11.4%; top: 4.9%; left: 22%; object-fit: c
   color: #ffeec4;
   transition: transform 120ms ease;
 }
-.mode-plate b { font-size: clamp(20px, 2.8vw, 34px); }
-.mode-plate small { color: #ffdca6; font-size: clamp(11px, 1.2vw, 15px); }
+.mode-plate b { font-size: clamp(20px, 2.8cqw, 34px); }
+.mode-plate small { color: #ffdca6; font-size: clamp(11px, 1.2cqw, 15px); }
 .mode-plate-stars { display: flex; align-items: center; gap: .3em; }
 .mode-plate-stars img { width: 1.4em; height: 1.4em; object-fit: contain; }
 .mode-plate:hover:not(:disabled) { transform: translateY(-4px) scale(1.02); filter: brightness(1.06); }
@@ -1675,14 +1622,14 @@ img.paper-title { width: 56%; height: 11.4%; top: 4.9%; left: 22%; object-fit: c
 .stage-cards {
   display: grid;
   grid-template-columns: repeat(4, auto);
-  gap: clamp(10px, 2vw, 24px);
+  gap: clamp(10px, 2cqw, 24px);
 }
 
 .stage-card {
   position: relative;
   display: grid;
   place-items: center;
-  width: clamp(116px, 17vw, 176px);
+  width: clamp(116px, 17cqw, 176px);
   aspect-ratio: 1;
   border: 0;
   padding: 0;
@@ -1726,97 +1673,151 @@ img.paper-title { width: 56%; height: 11.4%; top: 4.9%; left: 22%; object-fit: c
 
 .inspector-badges span { cursor: var(--cursor-ask); }
 
-/* 휴대폰은 같은 게임 화면을 그대로 쓰고 레일만 접는다. 정보 패널은 선택할
-   때만 지도 위에 떠서 좁은 화면의 플레이 폭을 계속 차지하지 않는다. */
-@media (orientation: landscape) and (max-width: 960px) and (max-height: 520px) {
+/* 낮은 화면과 작은 태블릿은 같은 배치: 왼쪽 주문, 중앙 지도, 아래 조작. */
+@container game-viewport (max-height: 600px) or (max-width: 1100px) {
   .stage-frame {
-    --game-top-rail: 42px;
-    --game-side-rail: 116px;
+    --orders-arrow-top: 96px;
+    --orders-arrow-left: 56px;
+    --next-arrow-top: 248px;
+    --next-arrow-left: 10px;
+    --inspector-arrow-right: calc(min(300px, 46%) + 6px);
+    --clock-arrow-top: 56px;
+    --game-top-rail: 56px;
+    --game-side-rail: 172px;
     --game-info-rail: 0px;
-    --game-bottom-rail: 64px;
-    --panel-frame-x: 22px;
-    --panel-frame-top: 28px;
-    --panel-frame-bottom: 26px;
+    --game-bottom-rail: 76px;
+    --panel-frame-x: 16px;
+    --panel-frame-top: 20px;
+    --panel-frame-bottom: 18px;
   }
-  .order-cards { transform: scale(.5); }
-  .hud-top { top: 4px; right: 58px; transform: scale(.72); transform-origin: top right; }
-  .hud-bottom { right: 8px; bottom: 5px; left: 122px; }
-  .turn-bar { gap: 7px; padding-bottom: 13px; }
-  .stage-frame .turn-bar button { width: 44px; min-width: 44px; min-height: 44px; }
-  .stage-frame .turn-bar .turn-end { width: 100px; }
-  .info-rail { width: 0; border: 0; overflow: hidden; }
+  .order-cards { top: 8px; left: 8px; width: 156px; flex-wrap: wrap; gap: 8px; transform: none; }
+  .order-card {
+    width: 156px;
+    height: 88px;
+    aspect-ratio: auto;
+    container-type: normal;
+    grid-template-columns: 48px minmax(0, 1fr);
+    grid-template-rows: 1fr 1fr;
+    gap: 2px;
+    padding: 6px;
+    border: 5px solid transparent;
+    border-image: url("/ui/panel-base2.png") 20 fill / 5px / 0 stretch;
+    background: none;
+  }
+  .order-plate { grid-column: 1; grid-row: 1 / -1; }
+  .order-plate .order-dish { width: 44px; height: 45px; }
+  .order-part-item { grid-column: 2; grid-row: 1; }
+  .order-method { grid-column: 2; grid-row: 2; }
+  .order-part { display: flex; justify-content: center; gap: 3px; }
+  .order-part i { display: none; }
+  .order-part b { position: static; padding: 0; background: none; white-space: normal; font-size: 12px; line-height: 1.25; }
+  .order-next { width: 48px; min-height: 48px; margin-top: 0; border-radius: 8px; }
+  .order-next .order-card { top: 0; left: calc(100% + 8px); }
+  .hud-top { top: 3px; right: 58px; transform: none; }
+  .hud-chip { width: 132px; font-size: 12px; }
+  .hud-chip b { font-size: 20px; }
+  .hud-bottom { right: 8px; bottom: 6px; left: 180px; }
+  .turn-bar { width: 100%; justify-content: center; gap: 8px; padding-bottom: 14px; }
+  .stage-frame .turn-bar button { flex: none; width: 44px; min-width: 44px; min-height: 44px; border-width: 2px; }
+  .stage-frame .turn-bar .turn-control { width: 84px; min-height: 44px; border: 0; }
+  .turn-bar .turn-control b { font-size: 14px; }
+  .turn-bar .turn-control small { display: none; }
+  .roster-name { font-size: 12px; }
+  .info-rail { display: none; }
   .stage-frame[data-inspector] .info-rail {
-    top: 46px;
-    right: 4px;
-    bottom: 68px;
-    width: min(42vw, 240px);
-    border: 4px solid #1d1009;
-    overflow: visible;
+    display: block;
+    top: 56px;
+    right: 6px;
+    bottom: var(--game-bottom-rail);
+    width: min(300px, 46%);
+    border: 0;
     box-shadow: 0 8px 24px #000b;
   }
+  .game-inspector { padding: 4px 8px; }
+  .game-inspector h2 { padding-right: 22px; font-size: 20px; }
+  .game-inspector h3 { font-size: 14px; }
+  .inspector-portrait, .inspector-station-icon { width: 56px; height: 56px; margin: 0 auto 4px; }
+  .inspector-copy, .inspector-hint { font-size: 14px; }
+  .music-settings-game { top: 2px; right: 6px; }
   .dialogue-bar { padding: 0 8px 6px; }
   .dialogue-face { width: 86px; margin-bottom: 39px; }
-  .dialogue-name {
-    min-width: 88px;
-    margin-bottom: -27px;
-    border-width: 10px;
-    border-image-width: 10px;
-    font-size: 12px;
-  }
-  .dialogue-text {
-    min-height: 72px;
-    border-width: 14px;
-    border-image-width: 14px;
-    padding: 2px 9px 2px 74px;
-    font-size: 13px;
-    line-height: 1.3;
-  }
+  .dialogue-name { min-width: 88px; margin-bottom: -27px; border-width: 10px; border-image-width: 10px; font-size: 14px; }
+  .dialogue-text { min-height: 72px; border-width: 14px; border-image-width: 14px; padding: 4px 9px 4px 74px; font-size: 14px; line-height: 1.4; }
   .dialogue-screen[data-passive] .dialogue-text,
-  .dialogue-screen[data-narration] .dialogue-text { padding-left: 9px; }
-  .dialogue-screen[data-passive] {
-    top: auto;
-    right: 8px;
-    bottom: 4px;
-    left: calc(var(--game-side-rail) + 220px);
-    height: calc(var(--game-bottom-rail) - 8px);
-    align-items: center;
-  }
-  .dialogue-screen[data-passive] .dialogue-bar { padding: 0; }
-  .dialogue-screen[data-narration] .dialogue-bar {
-    right: 8px;
-    bottom: 4px;
-    left: calc(var(--game-side-rail) + 220px);
-  }
+  .dialogue-screen[data-narration] .dialogue-text { padding: 3px 9px; }
+  .stage-frame:has(.dialogue-screen[data-passive]) { --game-bottom-rail: 132px; }
+  .dialogue-screen[data-passive] { top: auto; right: 8px; bottom: 76px; left: 180px; height: 56px; align-items: center; }
+  .dialogue-screen[data-passive] .dialogue-bar { height: 100%; padding: 0; }
+  .dialogue-screen[data-passive] .dialogue-text { align-self: stretch; max-height: 100%; overflow-y: auto; border-width: 6px; border-image-width: 6px; pointer-events: auto; touch-action: pan-y; }
+  .dialogue-screen[data-narration] .dialogue-bar { right: 8px; bottom: 78px; left: 180px; }
   .dialogue-screen[data-narration] .dialogue-text { min-height: 56px; }
   .dialogue-companions { right: 14px; bottom: 82px; }
   .dialogue-companions img { width: 68px; }
-  .stage-frame .dialogue-skip { top: 43px; right: 5px; width: 100px; min-height: 44px; }
-  .action-toast { bottom: auto; max-width: calc(100vw - 24px); }
-  .stage-banner { width: min(42vw, 320px); }
-  .stage-select { gap: 8px; padding: 56px 12px 10px; }
-  .stage-select[data-screen="modes"] h1 { width: min(240px, 36vw); }
-  .stage-select[data-screen="stages"] h1 { width: min(320px, 46vw); }
-  .stage-select-bar { top: 7px; right: 8px; left: 8px; }
-  .mode-plates { gap: 5px; }
-  .mode-plate { width: min(260px, 44vw); }
-  .stage-cards { gap: 6px; }
-  .stage-card { width: min(19vw, 125px); }
+  .stage-frame .dialogue-skip { top: 48px; right: 6px; width: 100px; min-height: 44px; }
+  .stage-banner { width: min(42cqw, 320px); }
+  .stage-select { gap: 12px; padding: 58px 12px 26px; }
+  .stage-select[data-screen="modes"] h1 { width: min(280px, 38cqw); }
+  .stage-select[data-screen="stages"] h1 { width: min(360px, 48cqw); }
+  .stage-select-bar { top: max(6px, env(safe-area-inset-top)); right: max(8px, env(safe-area-inset-right)); left: max(8px, env(safe-area-inset-left)); }
+  .mode-plates { gap: 8px; }
+  .mode-plate { width: min(280px, 40cqw, 64cqh); }
+  .stage-cards { gap: 8px; }
+  .stage-card { width: min(19cqw, 136px, 35cqh); }
+  .settings-overlay { padding: 12px; overflow-y: auto; }
+  .settings-drawer { border-width: 22px; border-image-width: 22px; gap: 6px; padding: 0 6px 4px; }
+  .settings-drawer .settings-close { top: -24px; right: -24px; width: 44px; height: 44px; }
+  .settings-drawer header strong { font-size: 18px; }
+  .settings-drawer .sound-toggle { width: 44px; height: 44px; }
+  .sound-toggle img { width: 40px; height: 40px; }
+  .settings-home-link.art-button, .settings-retry-button.art-button { min-height: 44px; width: 112px; }
+  .result-overlay { padding: 12px; overflow-y: auto; }
+  .paper-window { width: min(560px, 100%); min-height: 280px; aspect-ratio: auto; height: min(360px, calc(100cqh - 24px)); border: 24px solid transparent; border-image: url("/ui/settings-frame.png") 72 fill / 24px / 0 stretch; background: none; }
+  .paper-title, img.paper-title { top: 0; left: 22%; width: 56%; height: 44px; }
+  .paper-body { top: 48px; bottom: 0; left: 0; right: 0; padding: 4px; gap: 6px; align-content: start; overflow-y: auto; }
+  .result-overlay h2 { font-size: 16px; }
+  .stage-rank img { width: 32px; }
+  .settle > div { gap: 8px; padding: 2px 4px; }
+  .settle dd:last-child { font-size: 16px; }
+  .result-actions { flex-wrap: wrap; gap: 6px; }
+  .result-overlay button.result-art-button { width: 120px; min-height: 44px; font-size: 14px; }
+  .home-credits { width: min(200px, 42cqh); }
 }
 
-.landscape-gate { display: none; }
 
-@media (orientation: portrait) and (max-width: 760px) {
-  .landscape-gate {
-    position: fixed;
-    z-index: 10000;
-    inset: 0;
-    display: grid;
-    place-items: center;
-    margin: 0;
-    padding: 28px;
-    background: var(--plank-wall), #241408;
-    color: #fff1d0;
-    font-size: clamp(22px, 7vw, 34px);
-    text-align: center;
+
+.stage-frame .inspector-close { position: absolute; z-index: 2; top: 2px; right: 2px; width: 44px; height: 44px; padding: 0; border: 0; background: url("/ui/cancel.png") center / contain no-repeat; font-size: 0; }
+button, a { touch-action: manipulation; }
+@media (hover: none) {
+  .has-tip::after { position: static; display: block; width: auto; max-width: 100%; opacity: 1; transform: none; font-size: 14px; }
+  .inspector-badges .has-tip::after { grid-column: 1 / -1; }
+  .station-workflow .has-tip { flex-wrap: wrap; }
+  .station-workflow .has-tip::after { grid-column: 1 / -1; }
+}
+
+
+/* 세로 기기에서도 같은 가로 레이아웃을 보여준다. */
+.game-viewport {
+  position: fixed;
+  inset: 0;
+  width: 100dvw;
+  height: 100dvh;
+  container: game-viewport / size;
+  overflow: hidden;
+  transform: translateZ(0);
+}
+.game-viewport .stage, .game-viewport .stage-select { height: 100%; min-height: 0; }
+.game-viewport .loading { min-height: 100cqh; }
+@media (orientation: portrait) {
+  .credits-dialog { transform: rotate(90deg); }
+  .game-viewport {
+    inset: auto;
+    left: 50%;
+    top: 50%;
+    width: 100dvh;
+    height: 100dvw;
+    transform: translate(-50%, -50%) rotate(90deg);
+  }
+  .game-viewport .stage {
+    padding: env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left) env(safe-area-inset-top);
   }
 }

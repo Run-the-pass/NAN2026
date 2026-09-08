@@ -188,7 +188,7 @@ const waitForTurn = (
   return {
     id: `END_TURN_${cue.id}`,
     speaker: actor.typeId,
-    text: `${actor.name}의 행동력을 다 썼어요. 움직일 수 있는 슬라임이 있으면 자동으로 선택되고, 모두 행동하면 다음 턴으로 넘어가요.`,
+    text: `${actor.name}의 행동력을 다 썼어요. 턴 종료를 눌러주세요.`,
     endTurn: true,
   };
 };

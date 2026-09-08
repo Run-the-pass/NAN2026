@@ -13,6 +13,7 @@ export default function Dialogue({
   portrait,
   onDone,
   onFocusChange,
+  paused = false,
   passive = false,
   narration = false,
 }: {
@@ -20,6 +21,7 @@ export default function Dialogue({
   portrait: (typeId: SlimeTypeId) => string;
   onDone?: () => void;
   onFocusChange?: (focus: DialogueFocus | undefined) => void;
+  paused?: boolean;
   passive?: boolean;
   narration?: boolean;
 }) {
@@ -35,24 +37,25 @@ export default function Dialogue({
   }, [line, onFocusChange]);
 
   useEffect(() => {
-    if (passive) return;
+    if (passive || paused) return;
     if (shown >= full.length) return;
     const timer = setTimeout(() => setShown((count) => count + 1), LETTER_MS);
     return () => clearTimeout(timer);
-  }, [shown, full, passive]);
+  }, [shown, full, passive, paused]);
 
   // 한 번 누르면 남은 글자를 다 찍고, 다 찍혀 있으면 다음 줄로 넘어간다.
   const advance = useCallback(() => {
-    if (passive) return;
+    if (passive || paused) return;
     if (!done) return setShown(full.length);
     if (at + 1 >= lines.length) return onDone?.();
     setAt(at + 1);
     setShown(0);
-  }, [passive, done, full, at, lines.length, onDone]);
+  }, [passive, paused, done, full, at, lines.length, onDone]);
 
   useEffect(() => {
-    if (passive) return;
+    if (passive || paused) return;
     const down = (event: KeyboardEvent) => {
+      if (event.repeat) return;
       if (!["Space", "Enter", "NumpadEnter"].includes(event.code)) return;
       event.preventDefault();
       event.stopPropagation();
@@ -61,13 +64,14 @@ export default function Dialogue({
     // 캡처 단계에서 받아 게임 조작(스페이스=턴 종료)까지 가지 않게 한다.
     window.addEventListener("keydown", down, true);
     return () => window.removeEventListener("keydown", down, true);
-  }, [advance, passive]);
+  }, [advance, passive, paused]);
 
   if (!line) return null;
   const name = line.name ?? slimeTypes[line.speaker].name;
   return (
     <div
       className="dialogue-screen"
+      inert={paused}
       data-focus={line.focus}
       data-speaker={line.speaker}
       data-passive={passive ? "" : undefined}
@@ -78,7 +82,7 @@ export default function Dialogue({
       onClick={advance}
     >
       {!passive && onDone && (
-        <button type="button" className="dialogue-skip art-button" onClick={(event) => { event.stopPropagation(); onDone(); }}>
+        <button type="button" disabled={paused} className="dialogue-skip art-button" onClick={(event) => { event.stopPropagation(); onDone(); }}>
           건너뛰기
         </button>
       )}
