@@ -2955,3 +2955,11 @@
 - 작은 화면 주문·지도·하단 조작 레일, 44px 버튼, 닫을 수 있는 정보창, 터치 설명, 설정·정산·대사 배치를 보정했다.
 - 지도 부모 크기 갱신, 터치 토스트 좌표, 튜토리얼 수동 턴 종료, 설정·대사 뒤 입력, 재도전 잔여 상태를 수정했다.
 - PASS: 테스트 62개, typecheck, lint, vinext·Pages 빌드와 브라우저 조작 확인. 세부 검증 및 실제 기기 미검증 범위는 [검증 계획](plan-web-mobile-audit-2026-09-07.md)에 기록했다. 공개 배포 전 상태.
+
+
+## [2026-09-08] 배포 | 모바일 웹판 Sites·GitHub 공개 반영
+
+- 사용자의 공개 배포·GitHub 업로드 요청에 따라 웹판 수정 커밋 `1057adb76faceb510c5d6e6ce4a9be67546aae57`을 GitHub main과 Sites에 반영했다.
+- PASS: GitHub Actions `34240478217`의 테스트·타입검사·lint·Pages 빌드·배포 성공. 공개 Pages HTML/CSS에서 가로 회전 표시와 안내 제거를 확인했다.
+- PASS: Sites 공개 버전 48 배포 성공.
+- 공개 주소: https://run-the-pass.github.io/NAN2026/ 및 https://nan2026-slime-shift.silver-bat-5647.chatgpt.site
